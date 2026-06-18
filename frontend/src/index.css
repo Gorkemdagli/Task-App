@@ -1,1 +1,83 @@
-/* Tokens will be added in Task 0.4 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* === TASKFLOW DESIGN TOKENS ===
+     Source: PROJECT.md §6
+     Dark mode default; light mode override below. */
+
+  :root,
+  [data-theme='dark'] {
+    /* Brand */
+    --color-primary: #f59e0b;
+    --color-primary-hover: #d97706;
+    --color-ring: #f59e0b;
+
+    /* Surfaces */
+    --color-background: #171717;
+    --color-foreground: #e5e5e5;
+    --color-card: #262626;
+    --color-card-foreground: #e5e5e5;
+    --color-overlay: rgba(0, 0, 0, 0.6);
+
+    /* Secondary */
+    --color-secondary: #262626;
+    --color-secondary-foreground: #e5e5e5;
+
+    /* Border / input */
+    --color-border: #404040;
+    --color-input: #404040;
+
+    /* Priority */
+    --color-priority-high: #ef4444;
+    --color-priority-medium: #f59e0b;
+    --color-priority-low: #22c55e;
+
+    /* Status (kanban columns) */
+    --color-status-todo: #6b7280;
+    --color-status-inprogress: #f59e0b;
+    --color-status-done: #22c55e;
+  }
+
+  [data-theme='light'] {
+    --color-primary: #f59e0b;
+    --color-primary-hover: #d97706;
+    --color-ring: #f59e0b;
+
+    --color-background: #fafafa;
+    --color-foreground: #171717;
+    --color-card: #ffffff;
+    --color-card-foreground: #171717;
+    --color-overlay: rgba(0, 0, 0, 0.4);
+
+    --color-secondary: #f5f5f5;
+    --color-secondary-foreground: #171717;
+
+    --color-border: #e5e5e5;
+    --color-input: #e5e5e5;
+
+    --color-priority-high: #ef4444;
+    --color-priority-medium: #f59e0b;
+    --color-priority-low: #22c55e;
+
+    --color-status-todo: #6b7280;
+    --color-status-inprogress: #f59e0b;
+    --color-status-done: #22c55e;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: 'Inter', 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 22px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
