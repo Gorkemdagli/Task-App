@@ -42,3 +42,11 @@ backend/prisma/migrations/dev.db*
 *.tsbuildinfo
 .cache/
 .turbo/
+
+.husky/
+
+# Project documentation (kept local, not on remote)
+CLAUDE.md
+PROJECT.md
+FRONTEND.md
+ROADMAP.md
