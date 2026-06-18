@@ -23,7 +23,6 @@ const config: Config = {
         },
         border: 'var(--color-border)',
         input: 'var(--color-input)',
-        overlay: 'var(--color-overlay)',
         priority: {
           high: 'var(--color-priority-high)',
           medium: 'var(--color-priority-medium)',
