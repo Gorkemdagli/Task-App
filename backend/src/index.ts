@@ -13,11 +13,23 @@ const server = app.listen(env.PORT, () => {
 
 async function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down...`);
-  server.close(async () => {
+  const forceExit = setTimeout(() => {
+    console.error('Forced exit after 10s');
+    process.exit(1);
+  }, 10_000).unref();
+  void forceExit;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
     await prisma.$disconnect();
     await redis.quit();
     process.exit(0);
-  });
+  } catch (err) {
+    console.error('Shutdown error:', err);
+    process.exit(1);
+  }
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
