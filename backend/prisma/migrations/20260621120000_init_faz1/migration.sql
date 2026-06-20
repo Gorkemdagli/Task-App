@@ -17,14 +17,6 @@ CREATE TYPE "ChannelType" AS ENUM ('team', 'dm');
 CREATE TYPE "NotificationType" AS ENUM ('task_assigned', 'task_commented', 'message_received');
 
 -- CreateTable
-CREATE TABLE "_health_checks" (
-    "id" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "_health_checks_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "tenants" (
     "id" UUID NOT NULL,
     "name" TEXT NOT NULL,
