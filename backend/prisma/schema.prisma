@@ -8,10 +8,195 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum UserRole {
+  member
+  teamAdmin
+  companyAdmin
+}
+
+enum TeamMemberRole {
+  member
+  teamAdmin
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum ChannelType {
+  team
+  dm
+}
+
+enum NotificationType {
+  task_assigned
+  task_commented
+  message_received
+}
+
 // Health-check placeholder modeli (Faz 1'de kaldırılacak)
 model HealthCheck {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
   @@map("_health_checks")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  logoUrl   String?  @map("logo_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users User[]
+  teams Team[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  email     String   @unique
+  fullName  String   @map("full_name")
+  avatarUrl String?  @map("avatar_url")
+  role      UserRole
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teamMembers      TeamMember[]
+  assignedTasks    Task[]         @relation("TaskAssigner")
+  ownedTasks       Task[]         @relation("TaskAssignee")
+  comments         TaskComment[]
+  sentMessages     Message[]      @relation("MessageSender")
+  receivedMessages Message[]      @relation("MessageReceiver")
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  tasks    Task[]
+  channels Channel[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId   String         @map("team_id") @db.Uuid
+  userId   String         @map("user_id") @db.Uuid
+  role     TeamMemberRole
+  joinedAt DateTime       @default(now()) @map("joined_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  teamId      String       @map("team_id") @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(medium)
+  deadline    DateTime?
+  assignerId  String       @map("assigner_id") @db.Uuid
+  assigneeId  String       @map("assignee_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  team     Team          @relation(fields: [teamId], references: [id])
+  assigner User          @relation("TaskAssigner", fields: [assignerId], references: [id])
+  assignee User          @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  comments TaskComment[]
+
+  @@index([teamId, status])
+  @@index([assigneeId, status])
+  @@index([deadline])
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([taskId, createdAt(sort: Desc)])
+  @@map("task_comments")
+}
+
+model Channel {
+  id        String      @id @default(uuid()) @db.Uuid
+  teamId    String      @map("team_id") @db.Uuid
+  name      String
+  type      ChannelType
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  team     Team      @relation(fields: [teamId], references: [id])
+  messages Message[]
+
+  @@index([teamId])
+  @@map("channels")
+}
+
+model Message {
+  id         String    @id @default(uuid()) @db.Uuid
+  channelId  String?   @map("channel_id") @db.Uuid
+  senderId   String    @map("sender_id") @db.Uuid
+  receiverId String?   @map("receiver_id") @db.Uuid
+  body       String
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  channel  Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender   User     @relation("MessageSender", fields: [senderId], references: [id])
+  receiver User?    @relation("MessageReceiver", fields: [receiverId], references: [id])
+
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([receiverId, readAt])
+  @@map("messages")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  payload   Json             @default("{}")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
 }
