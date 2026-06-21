@@ -15,10 +15,12 @@
 
 import { PrismaClient } from '@prisma/client';
 import { withTenantContext } from '../src/db/withTenant';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
-// Sabit UUID'ler — re-runnable olsun diye sabit. Truncate sonrası aynı ID'ler tekrar oluşur.
+// Tenant ID'ler sabit (re-runnable). Child ID'ler (user, team, channel) her seed'de randomUUID
+// ile üretilir — re-runnable değil ama duplicate ID sorunu yok. Email'ler hardcoded unique.
 const TENANT_A = {
   id: '00000000-0000-0000-0000-00000000000a',
   name: 'Acme Corp',
@@ -47,14 +49,10 @@ async function seedTenant(
   tenant: { id: string; name: string; slug: string },
   companyAdminEmail: string,
 ) {
-  // CompanyAdmin ID sabit (auth'da da kullanılacak Faz 2'de)
-  const companyAdminId = `${tenant.id.slice(0, 8)}-0000-0000-0000-000000000001`;
-  const teamAdminId = `${tenant.id.slice(0, 8)}-0000-0000-0000-000000000002`;
-  const memberIds = [
-    `${tenant.id.slice(0, 8)}-0000-0000-0000-000000000003`,
-    `${tenant.id.slice(0, 8)}-0000-0000-0000-000000000004`,
-    `${tenant.id.slice(0, 8)}-0000-0000-0000-000000000005`,
-  ];
+  // CompanyAdmin ID random — auth'da da kullanılacak Faz 2'de (Faz 2'de sabit ID'ye geçiş)
+  const companyAdminId = randomUUID();
+  const teamAdminId = randomUUID();
+  const memberIds = [randomUUID(), randomUUID(), randomUUID()];
 
   await withTenantContext(companyAdminId, tenant.id, async (tx) => {
     // Tenant
@@ -102,8 +100,8 @@ async function seedTenant(
     });
 
     // Teams
-    const engineeringTeamId = `${tenant.id.slice(0, 8)}-0000-0000-0000-0000000000e1`;
-    const designTeamId = `${tenant.id.slice(0, 8)}-0000-0000-0000-0000000000e2`;
+    const engineeringTeamId = randomUUID();
+    const designTeamId = randomUUID();
     await tx.team.createMany({
       data: [
         {
@@ -154,8 +152,8 @@ async function seedTenant(
     await tx.task.createMany({ data: tasks });
 
     // Channels + messages
-    const engChannelId = `${tenant.id.slice(0, 8)}-0000-0000-0000-0000000000c1`;
-    const designChannelId = `${tenant.id.slice(0, 8)}-0000-0000-0000-0000000000c2`;
+    const engChannelId = randomUUID();
+    const designChannelId = randomUUID();
     await tx.channel.createMany({
       data: [
         { id: engChannelId, teamId: engineeringTeamId, name: 'engineering', type: 'team' },
