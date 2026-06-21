@@ -13,11 +13,14 @@ export async function withTenantContext<T>(
   tenantId: string,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_id = '${userId}'`);
-    await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
-    return fn(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.user_id = '${userId}'`);
+      await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
+      return fn(tx);
+    },
+    { timeout: 30000 }, // 30s — Prisma Postgres Accelerate latency'yi kaldirir
+  );
 }
 
 // Re-export Prisma type for consumers
