@@ -22,16 +22,17 @@ describe('withTenantContext', () => {
     mockTransaction.mockClear();
   });
 
-  it("SET LOCAL ile user_id ve tenant_id context'e enjekte eder", async () => {
+  it('SET LOCAL ROLE authenticated ÖNCE çağrılır (RLS policy için zorunlu)', async () => {
     await withTenantContext('user-uuid-123', 'tenant-uuid-456', async () => 'ok');
 
-    expect(mockExecuteRawUnsafe).toHaveBeenCalledTimes(2);
+    expect(mockExecuteRawUnsafe).toHaveBeenCalledTimes(3);
+    expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(1, 'SET LOCAL ROLE authenticated');
     expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(
-      1,
+      2,
       "SET LOCAL app.user_id = 'user-uuid-123'",
     );
     expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(
-      2,
+      3,
       "SET LOCAL app.tenant_id = 'tenant-uuid-456'",
     );
   });
@@ -62,6 +63,6 @@ describe('withTenantContext', () => {
 
     await withTenantContext('u', 't', mockFn);
 
-    expect(callOrder).toEqual(['SET_LOCAL', 'SET_LOCAL', 'CALLBACK']);
+    expect(callOrder).toEqual(['SET_LOCAL', 'SET_LOCAL', 'SET_LOCAL', 'CALLBACK']);
   });
 });
