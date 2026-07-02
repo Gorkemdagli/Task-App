@@ -42,6 +42,8 @@ backend/prisma/migrations/dev.db*
 *.tsbuildinfo
 .cache/
 .turbo/
+.pg-dump-backup.sql
+.taskflow_app_pwd
 
 .husky/
 
@@ -50,3 +52,8 @@ CLAUDE.md
 PROJECT.md
 FRONTEND.md
 ROADMAP.md
+--help/
+.claude/
+C:\Users\Gorkem\Desktop\Task\.claude
+
+.fallow
