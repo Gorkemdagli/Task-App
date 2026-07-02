@@ -63,17 +63,29 @@ async function cleanup() {
   );
 }
 
-async function countTasksInContext(tenantId: string | null): Promise<number> {
-  return prisma.$transaction(async (tx) => {
-    if (tenantId) {
-      await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
-      await tx.$executeRawUnsafe(`SET LOCAL app.user_id = 'test-user'`);
-    }
-    const rows = await tx.$queryRawUnsafe<Array<{ count: bigint }>>(
-      `SELECT COUNT(*)::bigint AS count FROM tasks WHERE team_id IN ('${TEAM_A_ID}', '${TEAM_B_ID}')`,
-    );
-    return Number(rows[0]?.count ?? 0);
-  });
+async function countTasksInContext(tenantId: string | null): Promise<number | 'denied'> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Her zaman authenticated rolüne geç — connection user (admin) BYPASSRLS,
+      // yoksa RLS uygulanmaz. Tenant context olmasa bile authenticated rolünde
+      // RLS default deny çalışır.
+      await tx.$executeRawUnsafe(`SET LOCAL ROLE authenticated`);
+      if (tenantId) {
+        await tx.$executeRawUnsafe(`SET LOCAL app.user_id = 'test-user'`);
+        await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
+      }
+      const rows = await tx.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*)::bigint AS count FROM tasks WHERE team_id IN ('${TEAM_A_ID}', '${TEAM_B_ID}')`,
+      );
+      return Number(rows[0]?.count ?? 0);
+    });
+  } catch (e: unknown) {
+    // 22P02 (invalid uuid syntax ""→uuid), 42501 (permission denied)
+    // → RLS default deny. Test 3 bunu PASS olarak değerlendirir.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('22P02') || msg.includes('42501')) return 'denied';
+    throw e;
+  }
 }
 
 async function main() {
@@ -106,8 +118,8 @@ async function main() {
 
     console.log('\n📋 Test 3: Context olmadan 0 görev (RLS default deny)');
     const noContextCount = await countTasksInContext(null);
-    if (noContextCount === 0) {
-      console.log('  ✅ PASS: 0 görev (RLS engelledi)');
+    if (noContextCount === 'denied' || noContextCount === 0) {
+      console.log('  ✅ PASS: RLS engelledi (0 görev veya exception)');
       pass++;
     } else {
       console.log(`  ❌ FAIL: beklenen 0, gerçek ${noContextCount}`);
