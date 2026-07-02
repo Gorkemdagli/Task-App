@@ -1,6 +1,26 @@
 version: '3.9'
 
 services:
+  # PostgreSQL — Supabase uyumlu RLS mimarisi için local instance.
+  # Volume dışarıdan tanımlı (taskflow-pgdata): mevcut veri korunur.
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskflow-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d taskflow']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: taskflow-redis
@@ -12,9 +32,12 @@ services:
     command: redis-server --appendonly yes
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 5
 
 volumes:
+  pgdata:
+    external: true
+    name: taskflow-pgdata
   redis-data:
