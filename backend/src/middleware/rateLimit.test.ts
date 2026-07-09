@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { redis } from '../lib/redis';
 import { createRateLimit } from './rateLimit';
 
 describe('createRateLimit', () => {
+  beforeEach(async () => {
+    const k = await redis.keys('test:rl:*');
+    if (k.length) await redis.del(...k);
+  });
   it('allows under limit', async () => {
     const app = express();
     const lim = createRateLimit({ windowMs: 60_000, max: 3, keyPrefix: 'test:rl:1' });
