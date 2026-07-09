@@ -8,7 +8,7 @@
  *   - Her takımda 1 kanal + 2-3 mesaj
  *   - Her kullanıcıda 1-2 okunmamış bildirim
  *
- * Tenant context'ini SET LOCAL ile aktif eder → RLS geçer.
+ * Admin prisma client (DATABASE_URL) ile çalışır — BYPASSRLS, RLS policy'leri uygulanmaz.
  *
  * Çalıştırma: `npm run seed`
  */
