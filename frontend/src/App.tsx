@@ -4,7 +4,6 @@ import { AuthLayout } from './pages/Auth/AuthLayout';
 import { LoginPage } from './pages/Auth/LoginPage';
 import { RegisterPage } from './pages/Auth/RegisterPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { api } from './lib/api';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
 
@@ -19,23 +18,24 @@ function DashboardPlaceholder() {
 
 function AppShell() {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const setUser = useAuthStore((s) => s.setUser);
   const token = useAuthStore((s) => s.accessToken);
   const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await api.post('/auth/refresh');
-        setAccessToken(r.data.accessToken);
+        const r = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
+        if (r.ok) {
+          const data = await r.json();
+          setAccessToken(data.accessToken);
+        }
       } catch {
-        setAccessToken(null);
-        setUser(null);
+        // Session yok; user null kalır, login sayfası gösterilir.
       } finally {
         setBootstrapped(true);
       }
     })();
-  }, [setAccessToken, setUser]);
+  }, [setAccessToken]);
 
   if (!bootstrapped) {
     return (
@@ -46,7 +46,7 @@ function AppShell() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route element={<AuthLayout />}>
           <Route
