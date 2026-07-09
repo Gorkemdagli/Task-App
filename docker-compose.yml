@@ -27,9 +27,7 @@ services:
     restart: unless-stopped
     ports:
       - '6379:6379'
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --save "" --appendonly no
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -40,4 +38,3 @@ volumes:
   pgdata:
     external: true
     name: taskflow-pgdata
-  redis-data:
