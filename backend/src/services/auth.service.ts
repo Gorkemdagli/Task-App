@@ -11,9 +11,21 @@ import {
 import { slugify } from './tenant.service';
 import { AppError } from '../middleware/errorHandler';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
+import { randomUUID } from 'crypto';
 
 const DISPLAY_ID_RETRIES = 5;
 const BLACKLIST_KEY = (jti: string) => `blacklist:jti:${jti}`;
+const SESSION_KEY = (jti: string) => `session:${jti}`;
+const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+async function createSession(
+  refreshToken: string,
+  userId: string,
+  familyId: string = randomUUID(),
+): Promise<void> {
+  const p = verifyRefreshToken(refreshToken);
+  await redis.setex(SESSION_KEY(p.jti), REFRESH_TTL_SECONDS, JSON.stringify({ userId, familyId }));
+}
 
 export interface AuthUser {
   id: string;
@@ -73,7 +85,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
       role: 'companyAdmin',
     },
   });
-  return issueTokens({
+  const r = issueTokens({
     id: user.id,
     displayId: user.displayId,
     email: user.email,
@@ -81,6 +93,8 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     role: user.role,
     tenantId: user.tenantId,
   });
+  await createSession(r.refreshToken, user.id);
+  return r;
 }
 
 const DUMMY_HASH = '$2b$12$0000000000000000000000000000000000000000000000000000000';
@@ -90,7 +104,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   const hash = user?.passwordHash ?? DUMMY_HASH;
   const valid = await verifyPassword(input.password, hash);
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
-  return issueTokens({
+  const r = issueTokens({
     id: user.id,
     displayId: user.displayId,
     email: user.email,
@@ -98,6 +112,8 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     role: user.role,
     tenantId: user.tenantId,
   });
+  await createSession(r.refreshToken, user.id);
+  return r;
 }
 
 export async function refresh(
@@ -111,20 +127,32 @@ export async function refresh(
   }
   if (await isTokenBlacklisted(p.jti))
     throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const user = await prisma.user.findUnique({ where: { id: p.sub } });
+  const sessionJson = await redis.get(SESSION_KEY(p.jti));
+  if (!sessionJson) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
+  const { userId, familyId } = JSON.parse(sessionJson) as { userId: string; familyId: string };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
   const ttl = p.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
-  return {
-    accessToken: signAccessToken(user.id, user.tenantId),
-    refreshToken: signRefreshToken(user.id, user.tenantId),
-  };
+  await redis.del(SESSION_KEY(p.jti));
+  const accessToken = signAccessToken(user.id, user.tenantId);
+  const newRefreshToken = signRefreshToken(user.id, user.tenantId);
+  await createSession(newRefreshToken, user.id, familyId);
+  return { accessToken, refreshToken: newRefreshToken };
 }
 
-export async function logout(accessToken: string): Promise<void> {
+export async function logout(accessToken: string, refreshToken?: string): Promise<void> {
   const p = verifyAccessToken(accessToken);
   const ttl = p.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
+  if (refreshToken) {
+    try {
+      const rp = verifyRefreshToken(refreshToken);
+      await redis.del(SESSION_KEY(rp.jti));
+    } catch {
+      // refresh token invalid/expired — ignore
+    }
+  }
 }
 
 export async function isTokenBlacklisted(jti: string): Promise<boolean> {

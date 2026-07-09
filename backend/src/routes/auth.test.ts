@@ -9,8 +9,10 @@ async function cleanDb() {
   await prisma.tenant.deleteMany();
   const k1 = await redis.keys('blacklist:jti:*');
   if (k1.length) await redis.del(...k1);
-  const k2 = await redis.keys('rl:*');
+  const k2 = await redis.keys('session:*');
   if (k2.length) await redis.del(...k2);
+  const k3 = await redis.keys('rl:*');
+  if (k3.length) await redis.del(...k3);
 }
 
 describe('POST /api/v1/auth/register', () => {

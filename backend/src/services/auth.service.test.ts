@@ -6,8 +6,10 @@ import { register, login, refresh, logout, isTokenBlacklisted } from './auth.ser
 async function cleanDb() {
   await prisma.user.deleteMany();
   await prisma.tenant.deleteMany();
-  const keys = await redis.keys('blacklist:jti:*');
-  if (keys.length) await redis.del(...keys);
+  const bk = await redis.keys('blacklist:jti:*');
+  if (bk.length) await redis.del(...bk);
+  const sk = await redis.keys('session:*');
+  if (sk.length) await redis.del(...sk);
 }
 
 describe('register', () => {

@@ -54,7 +54,8 @@ authRouter.post('/refresh', refreshLimiter, async (req, res, next) => {
 authRouter.post('/logout', logoutLimiter, requireAuth, async (req, res, next) => {
   try {
     const token = req.headers.authorization!.slice(7).trim();
-    await authService.logout(token);
+    const refreshCookie = req.cookies?.refreshToken;
+    await authService.logout(token, refreshCookie);
     clearRefreshCookie(res);
     res.status(204).end();
   } catch (e) {
