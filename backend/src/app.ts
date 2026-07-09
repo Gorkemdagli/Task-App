@@ -2,6 +2,7 @@ import type { Application } from 'express';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { env } from './env';
 import { apiRouter } from './routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -19,6 +20,7 @@ export function createApp(): Application {
   );
   app.use(express.json({ limit: '25mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
   app.use(requestLogger);
 
   app.get('/', (_req, res) => {
