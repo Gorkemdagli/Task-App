@@ -65,14 +65,16 @@ model Tenant {
 }
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @map("tenant_id") @db.Uuid
-  email     String   @unique
-  fullName  String   @map("full_name")
-  avatarUrl String?  @map("avatar_url")
-  role      UserRole
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  email        String   @unique
+  fullName     String   @map("full_name")
+  avatarUrl    String?  @map("avatar_url")
+  passwordHash String   @map("password_hash")
+  displayId    String   @unique @map("display_id")
+  role         UserRole
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   teamMembers      TeamMember[]
