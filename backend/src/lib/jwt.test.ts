@@ -25,8 +25,8 @@ describe('jwt', () => {
     expect(() => verifyAccessToken(bad)).toThrow();
   });
 
-  it('rejects refresh as access (type check)', () => {
+  it('rejects refresh as access (signature mismatch)', () => {
     const refresh = signRefreshToken(userId, tenantId);
-    expect(() => verifyAccessToken(refresh)).toThrow(/type/i);
+    expect(() => verifyAccessToken(refresh)).toThrow(/invalid signature/i);
   });
 });
