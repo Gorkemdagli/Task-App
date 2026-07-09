@@ -28,7 +28,7 @@ describe('api interceptors', () => {
       expect(c.headers?.Authorization).toBe('Bearer new');
       return [200, { ok: true }];
     });
-    mock.onPost('/auth/refresh').reply(() => [200, { accessToken: 'new' }]);
+    mock.onPost('/api/v1/auth/refresh').reply(() => [200, { accessToken: 'new' }]);
     const r = await createApi({ baseURL: '/' }).get('/protected');
     expect(r.data).toEqual({ ok: true });
     expect(useAuthStore.getState().accessToken).toBe('new');

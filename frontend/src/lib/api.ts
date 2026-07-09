@@ -13,7 +13,7 @@ export function createApi(opts: { baseURL: string }): AxiosInstance {
   let refreshInFlight: Promise<string | null> | null = null;
   async function doRefresh(): Promise<string | null> {
     try {
-      const r = await axios.post('/auth/refresh', null, { withCredentials: true });
+      const r = await axios.post('/api/v1/auth/refresh', null, { withCredentials: true });
       const tok = r.data.accessToken as string;
       useAuthStore.getState().setAccessToken(tok);
       return tok;
