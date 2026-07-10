@@ -4,21 +4,29 @@ import { AuthLayout } from './pages/Auth/AuthLayout';
 import { LoginPage } from './pages/Auth/LoginPage';
 import { RegisterPage } from './pages/Auth/RegisterPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AppShell } from './components/layout/AppShell';
+import { DashboardPage } from './pages/Dashboard';
+import { TeamsPage } from './pages/Teams';
+import { TeamDetailPage } from './pages/TeamDetail';
+import { TasksPage } from './pages/Tasks';
+import { TaskDetailPage } from './pages/TaskDetail';
+import { ChatPage } from './pages/Chat';
+import { ProfilePage } from './pages/Profile';
+import { PermissionsPage } from './pages/Permissions';
+import { CompanySettingsPage } from './pages/CompanySettings';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
 
-function DashboardPlaceholder() {
-  return (
-    <div className="min-h-screen bg-background p-8 text-foreground">
-      <h1 className="text-2xl font-bold">Dashboard Placeholder</h1>
-      <p className="mt-2 text-secondary-foreground">Faz 3 layout burada olacak.</p>
-    </div>
-  );
-}
-
-function AppShell() {
+/**
+ * Auth bootstrap wrapper. Runs once on mount to refresh the access token
+ * via the httpOnly refresh cookie, then mounts the router.
+ *
+ * Note: the "AppShell" function name here pre-dates the layout shell under
+ * components/layout/AppShell.tsx. They live in different modules so there's
+ * no naming collision; this one is intentionally local.
+ */
+function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const token = useAuthStore((s) => s.accessToken);
   const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
@@ -45,30 +53,37 @@ function AppShell() {
     );
   }
 
-  return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Routes>
-        <Route element={<AuthLayout />}>
-          <Route
-            path="/login"
-            element={token ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-          />
-          <Route
-            path="/register"
-            element={token ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
-          />
-        </Route>
-        <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<DashboardPlaceholder />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+  return <>{children}</>;
 }
 
 export default function App() {
-  return <AppShell />;
+  return (
+    <AuthBootstrap>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+          </Route>
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/teams" element={<TeamsPage />} />
+              <Route path="/teams/:id" element={<TeamDetailPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/tasks/:id" element={<TaskDetailPage />} />
+              <Route path="/chat/:id" element={<ChatPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/permissions" element={<PermissionsPage />} />
+              <Route path="/company/settings" element={<CompanySettingsPage />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthBootstrap>
+  );
 }
+
 export { HelloTaskFlow };

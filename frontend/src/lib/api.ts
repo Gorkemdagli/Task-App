@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore, type AuthUser } from '../stores/authStore';
 
 export function createApi(opts: { baseURL: string }): AxiosInstance {
   const api = axios.create({ baseURL: opts.baseURL, withCredentials: true });
@@ -51,3 +51,9 @@ export function createApi(opts: { baseURL: string }): AxiosInstance {
 }
 
 export const api = createApi({ baseURL: '/api/v1' });
+
+// TODO(Faz 4-Backend): Replace with GET /api/v1/users/me when backend ships.
+// For now this returns the user already loaded by /auth/login. No network call.
+export async function getMe(): Promise<AuthUser | null> {
+  return useAuthStore.getState().user;
+}
