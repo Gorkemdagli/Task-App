@@ -87,7 +87,14 @@ export function RegisterPage() {
         <label className="mb-1 block text-sm text-secondary-foreground" htmlFor="companyName">
           🏢 Şirket adı (opsiyonel)
         </label>
-        <Input id="companyName" placeholder="Benzersiz olmalıdır" {...register('companyName')} />
+        <Input
+          id="companyName"
+          placeholder="Boş bırakırsan kişisel hesap açılır"
+          {...register('companyName')}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Henüz bir şirkette değilsen boş bırak; bir yöneticinin davetiyle eklenebilirsin.
+        </p>
       </div>
       <Button type="submit" disabled={submitDisabled}>
         {isSubmitting ? 'Oluşturuluyor...' : 'Hesap Oluştur'}

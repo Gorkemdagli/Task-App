@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { DashboardPage } from './Dashboard';
 import { TeamsPage } from './Teams';
@@ -11,6 +12,13 @@ import { ChatPage } from './Chat';
 import { ProfilePage } from './Profile';
 import { PermissionsPage } from './Permissions';
 import { CompanySettingsPage } from './CompanySettings';
+
+// FAZ-4: Teams/TeamDetail fetch via React Query. Stub the hooks so this
+// pages-level test focuses on title/render smoke rather than API contract.
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeams: () => ({ data: [], isLoading: false, isError: false }),
+  useTeam: () => ({ data: null, isLoading: true, isError: false }),
+}));
 
 const member: AuthUser = {
   id: '1',
@@ -24,21 +32,24 @@ const member: AuthUser = {
 const admin: AuthUser = { ...member, role: 'companyAdmin' };
 
 function renderAt(path: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/teams" element={<TeamsPage />} />
-        <Route path="/teams/:id" element={<TeamDetailPage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/tasks/:id" element={<TaskDetailPage />} />
-        <Route path="/chat/:id" element={<ChatPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/permissions" element={<PermissionsPage />} />
-        <Route path="/company/settings" element={<CompanySettingsPage />} />
-        <Route path="*" element={<div>404</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/teams/:id" element={<TeamDetailPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/tasks/:id" element={<TaskDetailPage />} />
+          <Route path="/chat/:id" element={<ChatPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/permissions" element={<PermissionsPage />} />
+          <Route path="/company/settings" element={<CompanySettingsPage />} />
+          <Route path="*" element={<div>404</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -54,13 +65,13 @@ describe('placeholder pages', () => {
 
   it('Teams renders title', () => {
     renderAt('/teams');
-    expect(screen.getByRole('heading', { name: 'Takımlarım' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Takımlar' })).toBeInTheDocument();
   });
 
-  it('TeamDetail renders title and shows id param', () => {
+  it('TeamDetail renders skeleton (data still loading)', () => {
     renderAt('/teams/abc-123');
-    expect(screen.getByRole('heading', { name: 'Takım Detay' })).toBeInTheDocument();
-    expect(screen.getByText('abc-123')).toBeInTheDocument();
+    // Stub returns loading, so no heading from team name yet — just skeleton.
+    expect(document.querySelectorAll('[class*="animate-pulse"]').length).toBeGreaterThan(0);
   });
 
   it('Tasks renders title', () => {
@@ -94,9 +105,6 @@ describe('role-guarded pages', () => {
 
   it('Permissions redirects member to /dashboard', () => {
     renderAt('/permissions');
-    // Navigate renders nothing visible — content should be the matched '*' (404)
-    // BUT Navigate fires client-side; in MemoryRouter we can't easily assert
-    // destination. Instead assert the heading is NOT rendered.
     expect(screen.queryByRole('heading', { name: 'Yetkiler' })).not.toBeInTheDocument();
   });
 

@@ -7,7 +7,8 @@ const REFRESH_TTL = '7d';
 
 export interface TokenPayload {
   sub: string;
-  tenantId: string;
+  // tenantId NULL olabilir (tenantless user); token'da bu şekilde taşınır.
+  tenantId: string | null;
   type: 'access' | 'refresh';
   jti: string;
   iat: number;
@@ -25,10 +26,10 @@ function verify(token: string, secret: string): TokenPayload {
   return jwt.verify(token, secret) as TokenPayload;
 }
 
-export function signAccessToken(userId: string, tenantId: string): string {
+export function signAccessToken(userId: string, tenantId: string | null): string {
   return sign({ sub: userId, tenantId, type: 'access' }, env.JWT_ACCESS_SECRET, ACCESS_TTL);
 }
-export function signRefreshToken(userId: string, tenantId: string): string {
+export function signRefreshToken(userId: string, tenantId: string | null): string {
   return sign({ sub: userId, tenantId, type: 'refresh' }, env.JWT_REFRESH_SECRET, REFRESH_TTL);
 }
 export function verifyAccessToken(token: string): TokenPayload {

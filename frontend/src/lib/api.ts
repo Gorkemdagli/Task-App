@@ -52,8 +52,9 @@ export function createApi(opts: { baseURL: string }): AxiosInstance {
 
 export const api = createApi({ baseURL: '/api/v1' });
 
-// TODO(Faz 4-Backend): Replace with GET /api/v1/users/me when backend ships.
-// For now this returns the user already loaded by /auth/login. No network call.
+// Auth durumunu store'dan okur. FAZ-3 takip işi: backend'de GET /api/v1/users/me
+// yok — login yanıtındaki user kullanılıyor. İleride backend hazır olunca
+// network call ile değiştirilecek.
 export async function getMe(): Promise<AuthUser | null> {
   return useAuthStore.getState().user;
 }

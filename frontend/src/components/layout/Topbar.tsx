@@ -1,4 +1,4 @@
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Bell, ChevronDown, LogOut, Menu, Moon, Settings, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -13,6 +13,7 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
@@ -28,7 +29,15 @@ export function Topbar() {
   const { mode, toggleMode } = useTheme();
   const { user, isCompanyAdmin } = useAuth();
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const openMobileSheet = useUiStore((s) => s.openMobileSheet);
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    clearAuth();
+    clearActiveTeam();
+    navigate('/login', { replace: true });
+  }
 
   const initials = (user?.fullName ?? '?')
     .split(' ')
@@ -153,7 +162,7 @@ export function Topbar() {
             )}
             <DropdownMenuSeparator className="bg-border" />
             <DropdownMenuItem
-              onSelect={() => clearAuth()}
+              onSelect={handleLogout}
               className="text-priority-high focus:bg-secondary focus:text-priority-high"
             >
               <LogOut className="h-4 w-4" />

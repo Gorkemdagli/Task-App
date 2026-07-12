@@ -14,7 +14,7 @@ declare global {
         email: string;
         fullName: string;
         role: 'companyAdmin' | 'teamAdmin' | 'member';
-        tenantId: string;
+        tenantId: string | null;
       };
     }
   }

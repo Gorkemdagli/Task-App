@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
+
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeams: () => ({ data: [], isLoading: false, isError: false }),
+  useTeam: () => ({ data: null, isLoading: false, isError: false }),
+}));
 
 const baseUser: AuthUser = {
   id: '1',
@@ -30,7 +35,7 @@ describe('AppShell', () => {
     useAuthStore.setState({ accessToken: 't', user: baseUser });
     renderWithRouter();
     expect(screen.getByText('TaskFlow')).toBeInTheDocument(); // logo
-    expect(screen.getByText(/Takım Üyeleri/)).toBeInTheDocument(); // sidebar
+    expect(screen.getByText('TaskFlow Şirketim')).toBeInTheDocument(); // sidebar tenant header
     expect(screen.getByTestId('child')).toHaveTextContent('içerik');
   });
 

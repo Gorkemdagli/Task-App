@@ -33,7 +33,7 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: 'companyAdmin' | 'teamAdmin' | 'member';
-  tenantId: string;
+  tenantId: string | null;
 }
 export interface AuthResult {
   user: AuthUser;
@@ -61,17 +61,17 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
   if (await prisma.user.findUnique({ where: { email: input.email } })) {
     throw new AppError(409, 'Bu e-posta zaten kullanılıyor', 'CONFLICT_EMAIL');
   }
-  let tenantId: string;
+  // companyName verilmişse yeni tenant oluştur, user companyAdmin olur.
+  // Verilmemişse tenantless user (NULL) — henüz bir şirkette değil.
+  // Admin bu user'ı takıma eklerken tenantId otomatik olarak admin'in
+  // tenant'ına transfer olur (services/teams.service.addMemberByDisplayId).
+  let tenantId: string | null = null;
   if (input.companyName) {
     const slug = slugify(input.companyName);
     if (await prisma.tenant.findUnique({ where: { slug } })) {
       throw new AppError(409, 'Bu şirket adı alınmış', 'CONFLICT_SLUG');
     }
     tenantId = (await prisma.tenant.create({ data: { name: input.companyName, slug } })).id;
-  } else {
-    const slug = slugify(`personal-${input.email.split('@')[0]}-${Date.now()}`);
-    tenantId = (await prisma.tenant.create({ data: { name: `${input.fullName} (Kişisel)`, slug } }))
-      .id;
   }
   const displayId = await findUniqueDisplayId();
   const passwordHash = await hashPassword(input.password);

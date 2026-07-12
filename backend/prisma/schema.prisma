@@ -66,7 +66,10 @@ model Tenant {
 
 model User {
   id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @map("tenant_id") @db.Uuid
+  // tenantId NULL = henüz bir şirkete dahil olmamış user (register'da
+  // companyName vermediyse). Admin bu user'ı takıma eklerken tenantId
+  // otomatik olarak admin'in tenant'ına transfer olur (services/teams).
+  tenantId     String?  @map("tenant_id") @db.Uuid
   email        String   @unique
   fullName     String   @map("full_name")
   avatarUrl    String?  @map("avatar_url")
@@ -76,7 +79,7 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   teamMembers      TeamMember[]
   assignedTasks    Task[]         @relation("TaskAssigner")
   ownedTasks       Task[]         @relation("TaskAssignee")

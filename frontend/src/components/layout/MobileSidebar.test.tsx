@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MobileSidebar } from './MobileSidebar';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
+
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeams: () => ({ data: [], isLoading: false, isError: false }),
+  useTeam: () => ({ data: null, isLoading: false, isError: false }),
+}));
 
 const user: AuthUser = {
   id: '1',
@@ -13,6 +19,14 @@ const user: AuthUser = {
   tenantId: 't1',
 };
 
+function renderMs() {
+  return render(
+    <MemoryRouter>
+      <MobileSidebar />
+    </MemoryRouter>,
+  );
+}
+
 describe('MobileSidebar', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user });
@@ -20,24 +34,20 @@ describe('MobileSidebar', () => {
   });
 
   it('renders nothing visible when closed', () => {
-    render(<MobileSidebar />);
-    // Radix Dialog doesn't render its content when closed
-    expect(screen.queryByText('Takım Üyeleri')).not.toBeInTheDocument();
+    renderMs();
+    expect(screen.queryByText('TaskFlow Şirketim')).not.toBeInTheDocument();
   });
 
-  it('renders sidebar content when store says open', () => {
+  it('renders tenant header with correct role label when open', () => {
     useUiStore.setState({ mobileSheetOpen: true });
-    render(<MobileSidebar />);
+    renderMs();
     expect(screen.getByText('TaskFlow Şirketim')).toBeInTheDocument();
-    expect(screen.getByText('Takım Üyeleri (6)')).toBeInTheDocument();
-    expect(screen.getByText('Ada Yılmaz')).toBeInTheDocument();
+    expect(screen.getByText('Takım Admini')).toBeInTheDocument();
   });
 
-  it('shows correct role label for teamAdmin', () => {
+  it('shows empty-state hint when no active team is selected', () => {
     useUiStore.setState({ mobileSheetOpen: true });
-    render(<MobileSidebar />);
-    // 'Takım Admini' appears once in tenant header + twice in member list
-    // (Berk Demir and Ece Polat are both teamAdmin in mock).
-    expect(screen.getAllByText('Takım Admini').length).toBeGreaterThanOrEqual(1);
+    renderMs();
+    expect(screen.getByText(/Üyeleri görmek için bir takım seç/)).toBeInTheDocument();
   });
 });
