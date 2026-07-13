@@ -133,6 +133,7 @@ model Task {
   deadline    DateTime?    @db.Timestamptz(6)
   assignerId  String       @map("assigner_id") @db.Uuid
   assigneeId  String       @map("assignee_id") @db.Uuid
+  archivedAt  DateTime?    @map("archived_at") @db.Timestamptz(6)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -144,6 +145,7 @@ model Task {
   @@index([teamId, status])
   @@index([assigneeId, status])
   @@index([deadline])
+  @@index([archivedAt])
   @@map("tasks")
 }
 
