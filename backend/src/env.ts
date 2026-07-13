@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
 
-dotenv.config();
+// Test ortamında .env.test, geliştirmede .env. NODE_ENV=test olmalı (vitest default).
+const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
+dotenv.config({ path: envFile });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
