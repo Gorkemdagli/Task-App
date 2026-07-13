@@ -14,6 +14,7 @@ import { ChatPage } from './pages/Chat';
 import { ProfilePage } from './pages/Profile';
 import { PermissionsPage } from './pages/Permissions';
 import { CompanySettingsPage } from './pages/CompanySettings';
+import { LandingPage } from './pages/Landing/LandingPage';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
 
@@ -61,6 +62,16 @@ export default function App() {
     <AuthBootstrap>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
+          <Route
+            path="/"
+            element={
+              useAuthStore.getState().accessToken ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <LandingPage />
+              )
+            }
+          />
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -76,7 +87,6 @@ export default function App() {
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/permissions" element={<PermissionsPage />} />
               <Route path="/company/settings" element={<CompanySettingsPage />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
