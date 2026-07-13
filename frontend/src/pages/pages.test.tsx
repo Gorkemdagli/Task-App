@@ -15,10 +15,48 @@ import { CompanySettingsPage } from './CompanySettings';
 
 // FAZ-4: Teams/TeamDetail fetch via React Query. Stub the hooks so this
 // pages-level test focuses on title/render smoke rather than API contract.
+// FAZ-5: tasks/comments hooks da stub'lanır — fixture data.
 vi.mock('@/hooks/queries/useTeams', () => ({
   useTeams: () => ({ data: [], isLoading: false, isError: false }),
   useTeam: () => ({ data: null, isLoading: true, isError: false }),
 }));
+
+vi.mock('@/hooks/tasks', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useTasks: () => ({ data: { tasks: [], total: 0 }, isLoading: false, isError: false }),
+    useTask: () => ({
+      data: {
+        id: 't-99',
+        title: 'Stub Title',
+        description: null,
+        status: 'todo',
+        priority: 'high',
+        deadline: null,
+        archivedAt: null,
+        teamId: 'team-1',
+        assignerId: '1',
+        assigneeId: '1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        team: { id: 'team-1', name: 'UX', tenantId: 't1' },
+        assigner: { id: '1', displayId: 'AAAAA', fullName: 'Ada', avatarUrl: null },
+        assignee: { id: '1', displayId: 'AAAAA', fullName: 'Ada', avatarUrl: null },
+      },
+      isLoading: false,
+      isError: false,
+    }),
+    useTaskComments: () => ({ data: { comments: [] }, isLoading: false, isError: false }),
+    useUpdateTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useCreateComment: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useCreateTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useTriggerArchive: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+  };
+});
 
 const member: AuthUser = {
   id: '1',
@@ -58,9 +96,10 @@ describe('placeholder pages', () => {
     useAuthStore.setState({ accessToken: 't', user: member });
   });
 
-  it('Dashboard renders title', () => {
+  it('Dashboard renders', () => {
     renderAt('/dashboard');
-    expect(screen.getByRole('heading', { name: 'Ana Pano' })).toBeInTheDocument();
+    // Stub: no teams → fallback "Kanban"
+    expect(screen.getByText('Kanban')).toBeInTheDocument();
   });
 
   it('Teams renders title', () => {
@@ -79,10 +118,9 @@ describe('placeholder pages', () => {
     expect(screen.getByRole('heading', { name: 'Görevlerim' })).toBeInTheDocument();
   });
 
-  it('TaskDetail renders title and shows id param', () => {
+  it('TaskDetail renders fixture task title', () => {
     renderAt('/tasks/t-99');
-    expect(screen.getByRole('heading', { name: 'Görev Detay' })).toBeInTheDocument();
-    expect(screen.getByText('t-99')).toBeInTheDocument();
+    expect(screen.getByText('Stub Title')).toBeInTheDocument();
   });
 
   it('Chat renders title and shows id param', () => {
