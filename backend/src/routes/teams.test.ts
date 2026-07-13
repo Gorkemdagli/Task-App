@@ -27,7 +27,7 @@ async function cleanDb() {
   if (sk.length) await redis.del(...sk);
 }
 
-type Actor = { id: string; role: 'companyAdmin' | 'teamAdmin' | 'member'; tenantId: string };
+type Actor = { id: string; role: 'companyAdmin' | 'teamAdmin' | 'member'; tenantId: string | null };
 
 async function makeAdmin(email: string, tenantName?: string) {
   const r = await register({
@@ -96,6 +96,14 @@ describe('listTeams', () => {
     await createTeam({ name: 'Hidden' }, admin);
     const outsider = await makeAdmin('out@b.com', 'Globex');
     const list = await listTeams(outsider);
+    expect(list).toEqual([]);
+  });
+
+  it('tenantless user sees no teams', async () => {
+    // tenantless user = register without companyName → tenantId: null
+    const r = await register({ fullName: 'Solo', email: 'solo@x.com', password: 'hunter22' });
+    expect(r.user.tenantId).toBeNull();
+    const list = await listTeams(r.user);
     expect(list).toEqual([]);
   });
 });
@@ -189,6 +197,19 @@ describe('addMemberByDisplayId', () => {
     await expect(addMemberByDisplayId(t.id, member.displayId, admin)).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+
+  it('tenantless user is transferred to admin tenant on add', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    // tenantless user (register without companyName → tenantId: null)
+    const r = await register({ fullName: 'Solo', email: 'solo@x.com', password: 'hunter22' });
+    expect(r.user.tenantId).toBeNull();
+    const t = await createTeam({ name: 'Eng' }, admin);
+    const m = await addMemberByDisplayId(t.id, r.user.displayId, admin);
+    expect(m.userId).toBe(r.user.id);
+    // User'ın tenantId'si artık admin tenant'ı
+    const updated = await prisma.user.findUnique({ where: { id: r.user.id } });
+    expect(updated?.tenantId).toBe(admin.tenantId);
   });
 });
 
