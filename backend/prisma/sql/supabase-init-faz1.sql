@@ -13,6 +13,7 @@
 --   6. 1 CHECK CONSTRAINT (messages.channel_id XOR receiver_id)
 --   7. 9 RLS ENABLE
 --   8. 9 RLS POLICY (current_setting('app.tenant_id') pattern)
+--   9. 9 GRANT (authenticated rolune schema + table haklari)
 -- ============================================================
 
 -- ============================================================
@@ -332,5 +333,17 @@ CREATE POLICY tenant_isolation ON "notifications"
   );
 
 -- ============================================================
--- Sonuc: 9 tablo + 6 enum + 12 index + 14 FK + 1 CHECK + RLS x9 + 9 policy
+-- 9. GRANT — authenticated rolune schema + tablo erisim haklari
+-- (RLS policy olsa bile authenticated role once schema/tabloyu kullanabilmeli)
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+
+-- Yeni eklenen tablolar icin de ayni haklar
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+
+-- ============================================================
+-- Sonuc: 9 tablo + 6 enum + 12 index + 14 FK + 1 CHECK + RLS x9 + 9 policy + 9 GRANT
 -- ============================================================
