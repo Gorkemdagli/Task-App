@@ -1,0 +1,129 @@
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { TaskCard } from './TaskCard';
+import type { Task } from '@/hooks/tasks';
+
+const baseTask: Task = {
+  id: 't1',
+  title: 'Login bug',
+  description: 'Mobil tarafta hata var',
+  status: 'todo',
+  priority: 'high',
+  deadline: new Date(Date.now() + 86400000).toISOString(),
+  archivedAt: null,
+  teamId: 'team-1',
+  assignerId: 'u1',
+  assigneeId: 'u2',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  team: { id: 'team-1', name: 'UX', tenantId: 'tnt-1' },
+  assigner: { id: 'u1', displayId: 'AAAAA', fullName: 'Ali Yılmaz', avatarUrl: null },
+  assignee: { id: 'u2', displayId: 'BBBBB', fullName: 'Selin Demir', avatarUrl: null },
+};
+
+function Wrap({ children }: { children: React.ReactNode }) {
+  return <MemoryRouter>{children}</MemoryRouter>;
+}
+
+describe('TaskCard', () => {
+  it('renders title and priority badge', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    expect(screen.getByText('Login bug')).toBeInTheDocument();
+    expect(screen.getByText('Yüksek')).toBeInTheDocument();
+  });
+
+  it('shows assignee name', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    expect(screen.getByText('Selin Demir')).toBeInTheDocument();
+  });
+
+  it('uses priority border class for high', () => {
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    const card = container.querySelector('[data-testid="task-card-t1"]');
+    expect(card?.className).toContain('border-l-priority-high');
+  });
+
+  it('uses priority border class for low', () => {
+    render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, priority: 'low' }} />
+      </Wrap>,
+    );
+    const card = document.querySelector('[data-testid="task-card-t1"]');
+    expect(card?.className).toContain('border-l-priority-low');
+  });
+
+  it('uses priority border class for medium', () => {
+    render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, priority: 'medium' }} />
+      </Wrap>,
+    );
+    const card = document.querySelector('[data-testid="task-card-t1"]');
+    expect(card?.className).toContain('border-l-priority-medium');
+  });
+
+  it('links to /tasks/:id', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    const link = screen.getByRole('link');
+    expect(link.getAttribute('href')).toBe('/tasks/t1');
+  });
+
+  it('renders overdue indicator when deadline passed and status not done', () => {
+    const past = new Date(Date.now() - 2 * 86400000).toISOString();
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, deadline: past }} />
+      </Wrap>,
+    );
+    expect(container.textContent).toMatch(/geçti/);
+  });
+
+  it('does not apply overdue styling when status is done', () => {
+    const past = new Date(Date.now() - 2 * 86400000).toISOString();
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, status: 'done', deadline: past }} />
+      </Wrap>,
+    );
+    // Deadline text her zaman görünür; "overdue" stili (priority-high font) uygulanmamalı.
+    const overdueSpan = container.querySelector('.text-priority-high.font-medium');
+    expect(overdueSpan).toBeNull();
+  });
+
+  it('renders em-dash when no deadline', () => {
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, deadline: null }} />
+      </Wrap>,
+    );
+    expect(container.textContent).toContain('—');
+  });
+
+  it('formats future deadline as Yarın or Bugün', () => {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString();
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, deadline: tomorrow }} />
+      </Wrap>,
+    );
+    expect(container.textContent).toMatch(/Yarın|Bugün/);
+  });
+});
