@@ -1,7 +1,9 @@
+import cron from 'node-cron';
 import { createApp } from './app';
 import { env } from './env';
 import { prisma } from './lib/prisma';
 import { redis } from './lib/redis';
+import { archiveExpiredTasks } from './services/tasks.archive';
 
 const app = createApp();
 
@@ -10,6 +12,19 @@ const server = app.listen(env.PORT, () => {
   console.log(`   Environment: ${env.NODE_ENV}`);
   console.log(`   Health: http://localhost:${env.PORT}/api/v1/health`);
 });
+
+// Her saat başı: deadline geçmiş + done görevleri arşive taşı
+if (env.NODE_ENV !== 'test') {
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const result = await archiveExpiredTasks();
+      console.log(`[cron:archive] ${result.archivedCount} görev arşive taşındı`);
+    } catch (err) {
+      console.error('[cron:archive] hata:', err);
+    }
+  });
+  console.log('   Cron: archive-expired her saat başı');
+}
 
 async function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down...`);
