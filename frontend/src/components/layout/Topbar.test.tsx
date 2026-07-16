@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Topbar } from './Topbar';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUiStore } from '@/stores/uiStore';
+import { api } from '@/lib/api';
 
 const member: AuthUser = {
   id: '1',
@@ -14,28 +16,41 @@ const member: AuthUser = {
   fullName: 'Ada Yılmaz',
   role: 'member',
   tenantId: 't1',
+  tenantName: 'Acme A.Ş.',
 };
 
 const admin: AuthUser = { ...member, role: 'companyAdmin' };
 
-function renderTopbar(initialUser: AuthUser | null) {
+function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   if (initialUser) {
     useAuthStore.setState({ accessToken: 't', user: initialUser });
   } else {
     useAuthStore.setState({ accessToken: null, user: null });
   }
+  const client = qc ?? new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
-    <MemoryRouter>
-      <Topbar />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <Topbar />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
 describe('Topbar', () => {
+  let getSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
     useUiStore.setState({ mobileSheetOpen: false });
     document.documentElement.removeAttribute('data-theme');
+    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { items: [], unreadCount: 0, nextCursor: null },
+    } as never);
+  });
+
+  afterEach(() => {
+    getSpy.mockRestore();
   });
 
   it('renders logo and primary nav links', () => {
@@ -86,5 +101,64 @@ describe('Topbar', () => {
     const menu = screen.getByRole('button', { name: 'Menüyü aç' });
     await user.click(menu);
     expect(useUiStore.getState().mobileSheetOpen).toBe(true);
+  });
+});
+
+describe('Topbar notification bell', () => {
+  let getSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    getSpy = vi.spyOn(api, 'get');
+  });
+
+  afterEach(() => {
+    getSpy.mockRestore();
+  });
+
+  it('renders notification badge when unreadCount > 0', async () => {
+    getSpy.mockResolvedValue({
+      data: { items: [], unreadCount: 3, nextCursor: null },
+    } as never);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    renderTopbar(member, qc);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('notification-badge')).toHaveTextContent('3');
+    });
+  });
+
+  it('does not render badge when unreadCount === 0', async () => {
+    getSpy.mockResolvedValue({
+      data: { items: [], unreadCount: 0, nextCursor: null },
+    } as never);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    renderTopbar(member, qc);
+
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith('/notifications');
+    });
+    expect(screen.queryByTestId('notification-badge')).not.toBeInTheDocument();
+  });
+
+  it('opens panel when bell clicked', async () => {
+    getSpy.mockResolvedValue({
+      data: { items: [], unreadCount: 0, nextCursor: null },
+    } as never);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const user = userEvent.setup();
+    renderTopbar(member, qc);
+
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith('/notifications');
+    });
+
+    const bell = screen.getByRole('button', { name: /Bildirimler/ });
+    await user.click(bell);
+
+    expect(screen.getByTestId('empty-notifications')).toBeInTheDocument();
   });
 });

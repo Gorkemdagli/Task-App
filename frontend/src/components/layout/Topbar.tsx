@@ -1,4 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { Bell, ChevronDown, LogOut, Menu, Moon, Settings, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -15,6 +16,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
+import { useNotifications, useMarkAllRead } from '@/hooks/useNotifications';
+import { NotificationBadge } from '@/components/notifications/NotificationBadge';
+import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +36,20 @@ export function Topbar() {
   const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const openMobileSheet = useUiStore((s) => s.openMobileSheet);
   const navigate = useNavigate();
+
+  const { data } = useNotifications();
+  const unreadCount = data?.unreadCount ?? 0;
+  const items = data?.items ?? [];
+  const nextCursor = data?.nextCursor ?? null;
+  const markAllRead = useMarkAllRead();
+  const [bellOpen, setBellOpen] = useState(false);
+
+  // 500ms debounced mark-read: rapid open/close'ta tek PATCH gider
+  useEffect(() => {
+    if (!bellOpen || items.length === 0) return;
+    const t = setTimeout(() => markAllRead.mutate(), 500);
+    return () => clearTimeout(t);
+  }, [bellOpen, items.length, markAllRead]);
 
   function handleLogout() {
     clearAuth();
@@ -99,15 +117,36 @@ export function Topbar() {
 
       {/* Right cluster */}
       <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled
-          aria-label="Bildirimler (henüz yok)"
-          className="h-10 w-10 p-0"
-        >
-          <Bell className="h-5 w-5" />
-        </Button>
+        <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={
+                unreadCount > 0 ? `Bildirimler (${unreadCount} okunmamış)` : 'Bildirimler'
+              }
+              data-testid="notification-bell"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
+            >
+              <Bell className="h-5 w-5" />
+              <NotificationBadge count={unreadCount} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={6} className="bg-card p-0 text-foreground">
+            <NotificationPanel
+              items={items}
+              unreadCount={unreadCount}
+              nextCursor={nextCursor}
+              onLoadMore={() => {
+                // Cursor pagination Topbar task 11'de. Şimdilik no-op:
+              }}
+              onItemNavigate={(taskId) => {
+                setBellOpen(false);
+                navigate(`/tasks/${taskId}`);
+              }}
+              onMarkAllRead={() => markAllRead.mutate()}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button
           variant="ghost"
