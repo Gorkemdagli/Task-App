@@ -17,7 +17,7 @@ export function CommentList({ comments }: CommentListProps) {
         <li
           key={c.id}
           data-testid={`comment-${c.id}`}
-          className="py-3 text-card-foreground first:pt-0 last:pb-0"
+          className="py-3 text-card-foreground first:pt-0"
         >
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold">
