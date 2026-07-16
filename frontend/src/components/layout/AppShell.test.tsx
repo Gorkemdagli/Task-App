@@ -58,20 +58,3 @@ describe('AppShell', () => {
     expect(link).toHaveAttribute('href', '/dashboard');
   });
 });
-
-describe('AppShell', () => {
-  it('renders Topbar + Sidebar + main with children', () => {
-    useAuthStore.setState({ accessToken: 't', user: baseUser });
-    renderWithRouter();
-    expect(screen.getByText('TaskFlow')).toBeInTheDocument(); // logo
-    expect(screen.getByText('Acme A.Ş.')).toBeInTheDocument(); // sidebar tenant header
-    expect(screen.getByTestId('child')).toHaveTextContent('içerik');
-  });
-
-  it('topbar nav includes the dashboard link', () => {
-    useAuthStore.setState({ accessToken: 't', user: baseUser });
-    renderWithRouter();
-    const link = screen.getByRole('link', { name: 'Ana Pano' });
-    expect(link).toHaveAttribute('href', '/dashboard');
-  });
-});
