@@ -1,4 +1,5 @@
 import pino from 'pino';
+import type { Prisma } from '@prisma/client';
 import { env } from '../env';
 import { prisma } from '../lib/prisma';
 
@@ -14,7 +15,7 @@ export type NotificationDTO = {
   id: string;
   userId: string;
   type: 'task_assigned' | 'task_commented' | 'message_received';
-  payload: Record<string, unknown>;
+  payload: Prisma.JsonValue;
   readAt: Date | null;
   createdAt: Date;
 };
@@ -37,6 +38,7 @@ function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}:${id}`, 'utf8').toString('base64');
 }
 
+/** Kullanıcının bildirimlerini listeler. unreadCount tüm sayfaları kapsar (limit'ten bağımsız). */
 export async function listNotifications(
   userId: string,
   opts: { limit: number; cursor?: string },
@@ -69,7 +71,7 @@ export async function listNotifications(
     id: n.id,
     userId: n.userId,
     type: n.type,
-    payload: (n.payload ?? {}) as Record<string, unknown>,
+    payload: n.payload,
     readAt: n.readAt,
     createdAt: n.createdAt,
   }));
@@ -80,6 +82,7 @@ export async function listNotifications(
   return { items, unreadCount, nextCursor };
 }
 
+/** Tüm okunmamış bildirimleri okundu olarak işaretler. readAt IS NULL filtresi ile idempotent. */
 export async function markAllRead(userId: string): Promise<number> {
   const start = Date.now();
   const result = await prisma.notification.updateMany({
