@@ -11,6 +11,7 @@ interface NotificationPanelProps {
   onLoadMore: () => void;
   onItemNavigate: (taskId: string) => void;
   onMarkAllRead: () => void;
+  onViewAll: () => void;
 }
 
 export function NotificationPanel({
@@ -20,6 +21,7 @@ export function NotificationPanel({
   onLoadMore,
   onItemNavigate,
   onMarkAllRead,
+  onViewAll,
 }: NotificationPanelProps) {
   const hasItems = items.length > 0;
 
@@ -71,6 +73,17 @@ export function NotificationPanel({
       ) : (
         <EmptyNotifications />
       )}
+
+      <div className="border-t border-border px-4 py-2">
+        <button
+          type="button"
+          onClick={onViewAll}
+          data-testid="view-all-notifications"
+          className="w-full text-center text-xs font-medium text-primary hover:underline"
+        >
+          Tümünü gör
+        </button>
+      </div>
     </div>
   );
 }

@@ -41,6 +41,7 @@ describe('NotificationPanel', () => {
         onLoadMore={vi.fn()}
         onItemNavigate={vi.fn()}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
@@ -57,6 +58,7 @@ describe('NotificationPanel', () => {
         onLoadMore={vi.fn()}
         onItemNavigate={vi.fn()}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
@@ -74,6 +76,7 @@ describe('NotificationPanel', () => {
         onLoadMore={vi.fn()}
         onItemNavigate={vi.fn()}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
@@ -90,6 +93,7 @@ describe('NotificationPanel', () => {
         onLoadMore={vi.fn()}
         onItemNavigate={vi.fn()}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
@@ -107,6 +111,7 @@ describe('NotificationPanel', () => {
         onLoadMore={onLoadMore}
         onItemNavigate={vi.fn()}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
@@ -125,10 +130,47 @@ describe('NotificationPanel', () => {
         onLoadMore={vi.fn()}
         onItemNavigate={onItemNavigate}
         onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
       />,
       { wrapper: wrapper(qc) },
     );
     await userEvent.click(screen.getByTestId('notification-item-n1'));
     expect(onItemNavigate).toHaveBeenCalledWith('t1');
+  });
+
+  it('renders "Tümünü gör" footer even when items list is empty', () => {
+    const qc = new QueryClient();
+    render(
+      <NotificationPanel
+        items={[]}
+        unreadCount={0}
+        nextCursor={null}
+        onLoadMore={vi.fn()}
+        onItemNavigate={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+      { wrapper: wrapper(qc) },
+    );
+    expect(screen.getByTestId('view-all-notifications')).toBeInTheDocument();
+  });
+
+  it('calls onViewAll when "Tümünü gör" clicked', async () => {
+    const onViewAll = vi.fn();
+    const qc = new QueryClient();
+    render(
+      <NotificationPanel
+        items={mockItems}
+        unreadCount={2}
+        nextCursor={null}
+        onLoadMore={vi.fn()}
+        onItemNavigate={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onViewAll={onViewAll}
+      />,
+      { wrapper: wrapper(qc) },
+    );
+    await userEvent.click(screen.getByTestId('view-all-notifications'));
+    expect(onViewAll).toHaveBeenCalledTimes(1);
   });
 });

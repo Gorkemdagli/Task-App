@@ -168,6 +168,10 @@ export function Topbar() {
                 navigate(`/tasks/${taskId}`);
               }}
               onMarkAllRead={() => markAllRead.mutate()}
+              onViewAll={() => {
+                setBellOpen(false);
+                navigate('/notifications');
+              }}
             />
           </DropdownMenuContent>
         </DropdownMenu>
