@@ -14,6 +14,7 @@ import { ChatPage } from './pages/Chat';
 import { ProfilePage } from './pages/Profile';
 import { PermissionsPage } from './pages/Permissions';
 import { CompanySettingsPage } from './pages/CompanySettings';
+import { NotificationsPage } from './pages/Notifications';
 import { LandingPage } from './pages/Landing/LandingPage';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
@@ -28,6 +29,7 @@ import { HelloTaskFlow } from './components/HelloTaskFlow';
  */
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const setUser = useAuthStore((s) => s.setUser);
   const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,9 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         if (r.ok) {
           const data = await r.json();
           setAccessToken(data.accessToken);
+          // Refresh response now includes user (matches login/register shape).
+          // Older backends without user field: silently skip → store stays null.
+          if (data.user) setUser(data.user);
         }
       } catch {
         // Session yok; user null kalır, login sayfası gösterilir.
@@ -44,7 +49,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         setBootstrapped(true);
       }
     })();
-  }, [setAccessToken]);
+  }, [setAccessToken, setUser]);
 
   if (!bootstrapped) {
     return (
@@ -83,6 +88,7 @@ export default function App() {
               <Route path="/teams/:id" element={<TeamDetailPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/tasks/:id" element={<TaskDetailPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/chat/:id" element={<ChatPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/permissions" element={<PermissionsPage />} />
