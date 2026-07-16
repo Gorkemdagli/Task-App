@@ -19,10 +19,7 @@ export function CommentInput({ taskId, disabled }: CommentInputProps) {
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-    >
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-border pt-4">
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}

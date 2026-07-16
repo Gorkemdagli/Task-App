@@ -26,9 +26,9 @@ export function TaskDetailPage() {
   const user = useAuthStore((s) => s.user);
   const { data: task, isLoading } = useTask(id);
   const { data: commentsData } = useTaskComments(id);
-  const updateStatus = useUpdateTaskStatus(id ?? '');
-  const updatePriority = useUpdateTaskPriority(id ?? '');
-  const updateFields = useUpdateTaskFields(id ?? '');
+  const updateStatus = useUpdateTaskStatus();
+  const updatePriority = useUpdateTaskPriority();
+  const updateFields = useUpdateTaskFields();
   const deleteTask = useDeleteTask();
 
   if (isLoading) {
@@ -77,12 +77,12 @@ export function TaskDetailPage() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <StatusDropdown
           value={task.status}
-          onChange={(status) => updateStatus.mutate({ status })}
+          onChange={(status) => id && updateStatus.mutate({ id, status })}
           disabled={!allowedStatus}
         />
         <PriorityDropdown
           value={task.priority}
-          onChange={(priority) => updatePriority.mutate({ priority })}
+          onChange={(priority) => id && updatePriority.mutate({ id, priority })}
           disabled={!allowedPriority}
         />
       </div>
@@ -108,7 +108,7 @@ export function TaskDetailPage() {
         </div>
         <DeadlinePicker
           value={task.deadline}
-          onChange={(deadline) => updateFields.mutate({ deadline })}
+          onChange={(deadline) => id && updateFields.mutate({ id, deadline })}
           disabled={!allowedStatus}
         />
         <div>
@@ -127,10 +127,10 @@ export function TaskDetailPage() {
       </section>
 
       <section className="mb-6">
-        <h2 className="mb-3 text-sm font-medium">
-          Yorumlar ({commentsData?.comments.length ?? 0})
-        </h2>
-        <div className="space-y-4">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h2 className="mb-3 text-sm font-medium">
+            Yorumlar ({commentsData?.comments.length ?? 0})
+          </h2>
           <CommentList comments={commentsData?.comments ?? []} />
           {allowedComment && id && <CommentInput taskId={id} />}
         </div>
