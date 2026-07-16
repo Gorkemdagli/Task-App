@@ -22,7 +22,12 @@ vi.mock('@/hooks/queries/useTeams', () => ({
 }));
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
-  const actual = await importOriginal();
+  // vitest: `importOriginal` defaults to `Promise<unknown>`, so `...actual`
+  // fails to spread. Provide the module type explicitly. Inline `import()`
+  // type is used instead of a top-level `import type` because vi.mock is
+  // hoisted above regular imports and would create a circular dependency.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  const actual = await importOriginal<typeof import('@/hooks/tasks')>();
   return {
     ...actual,
     useTasks: () => ({ data: { tasks: [], total: 0 }, isLoading: false, isError: false }),
@@ -65,6 +70,7 @@ const member: AuthUser = {
   fullName: 'Ada',
   role: 'member',
   tenantId: 't1',
+  tenantName: 'Acme A.Ş.',
 };
 
 const admin: AuthUser = { ...member, role: 'companyAdmin' };

@@ -17,6 +17,7 @@ const user: AuthUser = {
   fullName: 'Ada Yılmaz',
   role: 'teamAdmin',
   tenantId: 't1',
+  tenantName: 'Acme A.Ş.',
 };
 
 function renderMs() {
@@ -49,5 +50,14 @@ describe('MobileSidebar', () => {
     useUiStore.setState({ mobileSheetOpen: true });
     renderMs();
     expect(screen.getByText(/Üyeleri görmek için bir takım seç/)).toBeInTheDocument();
+  });
+
+  it('renders primary nav links at the top (mobile-only)', () => {
+    useUiStore.setState({ mobileSheetOpen: true });
+    renderMs();
+    expect(screen.getByRole('link', { name: 'Ana Pano' })).toHaveAttribute('href', '/dashboard');
+    expect(screen.getByRole('link', { name: 'Takımlar' })).toHaveAttribute('href', '/teams');
+    expect(screen.getByRole('link', { name: 'Görevler' })).toHaveAttribute('href', '/tasks');
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', '/profile');
   });
 });
