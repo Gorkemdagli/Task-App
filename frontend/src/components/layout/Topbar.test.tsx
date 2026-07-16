@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -38,7 +38,7 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
 }
 
 describe('Topbar', () => {
-  let getSpy: ReturnType<typeof vi.spyOn>;
+  let getSpy: MockInstance;
 
   beforeEach(() => {
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
@@ -105,7 +105,7 @@ describe('Topbar', () => {
 });
 
 describe('Topbar notification bell', () => {
-  let getSpy: ReturnType<typeof vi.spyOn>;
+  let getSpy: MockInstance;
 
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });

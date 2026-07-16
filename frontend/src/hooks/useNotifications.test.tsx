@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { api } from '../lib/api';
 import {
@@ -17,7 +17,7 @@ function wrapper(qc: QueryClient) {
 }
 
 describe('useNotifications', () => {
-  let getSpy: ReturnType<typeof vi.spyOn>;
+  let getSpy: MockInstance;
 
   beforeEach(() => {
     getSpy = vi.spyOn(api, 'get');
@@ -63,12 +63,13 @@ describe('useNotifications', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const obs = qc.getQueryCache().find({ queryKey: NOTIFICATIONS_KEY });
-    expect(obs?.options.refetchInterval).toBe(30_000);
+    const opts = obs?.options as unknown as { refetchInterval?: number };
+    expect(opts?.refetchInterval).toBe(30_000);
   });
 });
 
 describe('useMarkAllRead', () => {
-  let patchSpy: ReturnType<typeof vi.spyOn>;
+  let patchSpy: MockInstance;
 
   beforeEach(() => {
     patchSpy = vi.spyOn(api, 'patch');
@@ -103,7 +104,7 @@ describe('useMarkAllRead', () => {
 });
 
 describe('useLoadMoreNotifications', () => {
-  let getSpy: ReturnType<typeof vi.spyOn>;
+  let getSpy: MockInstance;
 
   beforeEach(() => {
     getSpy = vi.spyOn(api, 'get');
