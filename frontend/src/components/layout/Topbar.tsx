@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils';
  * Topbar (FRONTEND.md §5.2):
  * - h-14, sticky top-0, bg-card, border-b
  * - Left: logo + (md+) primary nav with signature 3-4px amber active stripe
- * - Right: bell (placeholder) + theme toggle + avatar dropdown (profile, settings*, logout)
+ * - Right: bell (notifications dropdown with badge + panel) + theme toggle + avatar dropdown (profile, settings*, logout)
  * - Mobile (<768px): hamburger replaces nav; nav lives inside MobileSidebar (Sheet)
  */
 export function Topbar() {
@@ -53,9 +53,8 @@ export function Topbar() {
   useEffect(() => {
     // İlk fetch → state'e kopyala (sadece boşken, polling update'lerini ezme)
     if (data && accumulatedItems.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial copy from query; can't be done in event handler
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- RQ data is reactive, not event-driven; pagination state must sync from cache, not user action
       setAccumulatedItems(data.items);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial copy from query; can't be done in event handler
       setCurrentCursor(data.nextCursor);
     }
   }, [data, accumulatedItems.length]);
@@ -63,9 +62,8 @@ export function Topbar() {
   const loadMore = useLoadMoreNotifications(currentCursor);
   useEffect(() => {
     if (loadMore.data) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- load-more append from query; can't be done in event handler
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- RQ data is reactive, not event-driven; pagination state must sync from cache, not user action
       setAccumulatedItems((prev) => [...prev, ...loadMore.data!.items]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- load-more append from query; can't be done in event handler
       setCurrentCursor(loadMore.data!.nextCursor);
     }
   }, [loadMore.data]);
