@@ -5,6 +5,7 @@ import { teamsRouter } from './teams';
 import { tasksRouter } from './tasks';
 import { commentsRouter } from './comments';
 import { adminRouter } from './admin';
+import { notificationsRouter } from './notifications';
 
 export const apiRouter = Router();
 
@@ -14,3 +15,4 @@ apiRouter.use('/teams', teamsRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/tasks/:taskId/comments', commentsRouter);
 apiRouter.use('/admin', adminRouter);
+apiRouter.use('/notifications', notificationsRouter);
