@@ -9,18 +9,17 @@ export function createRateLimit(opts: { windowMs: number; max: number; keyPrefix
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     store: new RedisStore({
-      sendCommand: (...args: string[]) =>
-        redis.call(...(args as [string, ...string[]])) as Promise<unknown>,
+      // ioredis `call` returns `Promise<unknown>`; rate-limit-redis expects `Promise<RedisReply>`.
+      // The wire format matches — we forward raw responses untouched.
+      sendCommand: ((...args: string[]) => redis.call(...(args as [string, ...string[]]))) as never,
       prefix: opts.keyPrefix,
     }),
     handler: (_req, res) => {
-      res
-        .status(429)
-        .json({
-          error: 'Too Many Requests',
-          message: 'Çok fazla deneme. Lütfen 1 dakika bekleyin.',
-          retryAfter: 60,
-        });
+      res.status(429).json({
+        error: 'Too Many Requests',
+        message: 'Çok fazla deneme. Lütfen 1 dakika bekleyin.',
+        retryAfter: 60,
+      });
     },
   });
 }

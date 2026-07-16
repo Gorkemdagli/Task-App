@@ -20,7 +20,13 @@ function sign(
   secret: string,
   expiresIn: string,
 ): string {
-  return jwt.sign(payload, secret, { expiresIn, jwtid: randomUUID() });
+  // jsonwebtoken v9 types: `expiresIn` is `StringValue | number`.
+  // We accept loose `string` at the call site to avoid coupling call sites to the
+  // template-literal `StringValue` type from the `ms` package.
+  return jwt.sign(payload, secret, {
+    expiresIn: expiresIn as jwt.SignOptions['expiresIn'],
+    jwtid: randomUUID(),
+  });
 }
 function verify(token: string, secret: string): TokenPayload {
   return jwt.verify(token, secret) as TokenPayload;
