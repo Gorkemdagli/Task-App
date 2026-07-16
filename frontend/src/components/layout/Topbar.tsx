@@ -16,7 +16,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
-import { useNotifications, useMarkAllRead } from '@/hooks/useNotifications';
+import {
+  useNotifications,
+  useMarkAllRead,
+  useLoadMoreNotifications,
+} from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
@@ -40,9 +44,31 @@ export function Topbar() {
   const { data } = useNotifications();
   const unreadCount = data?.unreadCount ?? 0;
   const items = data?.items ?? [];
-  const nextCursor = data?.nextCursor ?? null;
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
+
+  const [accumulatedItems, setAccumulatedItems] = useState<typeof items>([]);
+  const [currentCursor, setCurrentCursor] = useState<string | null>(null);
+
+  useEffect(() => {
+    // İlk fetch → state'e kopyala (sadece boşken, polling update'lerini ezme)
+    if (data && accumulatedItems.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial copy from query; can't be done in event handler
+      setAccumulatedItems(data.items);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial copy from query; can't be done in event handler
+      setCurrentCursor(data.nextCursor);
+    }
+  }, [data, accumulatedItems.length]);
+
+  const loadMore = useLoadMoreNotifications(currentCursor);
+  useEffect(() => {
+    if (loadMore.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- load-more append from query; can't be done in event handler
+      setAccumulatedItems((prev) => [...prev, ...loadMore.data!.items]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- load-more append from query; can't be done in event handler
+      setCurrentCursor(loadMore.data!.nextCursor);
+    }
+  }, [loadMore.data]);
 
   // 500ms debounced mark-read: rapid open/close'ta tek PATCH gider
   useEffect(() => {
@@ -133,11 +159,11 @@ export function Topbar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="bg-card p-0 text-foreground">
             <NotificationPanel
-              items={items}
+              items={accumulatedItems}
               unreadCount={unreadCount}
-              nextCursor={nextCursor}
+              nextCursor={currentCursor}
               onLoadMore={() => {
-                // Cursor pagination Topbar task 11'de. Şimdilik no-op:
+                if (currentCursor) loadMore.refetch();
               }}
               onItemNavigate={(taskId) => {
                 setBellOpen(false);
