@@ -6,6 +6,7 @@ export interface TaskFilters {
   status: TaskStatus[];
   priority: TaskPriority[];
   teamId: string | null;
+  assigneeIds: string[];
   deadline: 'all' | 'overdue' | 'today' | 'week' | 'month' | 'custom';
   deadlineFrom: string | null;
   deadlineTo: string | null;
@@ -16,6 +17,7 @@ export const EMPTY_FILTERS: TaskFilters = {
   status: [],
   priority: [],
   teamId: null,
+  assigneeIds: [],
   deadline: 'all',
   deadlineFrom: null,
   deadlineTo: null,
@@ -25,10 +27,12 @@ export const EMPTY_FILTERS: TaskFilters = {
 function readFromSearch(sp: URLSearchParams): TaskFilters {
   const status = sp.get('status')?.split(',').filter(Boolean) as TaskStatus[] | undefined;
   const priority = sp.get('priority')?.split(',').filter(Boolean) as TaskPriority[] | undefined;
+  const assigneeIds = sp.get('assigneeIds')?.split(',').filter(Boolean) ?? [];
   return {
     status: status ?? [],
     priority: priority ?? [],
     teamId: sp.get('teamId'),
+    assigneeIds,
     deadline: (sp.get('deadline') as TaskFilters['deadline']) || 'all',
     deadlineFrom: sp.get('deadlineFrom'),
     deadlineTo: sp.get('deadlineTo'),
@@ -41,6 +45,7 @@ function writeToSearch(filters: TaskFilters): URLSearchParams {
   if (filters.status.length) sp.set('status', filters.status.join(','));
   if (filters.priority.length) sp.set('priority', filters.priority.join(','));
   if (filters.teamId) sp.set('teamId', filters.teamId);
+  if (filters.assigneeIds.length) sp.set('assigneeIds', filters.assigneeIds.join(','));
   if (filters.deadline && filters.deadline !== 'all') sp.set('deadline', filters.deadline);
   if (filters.deadlineFrom) sp.set('deadlineFrom', filters.deadlineFrom);
   if (filters.deadlineTo) sp.set('deadlineTo', filters.deadlineTo);

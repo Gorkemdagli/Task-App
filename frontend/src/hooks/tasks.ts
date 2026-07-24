@@ -1,10 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useAuthStore } from '../stores/authStore';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface TaskAssignee {
+  userId: string;
+  assignedAt: string;
+  user: { id: string; displayId: string; fullName: string; avatarUrl: string | null };
+}
+
+export interface TaskStatusAck {
+  id: string;
+  userId: string;
+  proposedStatus: TaskStatus;
+  ackedAt: string;
+}
 
 export interface Task {
   id: string;
@@ -16,12 +30,16 @@ export interface Task {
   archivedAt: string | null;
   teamId: string;
   assignerId: string;
-  assigneeId: string;
   createdAt: string;
   updatedAt: string;
+  pendingStatus: TaskStatus | null;
+  pendingProposedBy: string | null;
+  pendingProposedAt: string | null;
+  pendingProposer: { id: string; displayId: string; fullName: string; avatarUrl: string | null } | null;
+  statusAcks: TaskStatusAck[];
   team: { id: string; name: string; tenantId: string };
   assigner: { id: string; displayId: string; fullName: string; avatarUrl: string | null };
-  assignee: { id: string; displayId: string; fullName: string; avatarUrl: string | null };
+  assignees: TaskAssignee[];
 }
 
 export interface Comment {
@@ -36,7 +54,7 @@ export interface ListTasksFilters {
   status?: TaskStatus[];
   priority?: TaskPriority[];
   teamId?: string;
-  assigneeId?: string;
+  assigneeIds?: string[];
   deadlineFrom?: string;
   deadlineTo?: string;
   includeArchived?: boolean;
@@ -50,7 +68,7 @@ function toQuery(filters: ListTasksFilters | undefined): string {
   if (filters.status?.length) sp.set('status', filters.status.join(','));
   if (filters.priority?.length) sp.set('priority', filters.priority.join(','));
   if (filters.teamId) sp.set('teamId', filters.teamId);
-  if (filters.assigneeId) sp.set('assigneeId', filters.assigneeId);
+  if (filters.assigneeIds?.length) sp.set('assigneeIds', filters.assigneeIds.join(','));
   if (filters.deadlineFrom) sp.set('deadlineFrom', filters.deadlineFrom);
   if (filters.deadlineTo) sp.set('deadlineTo', filters.deadlineTo);
   if (filters.includeArchived) sp.set('includeArchived', 'true');
@@ -107,7 +125,7 @@ export function useCreateTask() {
       description?: string;
       deadline?: string;
       priority: TaskPriority;
-      assigneeId: string;
+      assigneeIds: string[];
       teamId: string;
     }) => {
       const r = await api.post<Task>('/tasks', input);
@@ -119,59 +137,128 @@ export function useCreateTask() {
   });
 }
 
-export function useUpdateTaskStatus(taskId: string) {
+/** Hook argümansız: taskId mutate({taskId, ...}) içinde. Drag-drop gibi
+ *  geçici state'ten çağrılan yerlerde hook re-mount riskini önler. */
+export function useUpdateTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { status: TaskStatus }) => {
-      const r = await api.patch<Task>(`/tasks/${taskId}/status`, vars);
+    mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
+      const r = await api.patch<Task>(`/tasks/${vars.taskId}/status`, { status: vars.status });
       return r.data;
     },
     onMutate: async (vars) => {
-      await qc.cancelQueries({ queryKey: ['task', taskId] });
-      const prev = qc.getQueryData<Task>(['task', taskId]);
+      await qc.cancelQueries({ queryKey: ['task', vars.taskId] });
+      const prev = qc.getQueryData<Task>(['task', vars.taskId]);
       if (prev) {
-        qc.setQueryData<Task>(['task', taskId], { ...prev, status: vars.status });
+        qc.setQueryData<Task>(['task', vars.taskId], { ...prev, status: vars.status });
       }
-      return { prev };
+      return { prev, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['task', taskId], ctx.prev);
+      if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
+    onSettled: (_d, _e, vars) => {
+      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }
 
-export function useUpdateTaskPriority(taskId: string) {
+/** Multi-assignee task için status teklifi. Backend admin ise direkt apply, değilse pending oluşturur. */
+export function useProposeTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { priority: TaskPriority }) => {
-      const r = await api.patch<Task>(`/tasks/${taskId}/priority`, vars);
+    mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
+      const r = await api.post<Task>(`/tasks/${vars.taskId}/status/propose`, { status: vars.status });
       return r.data;
     },
-    onSuccess: () => {
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: ['task', vars.taskId] });
+      const prev = qc.getQueryData<Task>(['task', vars.taskId]);
+      // Optimistic: pending status set + pendingProposedBy set → isProposer=true olur,
+      // refetch bitmeden önce PendingAckModal proposera flash etmez.
+      const actorId = useAuthStore.getState().user?.id ?? null;
+      if (prev) {
+        qc.setQueryData<Task>(['task', vars.taskId], {
+          ...prev,
+          pendingStatus: vars.status,
+          pendingProposedBy: actorId,
+          pendingProposedAt: new Date().toISOString(),
+        });
+      }
+      return { prev, taskId: vars.taskId };
+    },
+    onError: (_e, _v, ctx) => {
+      // Sessiz revert
+      if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
+    },
+    onSettled: (_d, _e, vars) => {
+      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+/** Pending status teklifini ack'le. Tüm assignees ack edince DB status güncellenir. */
+export function useAckTaskStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const r = await api.post<{ task: Task; applied: boolean }>(`/tasks/${taskId}/status/ack`);
+      return r.data;
+    },
+    onSettled: (_d, _e, taskId) => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }
 
-export function useUpdateTaskFields(taskId: string) {
+/** Pending status teklifini iptal et. Proposer veya admin. */
+export function useCancelTaskStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const r = await api.post<Task>(`/tasks/${taskId}/status/cancel`);
+      return r.data;
+    },
+    onSettled: (_d, _e, taskId) => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export function useUpdateTaskPriority() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { taskId: string; priority: TaskPriority }) => {
+      const r = await api.patch<Task>(`/tasks/${vars.taskId}/priority`, { priority: vars.priority });
+      return r.data;
+    },
+    onSettled: (_d, _e, vars) => {
+      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export function useUpdateTaskFields() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: {
+      taskId: string;
       title?: string;
       description?: string | null;
       deadline?: string | null;
-      assigneeId?: string;
+      assigneeIds?: string[];
     }) => {
-      const r = await api.patch<Task>(`/tasks/${taskId}`, vars);
+      const { taskId, ...body } = vars;
+      const r = await api.patch<Task>(`/tasks/${taskId}`, body);
       return r.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
+    onSettled: (_d, _e, vars) => {
+      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });

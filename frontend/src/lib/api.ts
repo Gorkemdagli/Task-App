@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
+import { queryClient } from './react-query';
 import { useAuthStore, type AuthUser } from '../stores/authStore';
 
 export function createApi(opts: { baseURL: string }): AxiosInstance {
@@ -18,6 +19,7 @@ export function createApi(opts: { baseURL: string }): AxiosInstance {
       useAuthStore.getState().setAccessToken(tok);
       return tok;
     } catch {
+      queryClient.clear();
       useAuthStore.getState().clearAuth();
       return null;
     }

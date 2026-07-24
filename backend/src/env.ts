@@ -2,8 +2,11 @@ import { z } from 'zod';
 import * as dotenv from 'dotenv';
 
 // Test ortamında .env.test, geliştirmede .env. NODE_ENV=test olmalı (vitest default).
-const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
-dotenv.config({ path: envFile });
+// Override: TEST'te dışarıdan sızan DATABASE_URL'i eziyoruz → cleanDb() ana DB'ye
+// dokunmasın. Dev/prod'da override YOK → k8s secrets, direnv vb. kazansın.
+const isTest = process.env.NODE_ENV === 'test';
+const envFile = isTest ? '.env.test' : '.env';
+dotenv.config({ path: envFile, override: isTest });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

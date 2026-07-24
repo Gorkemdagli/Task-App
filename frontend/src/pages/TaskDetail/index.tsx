@@ -1,11 +1,16 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   useTask,
   useTaskComments,
   useUpdateTaskStatus,
+  useProposeTaskStatus,
+  useAckTaskStatus,
+  useCancelTaskStatus,
   useUpdateTaskPriority,
   useUpdateTaskFields,
   useDeleteTask,
+  type TaskStatus,
 } from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -18,6 +23,9 @@ import {
 import { StatusDropdown } from '@/components/tasks/StatusDropdown';
 import { PriorityDropdown } from '@/components/tasks/PriorityDropdown';
 import { DeadlinePicker } from '@/components/tasks/DeadlinePicker';
+import { PendingAckModal } from '@/components/tasks/PendingAckModal';
+import { PendingStatusBadge } from '@/components/tasks/PendingStatusBadge';
+import { ProposeConfirmDialog } from '@/components/tasks/ProposeConfirmDialog';
 import { CommentList } from '@/components/comments/CommentList';
 import { CommentInput } from '@/components/comments/CommentInput';
 
@@ -27,6 +35,11 @@ export function TaskDetailPage() {
   const { data: task, isLoading } = useTask(id);
   const { data: commentsData } = useTaskComments(id);
   const updateStatus = useUpdateTaskStatus();
+  const proposeStatus = useProposeTaskStatus();
+  const [proposeIntent, setProposeIntent] = useState<TaskStatus | null>(null);
+  const [ackModalDismissed, setAckModalDismissed] = useState(false);
+  const ackStatus = useAckTaskStatus();
+  const cancelStatus = useCancelTaskStatus();
   const updatePriority = useUpdateTaskPriority();
   const updateFields = useUpdateTaskFields();
   const deleteTask = useDeleteTask();
@@ -51,12 +64,31 @@ export function TaskDetailPage() {
   }
 
   // Şirket admin her zaman; user.role === 'teamAdmin' kabul (per-task detay backend'de)
-  const isTeamAdminOfThisTeam = isCompanyAdmin(user) || user?.role === 'teamAdmin';
+  const isTeamAdminOfThisTeam = isCompanyAdmin(user);
 
   const allowedStatus = canUpdateTaskStatus(user, task, isTeamAdminOfThisTeam);
   const allowedPriority = canUpdateTaskPriority(user, task, isTeamAdminOfThisTeam);
   const allowedDelete = canDeleteTask(user, task, isTeamAdminOfThisTeam);
   const allowedComment = canCommentOnTask(user, task, true);
+
+  const hasPending = task.pendingStatus !== null;
+  const youAreAssignee = task.assignees.some((a) => a.userId === user?.id);
+  const yourAcked = task.statusAcks.some((a) => a.userId === user?.id);
+  const isProposer = task.pendingProposedBy === user?.id;
+  const proposerIsAssignee = task.assignees.some((a) => a.userId === task.pendingProposedBy);
+  const canAck = hasPending && youAreAssignee && !yourAcked && !isProposer;
+  const canCancel = hasPending && (isProposer || isTeamAdminOfThisTeam);
+
+  const handleStatusChange = (status: TaskStatus) => {
+    if (!id) return;
+    if (task.assignees.length > 1) {
+      setProposeIntent(status);                    // admin + member → modal
+    } else if (isTeamAdminOfThisTeam) {
+      updateStatus.mutate({ taskId: id, status }); // tek + admin → direct
+    } else {
+      proposeStatus.mutate({ taskId: id, status }); // tek + member → atomic
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm('Bu görevi silmek istediğine emin misin?')) return;
@@ -74,15 +106,58 @@ export function TaskDetailPage() {
 
       <h1 className="mb-6 text-2xl font-semibold">{task.title}</h1>
 
+      {hasPending && task.pendingStatus && (
+        <div
+          data-testid="pending-banner"
+          className="mb-6 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-4"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
+                {proposerIsAssignee
+                  ? `${task.pendingProposer?.fullName ?? 'Biri'} status değişikliği önerdi ve onayladı`
+                  : `${task.pendingProposer?.fullName ?? 'Biri'} status değişikliği teklif etti`}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Kalan ack: {task.assignees.length - task.statusAcks.length} / {task.assignees.length}
+              </div>
+            </div>
+            <PendingStatusBadge status={task.pendingStatus} />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {canAck && (
+              <button
+                type="button"
+                onClick={() => id && ackStatus.mutate(id)}
+                disabled={ackStatus.isPending}
+                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
+              >
+                {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
+              </button>
+            )}
+            {canCancel && (
+              <button
+                type="button"
+                onClick={() => id && cancelStatus.mutate(id)}
+                disabled={cancelStatus.isPending}
+                className="h-9 rounded-md border border-border bg-card px-4 text-sm font-medium transition-colors hover:bg-secondary disabled:opacity-50"
+              >
+                {cancelStatus.isPending ? 'İptal ediliyor...' : 'İptal'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <StatusDropdown
           value={task.status}
-          onChange={(status) => id && updateStatus.mutate({ id, status })}
+          onChange={handleStatusChange}
           disabled={!allowedStatus}
         />
         <PriorityDropdown
           value={task.priority}
-          onChange={(priority) => id && updatePriority.mutate({ id, priority })}
+          onChange={(priority) => id && updatePriority.mutate({ taskId: id, priority })}
           disabled={!allowedPriority}
         />
       </div>
@@ -98,17 +173,28 @@ export function TaskDetailPage() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Görevi Alan</label>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold">
-              {task.assignee.fullName.charAt(0)}
-            </span>
-            {task.assignee.fullName}
-          </div>
+          <label className="mb-1 block text-xs text-muted-foreground">Görevi Alanlar</label>
+          {task.assignees.length === 0 ? (
+            <p className="text-xs italic text-muted-foreground">Atanmış kişi yok</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5" data-testid="assignee-chip-list">
+              {task.assignees.map((a) => (
+                <span
+                  key={a.userId}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-background text-[10px] font-semibold">
+                    {a.user.fullName.charAt(0)}
+                  </span>
+                  {a.user.fullName}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <DeadlinePicker
           value={task.deadline}
-          onChange={(deadline) => id && updateFields.mutate({ id, deadline })}
+          onChange={(deadline) => id && updateFields.mutate({ taskId: id, deadline })}
           disabled={!allowedStatus}
         />
         <div>
@@ -147,6 +233,36 @@ export function TaskDetailPage() {
             {deleteTask.isPending ? 'Siliniyor…' : 'Görevi Sil'}
           </button>
         </section>
+      )}
+
+      {hasPending && !ackModalDismissed && !isProposer && task && (
+        <PendingAckModal
+          task={task}
+          yourAcked={yourAcked}
+          canCancel={canCancel}
+          onAck={() => id && ackStatus.mutate(id)}
+          onCancel={() => id && cancelStatus.mutate(id)}
+          onClose={() => setAckModalDismissed(true)}
+          isAcking={ackStatus.isPending}
+          isCanceling={cancelStatus.isPending}
+        />
+      )}
+
+      {proposeIntent && task && (
+        <ProposeConfirmDialog
+          open
+          task={task}
+          newStatus={proposeIntent}
+          isProposing={proposeStatus.isPending}
+          onCancel={() => setProposeIntent(null)}
+          onConfirm={() => {
+            if (!id) return;
+            proposeStatus.mutate(
+              { taskId: id, status: proposeIntent },
+              { onSettled: () => setProposeIntent(null) },
+            );
+          }}
+        />
       )}
     </div>
   );

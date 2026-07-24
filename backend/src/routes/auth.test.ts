@@ -5,6 +5,13 @@ import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 
 async function cleanDb() {
+  // child tables that Restrict-delete from user must go first
+  await prisma.taskComment.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.teamMember.deleteMany();
+  await prisma.team.deleteMany();
+  await prisma.channel.deleteMany();
   await prisma.user.deleteMany();
   await prisma.tenant.deleteMany();
   const k1 = await redis.keys('blacklist:jti:*');
@@ -104,9 +111,9 @@ describe('POST /api/v1/auth/refresh', () => {
     const r2 = await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', cookie);
     expect(r2.status).toBe(401);
   });
-  it('401 no cookie', async () => {
+  it('204 no cookie (oturum yok = hata değil)', async () => {
     const r = await request(createApp()).post('/api/v1/auth/refresh');
-    expect(r.status).toBe(401);
+    expect(r.status).toBe(204);
   });
 });
 

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { useTeams } from '@/hooks/queries/useTeams';
+import { useTeams, useTeam } from '@/hooks/queries/useTeams';
 import { useTasks } from '@/hooks/tasks';
 import { useTaskFilters } from '@/hooks/useTaskFilters';
+import { useTeamStore } from '@/stores/teamStore';
 import { FilterBar } from '@/components/tasks/FilterBar';
 import { TaskCardRow } from '@/components/tasks/TaskCardRow';
 
@@ -36,6 +37,18 @@ function buildDeadlineRange(filters: ReturnType<typeof useTaskFilters>['filters'
 export function TasksPage() {
   const { data: teams } = useTeams();
   const { filters } = useTaskFilters();
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  const membersTeamId = filters.teamId ?? activeTeamId ?? undefined;
+  const { data: membersTeam } = useTeam(membersTeamId);
+
+  const assignees = useMemo(
+    () =>
+      (membersTeam?.members ?? []).map((m) => ({
+        id: m.userId,
+        fullName: m.fullName,
+      })),
+    [membersTeam],
+  );
 
   const queryArgs = useMemo(() => {
     const { from, to } = buildDeadlineRange(filters);
@@ -43,6 +56,7 @@ export function TasksPage() {
       status: filters.status.length ? filters.status : undefined,
       priority: filters.priority.length ? filters.priority : undefined,
       teamId: filters.teamId ?? undefined,
+      assigneeIds: filters.assigneeIds.length ? filters.assigneeIds : undefined,
       deadlineFrom: from,
       deadlineTo: to,
       includeArchived: filters.includeArchived,
@@ -56,7 +70,7 @@ export function TasksPage() {
     <div data-testid="tasks-page" className="p-8">
       <h1 className="mb-6 text-2xl font-semibold">Görevlerim</h1>
 
-      <FilterBar teams={teams ?? []} />
+      <FilterBar teams={teams ?? []} assignees={assignees} />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor…</p>

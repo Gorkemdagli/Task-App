@@ -4,6 +4,13 @@ import { redis } from '../lib/redis';
 import { register, login, refresh, logout, isTokenBlacklisted } from './auth.service';
 
 async function cleanDb() {
+  // child tables that Restrict-delete from user must go first
+  await prisma.taskComment.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.teamMember.deleteMany();
+  await prisma.team.deleteMany();
+  await prisma.channel.deleteMany();
   await prisma.user.deleteMany();
   await prisma.tenant.deleteMany();
   const bk = await redis.keys('blacklist:jti:*');
@@ -51,9 +58,17 @@ describe('login', () => {
     await cleanDb();
     await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
   });
-  it('success', async () => {
+  it('success includes tenant name', async () => {
+    await prisma.tenant.create({
+      data: {
+        name: 'Acme Corp',
+        slug: 'acme-corp',
+        users: { connect: { email: 'a@x.com' } },
+      },
+    });
     const r = await login({ email: 'a@x.com', password: 'hunter22' });
     expect(r.accessToken).toBeDefined();
+    expect(r.user.tenantName).toBe('Acme Corp');
   });
   it('401 wrong password', async () => {
     await expect(login({ email: 'a@x.com', password: 'wrong' })).rejects.toMatchObject({

@@ -69,6 +69,38 @@ tasksRouter.patch(
   },
 );
 
+tasksRouter.post(
+  '/:id/status/propose',
+  writeLimiter,
+  validateBody(updateTaskStatusSchema),
+  async (req, res, next) => {
+    try {
+      const task = await tasksService.proposeTaskStatus(req.params.id, req.body, req.user!);
+      res.json(task);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+tasksRouter.post('/:id/status/ack', writeLimiter, async (req, res, next) => {
+  try {
+    const result = await tasksService.ackTaskStatus(req.params.id, req.user!);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+tasksRouter.post('/:id/status/cancel', writeLimiter, async (req, res, next) => {
+  try {
+    const task = await tasksService.cancelTaskStatus(req.params.id, req.user!);
+    res.json(task);
+  } catch (e) {
+    next(e);
+  }
+});
+
 tasksRouter.patch(
   '/:id/priority',
   writeLimiter,

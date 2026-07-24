@@ -8,7 +8,7 @@ export const createTaskSchema = z.object({
   description: z.string().trim().max(5000).optional(),
   deadline: z.coerce.date().optional(),
   priority: taskPrioritySchema,
-  assigneeId: z.string().uuid(),
+  assigneeIds: z.array(z.string().uuid()).min(1),
   teamId: z.string().uuid(),
 });
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -28,14 +28,14 @@ export const updateTaskFieldsSchema = z
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(5000).nullable().optional(),
     deadline: z.coerce.date().nullable().optional(),
-    assigneeId: z.string().uuid().optional(),
+    assigneeIds: z.array(z.string().uuid()).min(1).optional(),
   })
   .refine(
     (v) =>
       v.title !== undefined ||
       v.description !== undefined ||
       v.deadline !== undefined ||
-      v.assigneeId !== undefined,
+      v.assigneeIds !== undefined,
     { message: 'En az bir alan güncellenmeli' },
   );
 export type UpdateTaskFieldsInput = z.infer<typeof updateTaskFieldsSchema>;
@@ -52,7 +52,11 @@ export const listTasksQuerySchema = z.object({
     .pipe(z.array(taskPrioritySchema))
     .optional(),
   teamId: z.string().uuid().optional(),
-  assigneeId: z.string().uuid().optional(),
+  assigneeIds: z
+    .union([z.string(), z.array(z.string())])
+    .transform((v) => (Array.isArray(v) ? v : v.split(',')))
+    .pipe(z.array(z.string().uuid()))
+    .optional(),
   deadlineFrom: z.coerce.date().optional(),
   deadlineTo: z.coerce.date().optional(),
   includeArchived: z

@@ -9,6 +9,9 @@ export interface AuthUser {
   // NULL = tenantless user (register'da companyName vermedi, henüz bir
   // şirkete dahil değil). Admin bu user'ı takıma eklediğinde tenantId set olur.
   tenantId: string | null;
+  // Display name of the tenant (e.g. "Acme A.Ş."). Optional — populated
+  // by login/me flows when backend returns it; null until then.
+  tenantName?: string | null;
 }
 
 interface AuthState {

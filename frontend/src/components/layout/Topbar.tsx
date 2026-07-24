@@ -24,6 +24,7 @@ import {
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
+import { queryClient } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 
 /**
@@ -51,6 +52,11 @@ export function Topbar() {
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
 
   useEffect(() => {
+    setAccumulatedItems([]);
+    setCurrentCursor(null);
+  }, [user?.id]);
+
+  useEffect(() => {
     // İlk fetch → state'e kopyala (sadece boşken, polling update'lerini ezme)
     if (data && accumulatedItems.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- RQ data is reactive, not event-driven; pagination state must sync from cache, not user action
@@ -76,6 +82,7 @@ export function Topbar() {
   }, [bellOpen, items.length, markAllRead]);
 
   function handleLogout() {
+    queryClient.clear();
     clearAuth();
     clearActiveTeam();
     navigate('/login', { replace: true });

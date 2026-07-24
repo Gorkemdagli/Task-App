@@ -22,11 +22,17 @@ const DEADLINE_OPTIONS: { value: TaskFilters['deadline']; label: string }[] = [
   { value: 'month', label: 'Bu ay' },
 ];
 
-interface FilterBarProps {
-  teams?: { id: string; name: string }[];
+interface AssigneeOption {
+  id: string;
+  fullName: string;
 }
 
-export function FilterBar({ teams = [] }: FilterBarProps) {
+interface FilterBarProps {
+  teams?: { id: string; name: string }[];
+  assignees?: AssigneeOption[];
+}
+
+export function FilterBar({ teams = [], assignees = [] }: FilterBarProps) {
   const { filters, updateFilters, resetFilters } = useTaskFilters();
 
   const toggleStatus = (s: TaskStatus) => {
@@ -43,9 +49,17 @@ export function FilterBar({ teams = [] }: FilterBarProps) {
     updateFilters({ ...filters, priority: next });
   };
 
+  const toggleAssignee = (id: string) => {
+    const next = filters.assigneeIds.includes(id)
+      ? filters.assigneeIds.filter((x) => x !== id)
+      : [...filters.assigneeIds, id];
+    updateFilters({ ...filters, assigneeIds: next });
+  };
+
   const hasActive =
     filters.status.length > 0 ||
     filters.priority.length > 0 ||
+    filters.assigneeIds.length > 0 ||
     !!filters.teamId ||
     filters.deadline !== 'all' ||
     filters.includeArchived;
@@ -77,6 +91,21 @@ export function FilterBar({ teams = [] }: FilterBarProps) {
           </FilterChip>
         ))}
       </FilterGroup>
+
+      {assignees.length > 0 && (
+        <FilterGroup label="Atanan">
+          {assignees.map((a) => (
+            <FilterChip
+              key={a.id}
+              active={filters.assigneeIds.includes(a.id)}
+              onClick={() => toggleAssignee(a.id)}
+              testId={`filter-assignee-${a.id}`}
+            >
+              {a.fullName}
+            </FilterChip>
+          ))}
+        </FilterGroup>
+      )}
 
       {teams.length > 0 && (
         <select

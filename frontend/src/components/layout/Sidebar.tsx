@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import {
@@ -45,10 +46,29 @@ export function Sidebar() {
   const navigate = useNavigate();
 
   const { data: teams, isLoading: teamsLoading } = useTeams();
+  const sortedTeams = useMemo(
+    () => [...(teams ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'tr')),
+    [teams],
+  );
   const { data: activeTeam } = useTeam(activeTeamId ?? undefined);
 
+  // Eksik veya stale seçimde alfabetik ilk takımı varsayılan yap.
+  useEffect(() => {
+    if (sortedTeams.length > 0 && !sortedTeams.some((team) => team.id === activeTeamId)) {
+      setActiveTeamId(sortedTeams[0].id);
+    }
+  }, [activeTeamId, setActiveTeamId, sortedTeams]);
+
+  // Stale activeTeamId (eski kullanıcı/logout sonrası) → listede yoksa temizle.
+  // Yoksa 403'le patlar, Sidebar her sayfada render olduğu için /dashboard da etkilenir.
+  useEffect(() => {
+    if (activeTeamId && teams && teams.length === 0) {
+      setActiveTeamId(null);
+    }
+  }, [activeTeamId, teams, setActiveTeamId]);
+
   const activeTeamName =
-    activeTeam?.name ?? teams?.find((t) => t.id === activeTeamId)?.name ?? 'Takım seç';
+    activeTeam?.name ?? sortedTeams.find((t) => t.id === activeTeamId)?.name ?? 'Takım seç';
 
   function handleSelectTeam(teamId: string) {
     setActiveTeamId(teamId);
@@ -84,7 +104,9 @@ export function Sidebar() {
       {/* Tenant header */}
       <div className="border-b border-border p-4">
         <p className="text-xs uppercase tracking-wide text-secondary-foreground">Şirket</p>
-        <p className="truncate text-sm font-semibold text-foreground">TaskFlow Şirketim</p>
+        <p className="truncate text-sm font-semibold text-foreground">
+          {user?.tenantName ?? 'TaskFlow Şirketim'}
+        </p>
         <p className="mt-1 text-xs text-secondary-foreground">
           {user ? roleLabel[user.role] : '—'}
         </p>
@@ -108,7 +130,7 @@ export function Sidebar() {
             {teamsLoading ? (
               <div className="px-2 py-1 text-xs text-secondary-foreground">Yükleniyor…</div>
             ) : teams && teams.length > 0 ? (
-              teams.map((t) => (
+              sortedTeams.map((t) => (
                 <DropdownMenuItem
                   key={t.id}
                   onSelect={() => handleSelectTeam(t.id)}

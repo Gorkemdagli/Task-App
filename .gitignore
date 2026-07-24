@@ -107,3 +107,6 @@ FRONTEND.md
 ROADMAP.md
 --help/
 docs/
+.claudeignore
+graphify-out
+review.md

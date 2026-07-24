@@ -1,23 +1,17 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { AxiosError } from 'axios';
 import { useCreateTask } from '@/hooks/tasks';
 import type { TaskPriority } from '@/hooks/tasks';
 import { PriorityDropdown } from './PriorityDropdown';
 import { DeadlinePicker } from './DeadlinePicker';
-import { AssigneePicker } from './AssigneePicker';
-
-interface TeamMember {
-  id: string;
-  fullName: string;
-  avatarUrl: string | null;
-}
+import { AssigneePicker, type AssigneeOption } from './AssigneePicker';
 
 interface CreateTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
-  members: TeamMember[];
-  defaultAssigneeId?: string;
+  members: AssigneeOption[];
 }
 
 export function CreateTaskDialog({
@@ -25,13 +19,13 @@ export function CreateTaskDialog({
   onOpenChange,
   teamId,
   members,
-  defaultAssigneeId,
 }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [assigneeId, setAssigneeId] = useState<string>(defaultAssigneeId ?? members[0]?.id ?? '');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const create = useCreateTask();
 
@@ -40,26 +34,47 @@ export function CreateTaskDialog({
     setDescription('');
     setPriority('medium');
     setDeadline(null);
-    setAssigneeId(defaultAssigneeId ?? members[0]?.id ?? '');
+    setAssigneeIds([]);
+    setError(null);
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setError(null);
+    onOpenChange(next);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!assigneeId) return;
-    await create.mutateAsync({
-      title: title.trim(),
-      description: description.trim() || undefined,
-      deadline: deadline ?? undefined,
-      priority,
-      assigneeId,
-      teamId,
-    });
-    reset();
-    onOpenChange(false);
+    if (assigneeIds.length === 0 || !deadline) return;
+    setError(null);
+    try {
+      await create.mutateAsync({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        deadline: deadline ?? undefined,
+        priority,
+        assigneeIds,
+        teamId,
+      });
+      reset();
+      onOpenChange(false);
+    } catch (err) {
+      const ax = err as AxiosError<{ message?: string; issues?: { message: string }[] }>;
+      const msg =
+        ax.response?.data?.message ??
+        ax.response?.data?.issues?.[0]?.message ??
+        'Görev oluşturulamadı';
+      setError(msg);
+    }
   };
 
+  const noAssignees = assigneeIds.length === 0;
+  const noDeadline = !deadline;
+  const submitDisabled =
+    create.isPending || title.trim().length < 3 || noAssignees || noDeadline;
+
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-overlay/60 backdrop-blur-sm animate-in fade-in" />
         <Dialog.Content
@@ -96,9 +111,37 @@ export function CreateTaskDialog({
                 <label className="mb-1 block text-xs text-muted-foreground">Öncelik</label>
                 <PriorityDropdown value={priority} onChange={setPriority} />
               </div>
-              <DeadlinePicker value={deadline} onChange={setDeadline} />
+              <DeadlinePicker
+                value={deadline}
+                onChange={setDeadline}
+                required
+                invalid={noDeadline}
+              />
             </div>
-            <AssigneePicker members={members} value={assigneeId} onChange={setAssigneeId} />
+            <AssigneePicker
+              members={members}
+              value={assigneeIds}
+              onChange={setAssigneeIds}
+              invalid={noAssignees}
+            />
+            {noAssignees && (
+              <p
+                role="alert"
+                data-testid="assignee-required-hint"
+                className="text-xs text-destructive"
+              >
+                En az bir kişi seçin
+              </p>
+            )}
+            {error && (
+              <p
+                role="alert"
+                data-testid="create-task-error"
+                className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                {error}
+              </p>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Dialog.Close asChild>
                 <button
@@ -110,7 +153,7 @@ export function CreateTaskDialog({
               </Dialog.Close>
               <button
                 type="submit"
-                disabled={create.isPending || title.trim().length < 3 || !assigneeId}
+                disabled={submitDisabled}
                 className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {create.isPending ? 'Oluşturuluyor…' : 'Görev Oluştur'}

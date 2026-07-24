@@ -34,6 +34,7 @@ export interface AuthUser {
   fullName: string;
   role: 'companyAdmin' | 'teamAdmin' | 'member';
   tenantId: string | null;
+  tenantName?: string | null;
 }
 export interface AuthResult {
   user: AuthUser;
@@ -100,7 +101,10 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
 const DUMMY_HASH = '$2b$12$0000000000000000000000000000000000000000000000000000000';
 
 export async function login(input: LoginInput): Promise<AuthResult> {
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    include: { tenant: { select: { name: true } } },
+  });
   const hash = user?.passwordHash ?? DUMMY_HASH;
   const valid = await verifyPassword(input.password, hash);
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
@@ -111,6 +115,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     fullName: user.fullName,
     role: user.role,
     tenantId: user.tenantId,
+    tenantName: user.tenant?.name ?? null,
   });
   await createSession(r.refreshToken, user.id);
   return r;
@@ -118,7 +123,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
 
 export async function refresh(
   refreshToken: string,
-): Promise<{ accessToken: string; refreshToken: string }> {
+): Promise<AuthResult> {
   let p;
   try {
     p = verifyRefreshToken(refreshToken);
@@ -130,7 +135,11 @@ export async function refresh(
   const sessionJson = await redis.get(SESSION_KEY(p.jti));
   if (!sessionJson) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
   const { userId, familyId } = JSON.parse(sessionJson) as { userId: string; familyId: string };
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  // tenant join → response'da tenantName döner; Sidebar/MobileSidebar tenant adını gösterir.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { tenant: { select: { name: true } } },
+  });
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
   const ttl = p.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
@@ -138,7 +147,19 @@ export async function refresh(
   const accessToken = signAccessToken(user.id, user.tenantId);
   const newRefreshToken = signRefreshToken(user.id, user.tenantId);
   await createSession(newRefreshToken, user.id, familyId);
-  return { accessToken, refreshToken: newRefreshToken };
+  return {
+    user: {
+      id: user.id,
+      displayId: user.displayId,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      tenantId: user.tenantId,
+      tenantName: user.tenant?.name ?? null,
+    },
+    accessToken,
+    refreshToken: newRefreshToken,
+  };
 }
 
 export async function logout(accessToken: string, refreshToken?: string): Promise<void> {

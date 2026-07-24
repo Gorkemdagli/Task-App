@@ -9,11 +9,19 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { useTeams, useTeam } from '@/hooks/queries/useTeams';
-import { useTasks, useUpdateTaskStatus, type Task, type TaskStatus } from '@/hooks/tasks';
+import {
+  useTasks,
+  useUpdateTaskStatus,
+  useProposeTaskStatus,
+  type Task,
+  type TaskStatus,
+} from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
 import { canUpdateTaskStatus, isCompanyAdmin } from '@/lib/permissions';
+import { getDisplayStatus } from '@/lib/taskDisplay';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog';
+import { ProposeConfirmDialog } from '@/components/tasks/ProposeConfirmDialog';
 
 const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'todo', label: 'Yapılacak', color: 'border-status-todo' },
@@ -27,29 +35,35 @@ export function DashboardPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [proposeIntent, setProposeIntent] = useState<{
+    taskId: string;
+    newStatus: TaskStatus;
+  } | null>(null);
 
-  const teamId = selectedTeamId ?? teams?.[0]?.id ?? null;
-  const selectedTeam = teams?.find((t) => t.id === teamId);
+  const sortedTeams = useMemo(
+    () => [...(teams ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'tr')),
+    [teams],
+  );
+  const teamId = selectedTeamId ?? sortedTeams[0]?.id ?? null;
+  const selectedTeam = sortedTeams.find((t) => t.id === teamId);
   const { data: teamDetail } = useTeam(teamId ?? undefined);
   const teamMembers = teamDetail?.members ?? [];
 
   const { data: tasksData, isLoading } = useTasks(teamId ? { teamId } : undefined);
   const tasks = tasksData?.tasks ?? [];
 
-  const updateStatus = useUpdateTaskStatus(activeTask?.id ?? '');
+  const updateStatusDirect = useUpdateTaskStatus();
+  const proposeStatus = useProposeTaskStatus();
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
     for (const t of tasks) {
-      if (!t.archivedAt) map[t.status].push(t);
+      if (!t.archivedAt) map[getDisplayStatus(t, user?.id)].push(t);
     }
     return map;
-  }, [tasks]);
+  }, [tasks, user?.id]);
 
-  // Şirket admin her zaman admin; diğerleri için user.role === 'teamAdmin' kabul ediyoruz
-  // (per-task team üyeliği kontrolü backend'de; burada sadece UI gating).
   const isTeamAdminOfThisTeam = isCompanyAdmin(user) || user?.role === 'teamAdmin';
-
   const canCreate = isCompanyAdmin(user) || isTeamAdminOfThisTeam;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -65,9 +79,23 @@ export function DashboardPage() {
     const newStatus = e.over?.id as TaskStatus | undefined;
     if (!newStatus || !COLUMNS.some((c) => c.status === newStatus)) return;
     const task = tasks.find((t) => t.id === taskId);
-    if (!task || task.status === newStatus) return;
-    if (!canUpdateTaskStatus(user, task, isTeamAdminOfThisTeam)) return;
-    updateStatus.mutate({ status: newStatus });
+    if (!task || getDisplayStatus(task, user?.id) === newStatus) return;
+    if (!canUpdateTaskStatus(user, task, isTeamAdminOfThisTeam)) {
+      console.warn('[Dashboard] drag ignored: user lacks permission', {
+        taskId,
+        userId: user?.id,
+      });
+      return;
+    }
+
+    // Multi-assignee → onay modalı (admin + member); tek-assignee admin → direkt; tek-assignee member → atomik propose.
+    if (task.assignees.length > 1) {
+      setProposeIntent({ taskId, newStatus });
+    } else if (isTeamAdminOfThisTeam) {
+      updateStatusDirect.mutate({ taskId, status: newStatus });
+    } else {
+      proposeStatus.mutate({ taskId, status: newStatus });
+    }
   };
 
   return (
@@ -89,9 +117,9 @@ export function DashboardPage() {
         )}
       </div>
 
-      {teams && teams.length > 1 && (
+      {sortedTeams.length > 1 && (
         <div className="mb-6 flex flex-wrap gap-2">
-          {teams.map((t) => (
+          {sortedTeams.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -129,13 +157,15 @@ export function DashboardPage() {
                 ) : grouped[col.status].length === 0 ? (
                   <p className="text-xs text-muted-foreground">Boş</p>
                 ) : (
-                  grouped[col.status].map((t) => <TaskCard key={t.id} task={t} draggable />)
+                  grouped[col.status].map((t) => (
+                    <TaskCard key={t.id} task={t} draggable currentUserId={user?.id} />
+                  ))
                 )}
               </div>
             </div>
           ))}
         </div>
-        <DragOverlay>{activeTask ? <TaskCard task={activeTask} /> : null}</DragOverlay>
+        <DragOverlay>{activeTask ? <TaskCard task={activeTask} currentUserId={user?.id} /> : null}</DragOverlay>
       </DndContext>
 
       {teamId && teamDetail && (
@@ -148,9 +178,29 @@ export function DashboardPage() {
             fullName: m.fullName,
             avatarUrl: m.avatarUrl,
           }))}
-          defaultAssigneeId={user?.id}
         />
       )}
+
+      {proposeIntent &&
+        (() => {
+          const intentTask = tasks.find((t) => t.id === proposeIntent.taskId);
+          if (!intentTask) return null;
+          return (
+            <ProposeConfirmDialog
+              open
+              task={intentTask}
+              newStatus={proposeIntent.newStatus}
+              isProposing={proposeStatus.isPending}
+              onCancel={() => setProposeIntent(null)}
+              onConfirm={() => {
+                proposeStatus.mutate(
+                  { taskId: proposeIntent.taskId, status: proposeIntent.newStatus },
+                  { onSettled: () => setProposeIntent(null) },
+                );
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

@@ -2,19 +2,32 @@ import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { useTeam } from '@/hooks/queries/useTeams';
+import { useTasks } from '@/hooks/tasks';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeamStore } from '@/stores/teamStore';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MemberList } from './MemberList';
 import { AddMemberModal } from './AddMemberModal';
+import { TaskCardRow } from '@/components/tasks/TaskCardRow';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: team, isLoading, isError } = useTeam(id);
-  const { isCompanyAdmin } = useAuth();
+  const { user, isCompanyAdmin } = useAuth();
   const setActiveTeamId = useTeamStore((s) => s.setActiveTeamId);
   const navigate = useNavigate();
+  const { data: tasksData, isLoading: tasksLoading } = useTasks(
+    id ? { teamId: id, includeArchived: false, limit: 100 } : undefined,
+  );
+  const tasks = tasksData?.tasks ?? [];
+
+  // Per-team admin: companyAdmin her zaman; aksi halde viewer'ın bu takımdaki
+  // TeamMember.role === 'teamAdmin' olmalı (JWT'ye güvenemeyiz — per-team rol
+  // DB'de yaşar).
+  const viewerMembership = team?.members.find((m) => m.userId === user?.id);
+  const isTeamAdminOfThisTeam = viewerMembership?.role === 'teamAdmin';
+  const canManage = isCompanyAdmin || isTeamAdminOfThisTeam;
 
   // URL değişirse activeTeamId'yi senkronize et (sidebar ile).
   useEffect(() => {
@@ -65,17 +78,31 @@ export function TeamDetailPage() {
             Üyeler{' '}
             <span className="text-sm text-secondary-foreground">({team.members.length})</span>
           </h2>
-          {isCompanyAdmin && <AddMemberModal teamId={team.id} />}
+          {canManage && <AddMemberModal teamId={team.id} />}
         </div>
-        <MemberList members={team.members} teamId={team.id} canManage={isCompanyAdmin} />
+        <MemberList members={team.members} teamId={team.id} canManage={canManage} />
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold text-foreground">Görevler</h2>
-        <p className="text-sm text-secondary-foreground">
-          Bu takımda şu an <span className="font-medium text-foreground">{team.taskCount}</span>{' '}
-          görev var. Görev yönetimi FAZ-5'te açılacak.
-        </p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Görevler{' '}
+            <span className="text-sm text-secondary-foreground">({tasks.length})</span>
+          </h2>
+        </div>
+        {tasksLoading ? (
+          <Skeleton className="h-16 w-full rounded-md" />
+        ) : tasks.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border bg-card/50 p-6 text-center text-sm text-muted-foreground">
+            Bu takımda görev yok.
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-md border border-border bg-card" data-testid="team-tasks-list">
+            {tasks.map((t) => (
+              <TaskCardRow key={t.id} task={t} />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

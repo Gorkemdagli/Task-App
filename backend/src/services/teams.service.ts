@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
+import { assertCanManageTeam } from '../lib/permissions';
 import type { CreateTeamInput } from '../schemas/teams.schema';
 import type { TeamMemberRole, UserRole } from '@prisma/client';
 
@@ -151,9 +152,7 @@ export async function addMemberByDisplayId(
   displayId: string,
   actor: ActorUser,
 ): Promise<TeamMemberInfo> {
-  if (!isCompanyAdmin(actor)) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
+  await assertCanManageTeam(actor, teamId);
 
   const tenantId = requireTenant(actor);
   const team = await prisma.team.findFirst({
@@ -218,9 +217,7 @@ export async function removeMember(
   userId: string,
   actor: ActorUser,
 ): Promise<void> {
-  if (!isCompanyAdmin(actor)) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
+  await assertCanManageTeam(actor, teamId);
 
   const tenantId = requireTenant(actor);
   const team = await prisma.team.findFirst({

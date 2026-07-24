@@ -21,7 +21,9 @@ interface PriorityDropdownProps {
 
 export function PriorityDropdown({ value, onChange, disabled }: PriorityDropdownProps) {
   return (
-    <DropdownMenu.Root>
+    // Dialog içinde: modal=false → Radix focus trap devre dışı,
+    // Dialog'un onInteractOutside'ı dropdown item'ları "outside" sanıp kapatmasın.
+    <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"

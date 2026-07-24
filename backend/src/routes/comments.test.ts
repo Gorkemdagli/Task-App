@@ -43,7 +43,7 @@ async function makeSetup() {
   const team = await createTeam({ name: 'T' }, admin);
   await addMemberByDisplayId(team.id, assignee.displayId, admin);
   const task = await tasksService.createTask(
-    { title: 'Task', priority: 'low', assigneeId: assignee.id, teamId: team.id },
+    { title: 'Task', priority: 'low', assigneeIds: [assignee.id], teamId: team.id },
     admin,
   );
   return { admin, assignee, team, task };
@@ -98,7 +98,7 @@ describe('createComment', () => {
     await addMemberByDisplayId(team.id, m1.displayId, admin);
     await addMemberByDisplayId(team.id, m2.displayId, admin);
     const task = await tasksService.createTask(
-      { title: 'T', priority: 'low', assigneeId: m1.id, teamId: team.id },
+      { title: 'T', priority: 'low', assigneeIds: [m1.id], teamId: team.id },
       admin,
     );
     // Sadece bu test'ten gelen bildirimleri say: temizle, 1 yorum yap, kontrol et

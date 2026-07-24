@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import type { NotificationType } from '@prisma/client';
+import type { NotificationType, TaskStatus } from '@prisma/client';
 
 /**
  * Tek bir kullanıcıya notification kaydı ekler. Gösterim UI'ı faz 6'da gelecek.
@@ -30,16 +30,18 @@ export async function notifyTaskAssigned(
 }
 
 /**
- * Yorum eklendiğinde: assigner + assignee + önceki yorum yazarlarına bildirim.
+ * Yorum eklendiğinde: assigner + tüm assignees + önceki yorum yazarlarına bildirim.
  * Yorumu yazan kişi kendisine bildirim almaz.
  */
 export async function notifyTaskCommented(
-  task: { id: string; title: string; assignerId: string; assigneeId: string },
+  task: { id: string; title: string; assignerId: string; assigneeIds: string[] },
   commentAuthorId: string,
 ): Promise<void> {
   const recipientIds = new Set<string>();
   if (task.assignerId !== commentAuthorId) recipientIds.add(task.assignerId);
-  if (task.assigneeId !== commentAuthorId) recipientIds.add(task.assigneeId);
+  for (const uid of task.assigneeIds) {
+    if (uid !== commentAuthorId) recipientIds.add(uid);
+  }
 
   const priorCommenters = await prisma.taskComment.findMany({
     where: {
@@ -56,6 +58,60 @@ export async function notifyTaskCommented(
   await Promise.all(
     Array.from(recipientIds).map((userId) =>
       notifyUser(userId, 'task_commented', { taskId: task.id, taskTitle: task.title }),
+    ),
+  );
+}
+
+/**
+ * Multi-assignee status teklifinde ack bekleyen assignees'e bildirim.
+ * Teklif eden kişi (proposer) kendine bildirim almaz.
+ */
+export async function notifyTaskStatusPending(
+  recipientIds: string[],
+  task: { id: string; title: string },
+  proposedStatus: TaskStatus,
+  proposedById: string,
+  proposedByName: string,
+): Promise<void> {
+  const targets = new Set<string>();
+  for (const uid of recipientIds) {
+    if (uid !== proposedById) targets.add(uid);
+  }
+  await Promise.all(
+    Array.from(targets).map((userId) =>
+      notifyUser(userId, 'task_status_pending', {
+        taskId: task.id,
+        taskTitle: task.title,
+        proposedStatus,
+        proposedBy: proposedById,
+        proposedByName,
+      }),
+    ),
+  );
+}
+
+/**
+ * Status değişikliği tüm assignees'e bildirim (actor hariç).
+ */
+export async function notifyTaskStatusChanged(
+  recipientIds: string[],
+  task: { id: string; title: string },
+  oldStatus: TaskStatus,
+  newStatus: TaskStatus,
+  actorId: string,
+): Promise<void> {
+  const targets = new Set<string>();
+  for (const uid of recipientIds) {
+    if (uid !== actorId) targets.add(uid);
+  }
+  await Promise.all(
+    Array.from(targets).map((userId) =>
+      notifyUser(userId, 'task_status_changed', {
+        taskId: task.id,
+        taskTitle: task.title,
+        oldStatus,
+        newStatus,
+      }),
     ),
   );
 }

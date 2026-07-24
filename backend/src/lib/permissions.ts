@@ -63,7 +63,9 @@ export type TaskForPerm = {
   id: string;
   teamId: string;
   assignerId: string;
-  assigneeId: string;
+  assignees: Array<{ userId: string }>;
+  pendingStatus: import('@prisma/client').TaskStatus | null;
+  pendingProposedBy: string | null;
 };
 
 /** Görev oluşturma: companyAdmin veya hedef takımın teamAdmin'i. */
@@ -87,9 +89,29 @@ export async function assertCanViewTask(
   }
 }
 
-/** Görev durumu güncelleme: assignee, teamAdmin veya companyAdmin. */
+/** Görev durumu güncelleme: assignees içinden biri, teamAdmin veya companyAdmin. */
 export async function assertCanUpdateTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (task.assigneeId === actor.id) return;
+  if (task.assignees.some((a) => a.userId === actor.id)) return;
+  if (await isTeamAdminOf(actor, task.teamId)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
+/** Multi-assignee task'ta status teklifi: assignee veya admin. */
+export async function assertCanProposeTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
+  if (task.assignees.some((a) => a.userId === actor.id)) return;
+  if (await isTeamAdminOf(actor, task.teamId)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
+/** Multi-assignee task ack: yalnız assignees. */
+export async function assertCanAckTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
+  if (task.assignees.some((a) => a.userId === actor.id)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
+/** Pending status teklifini iptal: proposer veya admin. */
+export async function assertCanCancelTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
+  if (task.pendingProposedBy === actor.id) return;
   if (await isTeamAdminOf(actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
@@ -110,6 +132,12 @@ export async function assertCanUpdateTaskFields(actor: Actor, task: TaskForPerm)
 /** Görev silme: yalnız teamAdmin veya companyAdmin. */
 export async function assertCanDeleteTask(actor: Actor, task: TaskForPerm): Promise<void> {
   if (await isTeamAdminOf(actor, task.teamId)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
+/** Takım üyesi ekleme/çıkarma: bu takımın teamAdmin'i veya companyAdmin. */
+export async function assertCanManageTeam(actor: Actor, teamId: string): Promise<void> {
+  if (await isTeamAdminOf(actor, teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 

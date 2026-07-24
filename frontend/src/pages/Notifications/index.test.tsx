@@ -185,15 +185,16 @@ describe('NotificationsPage', () => {
     getSpy = vi
       .spyOn(api, 'get')
       .mockResolvedValueOnce({
-        // useNotifications hook on mount
         data: { items: [], unreadCount: 0, nextCursor: null },
       } as never)
       .mockResolvedValueOnce({
-        // page fetch: page 1
         data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
       } as never)
       .mockResolvedValueOnce({
-        // page fetch: page 2 (after Next click)
+        // walk from page 1: no more pages
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
         data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: null },
       } as never);
 
@@ -222,7 +223,15 @@ describe('NotificationsPage', () => {
         data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
       } as never)
       .mockResolvedValueOnce({
-        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: null },
+        // walk from page 1 → null (no further pages discovered before click)
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from page 2 → null
+        data: { items: [], unreadCount: 0, nextCursor: null },
       } as never)
       .mockResolvedValueOnce({
         data: { items: [makeItem('p1-n1-again')], unreadCount: 0, nextCursor: 'C2' },
@@ -237,6 +246,116 @@ describe('NotificationsPage', () => {
     await user.click(screen.getByTestId('page-prev'));
     expect(
       await screen.findByTestId('notification-item-p1-n1-again'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders one page-number button per page discovered, active page highlighted', async () => {
+    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: null },
+    } as never);
+
+    renderPage();
+
+    const btn1 = await screen.findByTestId('page-num-1');
+    expect(btn1).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('page-num-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('page-num-2')).not.toBeInTheDocument();
+  });
+
+  it('walks forward on mount to discover all pages', async () => {
+    // Mount → page 1 (C2) → walk C2 → walk C3 → walk null.
+    // User never clicks anything; walk must populate cursors=[C2,C3] and render 3 buttons.
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from C2 → discover C3
+        data: { items: [], unreadCount: 0, nextCursor: 'C3' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from C3 → null (end)
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never);
+
+    renderPage();
+
+    expect(await screen.findByTestId('page-num-1')).toBeInTheDocument();
+    expect(await screen.findByTestId('page-num-2')).toBeInTheDocument();
+    expect(await screen.findByTestId('page-num-3')).toBeInTheDocument();
+    expect(screen.queryByTestId('page-num-4')).not.toBeInTheDocument();
+  });
+
+  it('renders second page button after Next is clicked', async () => {
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from page 1 → discover C3
+        data: { items: [], unreadCount: 0, nextCursor: 'C3' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from page 2 → null
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
+      } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId('page-next'));
+    await screen.findByTestId('notification-item-p2-n1');
+
+    expect(screen.getByTestId('page-num-1')).toBeInTheDocument();
+    expect(screen.getByTestId('page-num-2')).toBeInTheDocument();
+    expect(screen.getByTestId('page-num-2')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('page-num-1')).not.toHaveAttribute('aria-current');
+  });
+
+  it('navigates to a specific page when its number button is clicked', async () => {
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from page 1 → null
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
+      } as never)
+      .mockResolvedValueOnce({
+        // walk from page 2 → null
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1-back')], unreadCount: 0, nextCursor: 'C2' },
+      } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId('page-next'));
+    await screen.findByTestId('notification-item-p2-n1');
+
+    await user.click(screen.getByTestId('page-num-1'));
+    expect(
+      await screen.findByTestId('notification-item-p1-n1-back'),
     ).toBeInTheDocument();
   });
 });

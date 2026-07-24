@@ -211,6 +211,42 @@ describe('addMemberByDisplayId', () => {
     const updated = await prisma.user.findUnique({ where: { id: r.user.id } });
     expect(updated?.tenantId).toBe(admin.tenantId);
   });
+
+  it('per-team teamAdmin (TeamMember.role=teamAdmin) can add (User.role=member)', async () => {
+    // JWT'de User.role=member, ama bu takımda TeamMember.role=teamAdmin → yetkili.
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const teamAdmin = await makeMember('ta@a.com', admin.tenantId);
+    const newcomer = await makeMember('new@a.com', admin.tenantId);
+    const t = await createTeam({ name: 'Eng' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: t.id, userId: teamAdmin.id, role: 'teamAdmin' },
+    });
+    const m = await addMemberByDisplayId(t.id, newcomer.displayId, {
+      id: teamAdmin.id,
+      role: 'member',
+      tenantId: teamAdmin.tenantId,
+    });
+    expect(m.userId).toBe(newcomer.id);
+  });
+
+  it('per-team teamAdmin of OTHER team cannot add (403)', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const teamAdmin = await makeMember('ta@a.com', admin.tenantId);
+    const newcomer = await makeMember('new@a.com', admin.tenantId);
+    const tA = await createTeam({ name: 'A' }, admin);
+    const tB = await createTeam({ name: 'B' }, admin);
+    // teamAdmin sadece tB'de admin
+    await prisma.teamMember.create({
+      data: { teamId: tB.id, userId: teamAdmin.id, role: 'teamAdmin' },
+    });
+    await expect(
+      addMemberByDisplayId(tA.id, newcomer.displayId, {
+        id: teamAdmin.id,
+        role: 'member',
+        tenantId: teamAdmin.tenantId,
+      }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
 });
 
 describe('removeMember', () => {
@@ -257,6 +293,28 @@ describe('removeMember', () => {
     const b = await makeAdmin('b@b.com', 'Globex');
     const tA = await createTeam({ name: 'TA' }, a);
     await expect(removeMember(tA.id, a.id, b)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('per-team teamAdmin can remove member (User.role=member)', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const teamAdmin = await makeMember('ta@a.com', admin.tenantId);
+    const target = await makeMember('m@a.com', admin.tenantId);
+    const t = await createTeam({ name: 'Eng' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: t.id, userId: teamAdmin.id, role: 'teamAdmin' },
+    });
+    await prisma.teamMember.create({
+      data: { teamId: t.id, userId: target.id, role: 'member' },
+    });
+    await removeMember(t.id, target.id, {
+      id: teamAdmin.id,
+      role: 'member',
+      tenantId: teamAdmin.tenantId,
+    });
+    const after = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId: t.id, userId: target.id } },
+    });
+    expect(after).toBeNull();
   });
 });
 

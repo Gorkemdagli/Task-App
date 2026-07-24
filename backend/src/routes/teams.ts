@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { requireRole } from '../middleware/role';
+import { requireRole, requireTeamAdmin } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
 import { createTeamSchema, addMemberSchema } from '../schemas/teams.schema';
@@ -57,7 +57,7 @@ teamsRouter.get('/:id', async (req, res, next) => {
 teamsRouter.post(
   '/:id/members',
   memberWriteLimiter,
-  requireRole(['companyAdmin']),
+  requireTeamAdmin(),
   validateBody(addMemberSchema),
   async (req, res, next) => {
     try {
@@ -76,7 +76,7 @@ teamsRouter.post(
 teamsRouter.delete(
   '/:id/members/:userId',
   memberWriteLimiter,
-  requireRole(['companyAdmin']),
+  requireTeamAdmin(),
   async (req, res, next) => {
     try {
       await teamsService.removeMember(req.params.id, req.params.userId, req.user!);

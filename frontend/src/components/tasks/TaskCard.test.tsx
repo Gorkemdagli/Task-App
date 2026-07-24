@@ -14,12 +14,22 @@ const baseTask: Task = {
   archivedAt: null,
   teamId: 'team-1',
   assignerId: 'u1',
-  assigneeId: 'u2',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  pendingStatus: null,
+  pendingProposedBy: null,
+  pendingProposedAt: null,
+  pendingProposer: null,
+  statusAcks: [],
   team: { id: 'team-1', name: 'UX', tenantId: 'tnt-1' },
   assigner: { id: 'u1', displayId: 'AAAAA', fullName: 'Ali Yılmaz', avatarUrl: null },
-  assignee: { id: 'u2', displayId: 'BBBBB', fullName: 'Selin Demir', avatarUrl: null },
+  assignees: [
+    {
+      userId: 'u2',
+      assignedAt: new Date().toISOString(),
+      user: { id: 'u2', displayId: 'BBBBB', fullName: 'Selin Demir', avatarUrl: null },
+    },
+  ],
 };
 
 function Wrap({ children }: { children: React.ReactNode }) {
@@ -125,5 +135,49 @@ describe('TaskCard', () => {
       </Wrap>,
     );
     expect(container.textContent).toMatch(/Yarın|Bugün/);
+  });
+
+  it('hides pending badge and yellow styling when current user is proposer', () => {
+    const pendingTask = {
+      ...baseTask,
+      pendingStatus: 'in_progress' as const,
+      pendingProposer: {
+        id: 'u2',
+        displayId: 'BBBBB',
+        fullName: 'Selin Demir',
+        avatarUrl: null,
+      },
+    };
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={pendingTask} currentUserId="u2" />
+      </Wrap>,
+    );
+    const card = container.querySelector('[data-testid="task-card-t1"]');
+    expect(card?.getAttribute('data-pending')).not.toBe('true');
+    expect(card?.className).not.toContain('border-yellow-500');
+    expect(container.textContent).not.toMatch(/Onay Bekliyor/);
+  });
+
+  it('shows pending badge and yellow styling when current user is not proposer', () => {
+    const pendingTask = {
+      ...baseTask,
+      pendingStatus: 'in_progress' as const,
+      pendingProposer: {
+        id: 'u2',
+        displayId: 'BBBBB',
+        fullName: 'Selin Demir',
+        avatarUrl: null,
+      },
+    };
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={pendingTask} currentUserId="u-other" />
+      </Wrap>,
+    );
+    const card = container.querySelector('[data-testid="task-card-t1"]');
+    expect(card?.getAttribute('data-pending')).toBe('true');
+    expect(card?.className).toContain('border-yellow-500');
+    expect(container.textContent).toMatch(/Onay Bekliyor/);
   });
 });

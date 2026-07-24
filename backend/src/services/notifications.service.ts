@@ -1,20 +1,16 @@
-import pino from 'pino';
 import type { Prisma } from '@prisma/client';
-import { env } from '../env';
 import { prisma } from '../lib/prisma';
-
-const logger = pino({
-  level: env.LOG_LEVEL,
-  transport:
-    env.NODE_ENV === 'development'
-      ? { target: 'pino-pretty', options: { colorize: true } }
-      : undefined,
-});
+import { logger } from '../lib/logger';
 
 export type NotificationDTO = {
   id: string;
   userId: string;
-  type: 'task_assigned' | 'task_commented' | 'message_received';
+  type:
+    | 'task_assigned'
+    | 'task_commented'
+    | 'message_received'
+    | 'task_status_pending'
+    | 'task_status_changed';
   payload: Prisma.JsonValue;
   readAt: Date | null;
   createdAt: Date;

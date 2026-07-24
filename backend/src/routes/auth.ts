@@ -42,10 +42,15 @@ authRouter.post('/login', loginLimiter, validateBody(loginSchema), async (req, r
 authRouter.post('/refresh', refreshLimiter, async (req, res, next) => {
   try {
     const cookie = req.cookies?.refreshToken;
-    if (!cookie) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
-    const tokens = await authService.refresh(cookie);
-    setRefreshCookie(res, tokens.refreshToken);
-    res.json({ accessToken: tokens.accessToken });
+    if (!cookie) {
+      // Oturum yok → hata değil, normal durum. 204 dönünce browser
+      // network paneli 4xx gibi kırmızı loglamaz.
+      res.status(204).end();
+      return;
+    }
+    const r = await authService.refresh(cookie);
+    setRefreshCookie(res, r.refreshToken);
+    res.json({ user: r.user, accessToken: r.accessToken });
   } catch (e) {
     next(e);
   }

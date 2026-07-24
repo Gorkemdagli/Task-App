@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { ChevronDown, X } from 'lucide-react';
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUiStore } from '@/stores/uiStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { useTeams, useTeam } from '@/hooks/queries/useTeams';
+import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
 const roleLabel: Record<'companyAdmin' | 'teamAdmin' | 'member', string> = {
@@ -45,8 +47,16 @@ export function MobileSidebar() {
 
   const { data: teams, isLoading: teamsLoading } = useTeams();
   const { data: activeTeam } = useTeam(activeTeamId ?? undefined);
+  // Stale activeTeamId (eski kullanıcı/logout sonrası) → listede yoksa temizle.
+  useEffect(() => {
+    if (activeTeamId && teams && !teams.some((t) => t.id === activeTeamId)) {
+      setActiveTeamId(null);
+    }
+  }, [activeTeamId, teams, setActiveTeamId]);
   const activeTeamName =
     activeTeam?.name ?? teams?.find((t) => t.id === activeTeamId)?.name ?? 'Takım seç';
+
+  const visibleNav = PRIMARY_NAV.filter((item) => canSeeNavItem(item, user?.role));
 
   function handleSelectTeam(teamId: string) {
     setActiveTeamId(teamId);
@@ -83,9 +93,31 @@ export function MobileSidebar() {
               </DialogPrimitive.Close>
             </div>
 
+            <nav aria-label="Birincil gezinme" className="border-b border-border p-2">
+              {visibleNav.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                      isActive
+                        ? 'bg-secondary font-semibold text-primary'
+                        : 'text-foreground hover:bg-secondary',
+                    )
+                  }
+                >
+                  <item.Icon className="h-4 w-4" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
             <div className="border-b border-border p-4">
               <p className="text-xs uppercase tracking-wide text-secondary-foreground">Şirket</p>
-              <p className="truncate text-sm font-semibold text-foreground">TaskFlow Şirketim</p>
+              <p className="truncate text-sm font-semibold text-foreground">
+                {user?.tenantName ?? 'TaskFlow Şirketim'}
+              </p>
               <p className="mt-1 text-xs text-secondary-foreground">
                 {user ? roleLabel[user.role] : '—'}
               </p>

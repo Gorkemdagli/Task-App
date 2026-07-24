@@ -36,7 +36,7 @@ function toComment(
   };
 }
 
-/** Yorum ekler. Bildirim: assigner + assignee + önceki yorum yazarlarına. */
+/** Yorum ekler. Bildirim: assigner + tüm assignees + önceki yorum yazarlarına. */
 export async function createComment(
   taskId: string,
   input: CreateCommentInput,
@@ -49,17 +49,22 @@ export async function createComment(
       title: true,
       teamId: true,
       assignerId: true,
-      assigneeId: true,
+      pendingStatus: true,
+      pendingProposedBy: true,
+      assignees: { select: { userId: true } },
       team: { select: { tenantId: true } },
     },
   });
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
 
+  const assigneeIds = task.assignees.map((a) => a.userId);
   await assertCanCommentOnTask(actor, {
     id: task.id,
     teamId: task.teamId,
     assignerId: task.assignerId,
-    assigneeId: task.assigneeId,
+    assignees: assigneeIds.map((userId) => ({ userId })),
+    pendingStatus: task.pendingStatus,
+    pendingProposedBy: task.pendingProposedBy,
     team: { tenantId: task.team.tenantId },
   });
 
@@ -79,7 +84,7 @@ export async function createComment(
         id: task.id,
         title: task.title,
         assignerId: task.assignerId,
-        assigneeId: task.assigneeId,
+        assigneeIds,
       },
       actor.id,
     );
@@ -98,7 +103,9 @@ export async function listComments(taskId: string, actor: Actor): Promise<Commen
       id: true,
       teamId: true,
       assignerId: true,
-      assigneeId: true,
+      pendingStatus: true,
+      pendingProposedBy: true,
+      assignees: { select: { userId: true } },
       team: { select: { tenantId: true } },
     },
   });
@@ -108,7 +115,9 @@ export async function listComments(taskId: string, actor: Actor): Promise<Commen
     id: task.id,
     teamId: task.teamId,
     assignerId: task.assignerId,
-    assigneeId: task.assigneeId,
+    assignees: task.assignees.map((a) => ({ userId: a.userId })),
+    pendingStatus: task.pendingStatus,
+    pendingProposedBy: task.pendingProposedBy,
     team: { tenantId: task.team.tenantId },
   });
 

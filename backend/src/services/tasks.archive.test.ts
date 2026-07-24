@@ -46,7 +46,7 @@ describe('archiveExpiredTasks', () => {
   it('archives done tasks with past deadline', async () => {
     const { admin, member, team } = await makeSetup();
     const t = await tasksService.createTask(
-      { title: 'done-past', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'done-past', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.update({
@@ -64,7 +64,7 @@ describe('archiveExpiredTasks', () => {
   it('skips done tasks with future deadline', async () => {
     const { admin, member, team } = await makeSetup();
     const t = await tasksService.createTask(
-      { title: 'done-future', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'done-future', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.update({
@@ -82,7 +82,7 @@ describe('archiveExpiredTasks', () => {
   it('skips already archived tasks', async () => {
     const { admin, member, team } = await makeSetup();
     const t = await tasksService.createTask(
-      { title: 'already', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'already', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const archivedAt = new Date();
@@ -101,7 +101,7 @@ describe('archiveExpiredTasks', () => {
   it('skips non-done tasks even with past deadline', async () => {
     const { admin, member, team } = await makeSetup();
     const t = await tasksService.createTask(
-      { title: 'todo-past', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'todo-past', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.update({
@@ -116,11 +116,11 @@ describe('archiveExpiredTasks', () => {
   it('archives multiple matching tasks in one run', async () => {
     const { admin, member, team } = await makeSetup();
     const t1 = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const t2 = await tasksService.createTask(
-      { title: 'B', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'B', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.updateMany({

@@ -4,7 +4,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginSchema, type LoginInput } from '../../lib/schemas';
 import { api } from '../../lib/api';
+import { queryClient } from '../../lib/react-query';
 import { useAuthStore } from '../../stores/authStore';
+import { useTeamStore } from '../../stores/teamStore';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 
@@ -12,6 +14,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
+  const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
@@ -25,6 +28,8 @@ export function LoginPage() {
       const res = await api.post('/auth/login', data);
       setAccessToken(res.data.accessToken);
       setUser(res.data.user);
+      clearActiveTeam();
+      queryClient.clear();
       navigate('/dashboard');
     } catch (err: any) {
       setFormError(err?.response?.data?.message ?? 'Beklenmeyen bir hata oluştu');

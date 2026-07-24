@@ -91,8 +91,11 @@ export function NotificationsPage() {
       })
       .then((res) => {
         setPageData({ items: res.data.items, nextCursor: res.data.nextCursor });
-        if (pageIndex === cursors.length && res.data.nextCursor) {
-          setCursors((prev) => [...prev, res.data.nextCursor!]);
+        const newNextCursor = res.data.nextCursor;
+        if (newNextCursor) {
+          setCursors((prev) =>
+            prev.includes(newNextCursor) ? prev : [...prev, newNextCursor],
+          );
         }
         setLoading(false);
       })
@@ -106,6 +109,31 @@ export function NotificationsPage() {
     // cursors read at call time only — re-running on cursor change would re-trigger infinite loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex]);
+
+  // Sayfa sayısını önceden keşfetmek için limit=1 ile ileri yürüyüş.
+  // Sadece nextCursor'a bakılır — kullanıcı sayfaya tıklayana kadar gerçek veri çekilmez.
+  useEffect(() => {
+    const lastCursor = cursors[cursors.length - 1];
+    if (!lastCursor) return;
+    const controller = new AbortController();
+    api
+      .get<{ items: NotificationItemType[]; nextCursor: string | null }>(
+        `/notifications?limit=1&cursor=${encodeURIComponent(lastCursor)}`,
+        { signal: controller.signal },
+      )
+      .then((res) => {
+        const newNextCursor = res.data.nextCursor;
+        if (newNextCursor) {
+          setCursors((prev) =>
+            prev.includes(newNextCursor) ? prev : [...prev, newNextCursor],
+          );
+        }
+      })
+      .catch(() => {
+        /* walk silent fail — UI navigasyonu bozmaz */
+      });
+    return () => controller.abort();
+  }, [cursors]);
 
   const groups = useMemo(
     () => (pageData ? groupByDay(pageData.items, new Date()) : []),
@@ -194,7 +222,7 @@ export function NotificationsPage() {
           </ul>
 
           <nav
-            className="flex items-center justify-center gap-2 pt-2"
+            className="flex items-center justify-center gap-1 pt-2"
             aria-label="Bildirim sayfaları"
           >
             <Button
@@ -209,6 +237,31 @@ export function NotificationsPage() {
               <ChevronLeft className="mr-1 h-4 w-4" aria-hidden />
               Önceki
             </Button>
+
+            {Array.from({ length: cursors.length + 1 }, (_, i) => i + 1).map(
+              (pageNum) => {
+                const isActive = pageNum === pageIndex + 1;
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setPageIndex(pageNum - 1)}
+                    aria-current={isActive ? 'page' : undefined}
+                    aria-label={`Sayfa ${pageNum}`}
+                    data-testid={`page-num-${pageNum}`}
+                    className={cn(
+                      'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary text-white'
+                        : 'text-foreground hover:bg-secondary',
+                    )}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              },
+            )}
+
             <Button
               type="button"
               variant="secondary"

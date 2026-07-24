@@ -1,17 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
 
-// Sidebar now fetches live data via React Query. Stub the hooks so this
-// component-level test focuses on chrome (tenant header, collapse button)
-// rather than team data shape (covered by integration/manual tests).
+const teams = [
+  { id: 'z-team', name: 'Z Takımı', tenantId: 't1' },
+  { id: 'a-team', name: 'A Takımı', tenantId: 't1' },
+];
+
 vi.mock('@/hooks/queries/useTeams', () => ({
-  useTeams: () => ({ data: [], isLoading: false, isError: false }),
-  useTeam: () => ({ data: null, isLoading: false, isError: false }),
+  useTeams: () => ({ data: teams, isLoading: false, isError: false }),
+  useTeam: (id?: string) => ({
+    data: teams.find((team) => team.id === id)
+      ? { ...teams.find((team) => team.id === id), members: [] }
+      : null,
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 const user: AuthUser = {
@@ -26,6 +35,7 @@ const user: AuthUser = {
 describe('Sidebar', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user });
+    useTeamStore.setState({ activeTeamId: null, _hasHydrated: true });
     useUiStore.setState({ sidebarCollapsed: false });
   });
 
@@ -43,9 +53,17 @@ describe('Sidebar', () => {
     expect(screen.getByText('Şirket Admini')).toBeInTheDocument();
   });
 
-  it('renders empty-state hint when no active team is set', () => {
+  it('selects alphabetically first team when no active team is set', async () => {
     renderSidebar();
-    expect(screen.getByText(/Üyeleri görmek için bir takım seç/)).toBeInTheDocument();
+    await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBe('a-team'));
+    expect(screen.getByText('A Takımı')).toBeInTheDocument();
+  });
+
+  it('keeps valid active team selection', async () => {
+    useTeamStore.setState({ activeTeamId: 'z-team', _hasHydrated: true });
+    renderSidebar();
+    await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBe('z-team'));
+    expect(screen.getByText('Z Takımı')).toBeInTheDocument();
   });
 
   it('collapse button toggles ui store', async () => {

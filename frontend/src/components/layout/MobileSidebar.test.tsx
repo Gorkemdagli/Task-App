@@ -42,7 +42,7 @@ describe('MobileSidebar', () => {
   it('renders tenant header with correct role label when open', () => {
     useUiStore.setState({ mobileSheetOpen: true });
     renderMs();
-    expect(screen.getByText('TaskFlow Şirketim')).toBeInTheDocument();
+    expect(screen.getByText('Acme A.Ş.')).toBeInTheDocument();
     expect(screen.getByText('Takım Admini')).toBeInTheDocument();
   });
 

@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/hooks/tasks';
+import { AssigneeAvatarStack } from './AssigneeAvatarStack';
+import { PendingStatusBadge } from './PendingStatusBadge';
 
 const PRIORITY_BORDER: Record<Task['priority'], string> = {
   high: 'border-l-priority-high',
@@ -41,12 +43,25 @@ interface TaskCardProps {
   task: Task;
   draggable?: boolean;
   disabled?: boolean;
+  /** Pending badge + sarı border yalnız non-proposer için görünür. */
+  currentUserId?: string;
 }
 
-export function TaskCard({ task, draggable = false, disabled = false }: TaskCardProps) {
+export function TaskCard({
+  task,
+  draggable = false,
+  disabled = false,
+  currentUserId,
+}: TaskCardProps) {
+  const isPending =
+    task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
+
+  // Pending varken sürükleme kilitli (admin override yoksa)
+  const dragEnabled = draggable && !disabled && !isPending;
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
-    disabled: !draggable || disabled,
+    disabled: !dragEnabled,
   });
 
   const overdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
@@ -58,16 +73,18 @@ export function TaskCard({ task, draggable = false, disabled = false }: TaskCard
   return (
     <div
       ref={handleRef}
-      {...(draggable && !disabled ? listeners : {})}
+      {...(dragEnabled ? listeners : {})}
       {...(draggable ? attributes : {})}
       data-testid={`task-card-${task.id}`}
       data-priority={task.priority}
+      data-pending={isPending ? 'true' : undefined}
       className={cn(
         'group relative block rounded-md border border-border border-l-4 bg-card text-card-foreground shadow-card transition-colors hover:border-primary/50',
         PRIORITY_BORDER[task.priority],
         isDragging && 'opacity-50',
         disabled && 'cursor-not-allowed opacity-60',
-        draggable && !disabled && 'cursor-grab active:cursor-grabbing',
+        dragEnabled && 'cursor-grab active:cursor-grabbing',
+        isPending && 'border-yellow-500/60 bg-yellow-500/5',
       )}
     >
       <Link
@@ -75,7 +92,6 @@ export function TaskCard({ task, draggable = false, disabled = false }: TaskCard
         className="block p-3"
         draggable={false}
         onClick={(e) => {
-          // Sürükleme başladıysa link tıklamasını engelle
           if (isDragging) e.preventDefault();
         }}
       >
@@ -88,6 +104,7 @@ export function TaskCard({ task, draggable = false, disabled = false }: TaskCard
           >
             {PRIORITY_LABEL[task.priority]}
           </span>
+          {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
         </div>
         <h3 className="mb-1 line-clamp-2 text-sm font-medium text-foreground">{task.title}</h3>
         {task.description && (
@@ -98,10 +115,10 @@ export function TaskCard({ task, draggable = false, disabled = false }: TaskCard
             📅 {formatDeadline(task.deadline)}
           </span>
           <span className="flex items-center gap-1 truncate">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold">
-              {task.assignee.fullName.charAt(0)}
-            </span>
-            <span className="truncate">{task.assignee.fullName}</span>
+            <AssigneeAvatarStack assignees={task.assignees} max={2} size="sm" />
+            {task.assignees.length === 1 && (
+              <span className="truncate">{task.assignees[0].user.fullName}</span>
+            )}
           </span>
         </div>
       </Link>

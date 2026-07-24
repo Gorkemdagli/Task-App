@@ -10,7 +10,7 @@ export function isCompanyAdmin(user: AuthUser | null | undefined): boolean {
  * frontend'de takım-üyelik bilgisi yoksa sadece companyAdmin sayılır. */
 export function canManageTaskInTeam(
   user: AuthUser | null | undefined,
-  _task: Pick<Task, 'teamId' | 'assignerId' | 'assigneeId'>,
+  _task: Pick<Task, 'teamId' | 'assignerId' | 'assignees'>,
   isTeamAdminOfThisTeam: boolean,
 ): boolean {
   if (!user) return false;
@@ -18,15 +18,15 @@ export function canManageTaskInTeam(
   return isTeamAdminOfThisTeam;
 }
 
-/** Kullanıcı bu görevin durumunu değiştirebilir mi? */
+/** Kullanıcı bu görevin durumunu değiştirebilir mi? (assignee'lardan biri veya admin) */
 export function canUpdateTaskStatus(
   user: AuthUser | null | undefined,
-  task: Pick<Task, 'assigneeId'>,
+  task: Pick<Task, 'assignees'>,
   isTeamAdminOfThisTeam: boolean,
 ): boolean {
   if (!user) return false;
   if (isCompanyAdmin(user)) return true;
-  if (task.assigneeId === user.id) return true;
+  if (task.assignees.some((a) => a.userId === user.id)) return true;
   return isTeamAdminOfThisTeam;
 }
 

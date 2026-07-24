@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -143,22 +143,64 @@ describe('Topbar notification bell', () => {
     expect(screen.queryByTestId('notification-badge')).not.toBeInTheDocument();
   });
 
-  it('opens panel when bell clicked', async () => {
-    getSpy.mockResolvedValue({
-      data: { items: [], unreadCount: 0, nextCursor: null },
-    } as never);
+  it('drops previous user notifications when auth user changes', async () => {
+    getSpy
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: 'old',
+              type: 'task_assigned',
+              payload: { taskId: 't1', taskTitle: 'Eski görev', actorName: 'Eski Kullanıcı' },
+              readAt: null,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          unreadCount: 1,
+          nextCursor: null,
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: 'new',
+              type: 'task_assigned',
+              payload: { taskId: 't2', taskTitle: 'Yeni görev', actorName: 'Yeni Kullanıcı' },
+              readAt: null,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          unreadCount: 1,
+          nextCursor: null,
+        },
+      } as never);
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const view = renderTopbar(member, qc);
     const user = userEvent.setup();
-    renderTopbar(member, qc);
 
-    await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith('/notifications');
+    await user.click(await screen.findByTestId('notification-bell'));
+    expect(await screen.findByText(/Eski Kullanıcı/)).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    act(() => {
+      useAuthStore.setState({
+        accessToken: 't2',
+        user: { ...member, id: '2', fullName: 'Bora Kaya', email: 'b@x.com' },
+      });
+      qc.clear();
     });
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <Topbar />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
 
-    const bell = screen.getByRole('button', { name: /Bildirimler/ });
-    await user.click(bell);
-
-    expect(screen.getByTestId('empty-notifications')).toBeInTheDocument();
+    await user.click(screen.getByTestId('notification-bell'));
+    expect(await screen.findByText(/Yeni Kullanıcı/)).toBeInTheDocument();
+    expect(screen.queryByText(/Eski Kullanıcı/)).not.toBeInTheDocument();
   });
 });

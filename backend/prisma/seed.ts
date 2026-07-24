@@ -13,7 +13,6 @@
  * Çalıştırma: `npm run seed`
  */
 
-import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
@@ -143,30 +142,55 @@ async function seedTenant(
   });
 
   // Tasks — Engineering: 6, Design: 4 (toplam 10 per tenant)
-  const tasks: Prisma.TaskCreateManyInput[] = [];
+  const tasks: Array<{
+    id: string;
+    teamId: string;
+    title: string;
+    description: string | null;
+    status: 'todo' | 'in_progress' | 'done';
+    priority: 'low' | 'medium' | 'high';
+    assignerId: string;
+    assigneeUserIds: string[];
+  }> = [];
   for (let i = 1; i <= 6; i++) {
     tasks.push({
+      id: randomUUID(),
       teamId: engineeringTeamId,
       title: `Engineering Task ${i}`,
       description: `Description for engineering task ${i}`,
       status: i <= 3 ? 'todo' : i <= 5 ? 'in_progress' : 'done',
       priority: i % 3 === 0 ? 'high' : i % 3 === 1 ? 'low' : 'medium',
       assignerId: companyAdminId,
-      assigneeId: i % 2 === 0 ? memberIds[0] : memberIds[1],
+      // Task 1 multi-assignee (admin + member), diğerleri tek assignee
+      assigneeUserIds:
+        i === 1 ? [companyAdminId, memberIds[0]] : [i % 2 === 0 ? memberIds[0] : memberIds[1]],
     });
   }
   for (let i = 1; i <= 4; i++) {
     tasks.push({
+      id: randomUUID(),
       teamId: designTeamId,
       title: `Design Task ${i}`,
       description: null,
       status: i <= 2 ? 'todo' : 'in_progress',
       priority: 'medium',
       assignerId: companyAdminId,
-      assigneeId: memberIds[2],
+      assigneeUserIds: [memberIds[2]],
     });
   }
-  await prisma.task.createMany({ data: tasks });
+
+  await prisma.task.createMany({
+    data: tasks.map(({ assigneeUserIds: _ignored, ...rest }) => rest),
+  });
+  await prisma.taskAssignee.createMany({
+    data: tasks.flatMap((t) =>
+      t.assigneeUserIds.map((userId) => ({
+        id: randomUUID(),
+        taskId: t.id,
+        userId,
+      })),
+    ),
+  });
 
   // Channels + messages
   const engChannelId = randomUUID();

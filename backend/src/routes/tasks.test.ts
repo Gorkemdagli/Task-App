@@ -62,12 +62,12 @@ describe('createTask', () => {
   it('admin creates task and assigns to team member', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const task = await tasksService.createTask(
-      { title: 'Login bug', priority: 'high', assigneeId: member.id, teamId: team.id },
+      { title: 'Login bug', priority: 'high', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     expect(task.title).toBe('Login bug');
     expect(task.assignerId).toBe(admin.id);
-    expect(task.assigneeId).toBe(member.id);
+    expect(task.assignees.map((a) => a.userId)).toContain(member.id);
     expect(task.status).toBe('todo');
     expect(task.priority).toBe('high');
   });
@@ -75,7 +75,7 @@ describe('createTask', () => {
   it('teamAdmin of the team can create task', async () => {
     const { member, team } = await makeTeamWithTeamAdminMember();
     const t = await tasksService.createTask(
-      { title: 'T', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'T', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       member,
     );
     expect(t.assignerId).toBe(member.id);
@@ -88,7 +88,7 @@ describe('createTask', () => {
     await addMemberByDisplayId(team.id, member.displayId, admin);
     await expect(
       tasksService.createTask(
-        { title: 'Nope', priority: 'low', assigneeId: member.id, teamId: team.id },
+        { title: 'Nope', priority: 'low', assigneeIds: [member.id], teamId: team.id },
         member,
       ),
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
@@ -99,7 +99,7 @@ describe('createTask', () => {
     const outsider = await makeAdmin('out@b.com', 'Globex');
     await expect(
       tasksService.createTask(
-        { title: 'Bad', priority: 'low', assigneeId: outsider.id, teamId: team.id },
+        { title: 'Bad', priority: 'low', assigneeIds: [outsider.id], teamId: team.id },
         admin,
       ),
     ).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_ASSIGNEE' });
@@ -108,7 +108,7 @@ describe('createTask', () => {
   it('creates notification for assignee', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(
-      { title: 'Notif test', priority: 'medium', assigneeId: member.id, teamId: team.id },
+      { title: 'Notif test', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const notifs = await prisma.notification.findMany({ where: { userId: member.id } });
@@ -121,7 +121,7 @@ describe('createTask', () => {
     // admin henüz team üyesi değil, ekle
     await addMemberByDisplayId(team.id, admin.displayId, admin);
     await tasksService.createTask(
-      { title: 'Self', priority: 'low', assigneeId: admin.id, teamId: team.id },
+      { title: 'Self', priority: 'low', assigneeIds: [admin.id], teamId: team.id },
       admin,
     );
     const notifs = await prisma.notification.findMany({
@@ -137,11 +137,11 @@ describe('listTasks', () => {
   it('member sees only their team tasks', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await tasksService.createTask(
-      { title: 'B', priority: 'high', assigneeId: member.id, teamId: team.id },
+      { title: 'B', priority: 'high', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const list = await tasksService.listTasks({ limit: 50, offset: 0 } as never, member);
@@ -152,14 +152,14 @@ describe('listTasks', () => {
   it('admin sees all tasks in tenant', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const t2 = await createTeam({ name: 'Other' }, admin);
     // Admin t2'ye de üye olmalı ki kendine atayabilsin
     await addMemberByDisplayId(t2.id, admin.displayId, admin);
     await tasksService.createTask(
-      { title: 'B', priority: 'low', assigneeId: admin.id, teamId: t2.id },
+      { title: 'B', priority: 'low', assigneeIds: [admin.id], teamId: t2.id },
       admin,
     );
     const list = await tasksService.listTasks({ limit: 50, offset: 0 } as never, admin);
@@ -169,7 +169,7 @@ describe('listTasks', () => {
   it('cross-tenant member sees nothing', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const outsider = await makeAdmin('out@b.com', 'Globex');
@@ -180,7 +180,7 @@ describe('listTasks', () => {
   it('archived tasks hidden by default', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.update({ where: { id: t.id }, data: { archivedAt: new Date() } });
@@ -191,7 +191,7 @@ describe('listTasks', () => {
   it('archived tasks visible when includeArchived=true', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await prisma.task.update({ where: { id: t.id }, data: { archivedAt: new Date() } });
@@ -209,7 +209,7 @@ describe('updateTaskStatus', () => {
   it('assignee can update own task status', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const updated = await tasksService.updateTaskStatus(t.id, { status: 'in_progress' }, member);
@@ -219,7 +219,7 @@ describe('updateTaskStatus', () => {
   it('teamAdmin of the team can update any task status', async () => {
     const { member, team } = await makeTeamWithTeamAdminMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       member,
     );
     const updated = await tasksService.updateTaskStatus(t.id, { status: 'done' }, member);
@@ -229,7 +229,7 @@ describe('updateTaskStatus', () => {
   it('admin can update any task status', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const updated = await tasksService.updateTaskStatus(t.id, { status: 'done' }, admin);
@@ -244,7 +244,7 @@ describe('updateTaskStatus', () => {
     await addMemberByDisplayId(team.id, assignee.displayId, admin);
     await addMemberByDisplayId(team.id, intruder.displayId, admin);
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: assignee.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [assignee.id], teamId: team.id },
       admin,
     );
     await expect(
@@ -259,7 +259,7 @@ describe('updateTaskPriority', () => {
   it('assignee cannot change priority (403)', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await expect(
@@ -270,7 +270,7 @@ describe('updateTaskPriority', () => {
   it('teamAdmin of the team can change priority', async () => {
     const { member, team } = await makeTeamWithTeamAdminMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       member,
     );
     const updated = await tasksService.updateTaskPriority(t.id, { priority: 'high' }, member);
@@ -280,7 +280,7 @@ describe('updateTaskPriority', () => {
   it('admin can change priority', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const updated = await tasksService.updateTaskPriority(t.id, { priority: 'high' }, admin);
@@ -294,7 +294,7 @@ describe('deleteTask', () => {
   it('admin can delete task', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     await tasksService.deleteTask(t.id, admin);
@@ -308,7 +308,7 @@ describe('deleteTask', () => {
     const team = await createTeam({ name: 'T' }, admin);
     await addMemberByDisplayId(team.id, assignee.displayId, admin);
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: assignee.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [assignee.id], teamId: team.id },
       admin,
     );
     await expect(tasksService.deleteTask(t.id, assignee)).rejects.toMatchObject({
@@ -323,7 +323,7 @@ describe('tenant isolation', () => {
   it('cross-tenant user cannot access task (404)', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     const t = await tasksService.createTask(
-      { title: 'A', priority: 'low', assigneeId: member.id, teamId: team.id },
+      { title: 'A', priority: 'low', assigneeIds: [member.id], teamId: team.id },
       admin,
     );
     const outsider = await makeAdmin('out@b.com', 'Globex');

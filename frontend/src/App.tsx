@@ -36,7 +36,8 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const r = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-        if (r.ok) {
+        // 204 = oturum yok, beklenen durum. Body yok, r.json() çağırma.
+        if (r.ok && r.status !== 204) {
           const data = await r.json();
           setAccessToken(data.accessToken);
           // Refresh response now includes user (matches login/register shape).
