@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NotificationsPage } from './index';
@@ -17,7 +18,10 @@ const member: AuthUser = {
   tenantName: 'Acme A.Ş.',
 };
 
-function makeItem(id: string, overrides: Partial<NotificationItemType> = {}): NotificationItemType {
+function makeItem(
+  id: string,
+  overrides: Partial<NotificationItemType> = {},
+): NotificationItemType {
   return {
     id,
     type: 'task_assigned',
@@ -61,7 +65,10 @@ describe('NotificationsPage', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith('/notifications');
+      expect(getSpy).toHaveBeenCalledWith(
+        '/notifications?limit=10',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
 
     expect(screen.getByRole('heading', { name: 'Bildirimler' })).toBeInTheDocument();
@@ -114,9 +121,122 @@ describe('NotificationsPage', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith('/notifications');
+      expect(getSpy).toHaveBeenCalled();
     });
 
     expect(screen.queryByTestId('page-mark-all-read')).not.toBeInTheDocument();
+  });
+
+  it('renders date group headers Bugün / Dün / dd.MM.yyyy', async () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const fiveDaysAgo = new Date(today);
+    fiveDaysAgo.setDate(today.getDate() - 5);
+
+    const fmt = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${day}.${month}.${d.getFullYear()}`;
+    };
+
+    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        items: [
+          makeItem('today', { createdAt: today.toISOString() }),
+          makeItem('yest', { createdAt: yesterday.toISOString() }),
+          makeItem('old', { createdAt: fiveDaysAgo.toISOString() }),
+        ],
+        unreadCount: 0,
+        nextCursor: null,
+      },
+    } as never);
+
+    renderPage();
+
+    expect(await screen.findByText('Bugün')).toBeInTheDocument();
+    expect(screen.getByText('Dün')).toBeInTheDocument();
+    expect(screen.getByText(fmt(fiveDaysAgo))).toBeInTheDocument();
+  });
+
+  it('disables Prev on first page', async () => {
+    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: 'C2' },
+    } as never);
+
+    renderPage();
+
+    const prev = await screen.findByTestId('page-prev');
+    expect(prev).toBeDisabled();
+  });
+
+  it('disables Next when nextCursor is null', async () => {
+    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: null },
+    } as never);
+
+    renderPage();
+
+    const next = await screen.findByTestId('page-next');
+    expect(next).toBeDisabled();
+  });
+
+  it('fetches next page with cursor when Next is clicked', async () => {
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        // useNotifications hook on mount
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        // page fetch: page 1
+        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        // page fetch: page 2 (after Next click)
+        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: null },
+      } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const next = await screen.findByTestId('page-next');
+    await user.click(next);
+
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith(
+        '/notifications?limit=10&cursor=C2',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(await screen.findByTestId('notification-item-p2-n1')).toBeInTheDocument();
+  });
+
+  it('returns to previous page when Prev is clicked after Next', async () => {
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: null },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1-n1-again')], unreadCount: 0, nextCursor: 'C2' },
+      } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId('page-next'));
+    await screen.findByTestId('notification-item-p2-n1');
+
+    await user.click(screen.getByTestId('page-prev'));
+    expect(
+      await screen.findByTestId('notification-item-p1-n1-again'),
+    ).toBeInTheDocument();
   });
 });
