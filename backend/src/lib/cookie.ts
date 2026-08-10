@@ -12,9 +12,16 @@ const baseOptions = {
   maxAge: REFRESH_MAX_AGE_MS,
 };
 
+const clearCookieOptions = {
+  httpOnly: baseOptions.httpOnly,
+  secure: baseOptions.secure,
+  sameSite: baseOptions.sameSite,
+  path: baseOptions.path,
+};
+
 export function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE_NAME, token, baseOptions);
 }
 export function clearRefreshCookie(res: Response): void {
-  res.clearCookie(REFRESH_COOKIE_NAME, baseOptions);
+  res.clearCookie(REFRESH_COOKIE_NAME, clearCookieOptions);
 }

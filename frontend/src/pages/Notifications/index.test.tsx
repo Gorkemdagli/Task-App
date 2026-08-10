@@ -18,10 +18,7 @@ const member: AuthUser = {
   tenantName: 'Acme A.Ş.',
 };
 
-function makeItem(
-  id: string,
-  overrides: Partial<NotificationItemType> = {},
-): NotificationItemType {
+function makeItem(id: string, overrides: Partial<NotificationItemType> = {}): NotificationItemType {
   return {
     id,
     type: 'task_assigned',
@@ -36,7 +33,7 @@ function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -244,9 +241,7 @@ describe('NotificationsPage', () => {
     await screen.findByTestId('notification-item-p2-n1');
 
     await user.click(screen.getByTestId('page-prev'));
-    expect(
-      await screen.findByTestId('notification-item-p1-n1-again'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('notification-item-p1-n1-again')).toBeInTheDocument();
   });
 
   it('renders one page-number button per page discovered, active page highlighted', async () => {
@@ -354,8 +349,6 @@ describe('NotificationsPage', () => {
     await screen.findByTestId('notification-item-p2-n1');
 
     await user.click(screen.getByTestId('page-num-1'));
-    expect(
-      await screen.findByTestId('notification-item-p1-n1-back'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('notification-item-p1-n1-back')).toBeInTheDocument();
   });
 });

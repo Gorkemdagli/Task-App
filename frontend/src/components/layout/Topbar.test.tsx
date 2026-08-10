@@ -30,7 +30,7 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   const client = qc ?? new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Topbar />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -193,7 +193,7 @@ describe('Topbar notification bell', () => {
     });
     view.rerender(
       <QueryClientProvider client={qc}>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Topbar />
         </MemoryRouter>
       </QueryClientProvider>,

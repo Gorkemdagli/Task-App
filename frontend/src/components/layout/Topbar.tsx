@@ -35,6 +35,12 @@ import { cn } from '@/lib/utils';
  * - Mobile (<768px): hamburger replaces nav; nav lives inside MobileSidebar (Sheet)
  */
 export function Topbar() {
+  const userId = useAuthStore((s) => s.user?.id);
+
+  return <TopbarContent key={userId} />;
+}
+
+function TopbarContent() {
   const { mode, toggleMode } = useTheme();
   const { user, isCompanyAdmin } = useAuth();
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -50,11 +56,6 @@ export function Topbar() {
 
   const [accumulatedItems, setAccumulatedItems] = useState<typeof items>([]);
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
-
-  useEffect(() => {
-    setAccumulatedItems([]);
-    setCurrentCursor(null);
-  }, [user?.id]);
 
   useEffect(() => {
     // İlk fetch → state'e kopyala (sadece boşken, polling update'lerini ezme)

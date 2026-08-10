@@ -26,7 +26,7 @@ function baseItem(
 describe('NotificationItem', () => {
   it('renders the formatted text for task_assigned', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationItem item={baseItem()} onNavigate={vi.fn()} />
       </MemoryRouter>,
     );
@@ -35,7 +35,7 @@ describe('NotificationItem', () => {
 
   it('renders the formatted text for task_commented', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationItem
           item={baseItem({
             type: 'task_commented',
@@ -51,7 +51,7 @@ describe('NotificationItem', () => {
   it('calls onNavigate with task id when clicked', async () => {
     const onNavigate = vi.fn();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationItem item={baseItem()} onNavigate={onNavigate} />
       </MemoryRouter>,
     );
@@ -61,7 +61,7 @@ describe('NotificationItem', () => {
 
   it('shows unread stripe when readAt is null', () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationItem item={baseItem({ readAt: null })} onNavigate={vi.fn()} />
       </MemoryRouter>,
     );
@@ -70,7 +70,7 @@ describe('NotificationItem', () => {
 
   it('hides unread stripe when readAt is set', () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationItem
           item={baseItem({ readAt: new Date().toISOString() })}
           onNavigate={vi.fn()}

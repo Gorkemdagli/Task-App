@@ -8,7 +8,10 @@ describe('ProtectedRoute', () => {
   beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }));
   it('redirects to /login when no token', () => {
     render(
-      <MemoryRouter initialEntries={['/p']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/p']}
+      >
         <Routes>
           <Route path="/login" element={<div>Login</div>} />
           <Route element={<ProtectedRoute />}>
@@ -22,7 +25,10 @@ describe('ProtectedRoute', () => {
   it('renders children when token present', () => {
     useAuthStore.getState().setAccessToken('t');
     render(
-      <MemoryRouter initialEntries={['/p']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/p']}
+      >
         <Routes>
           <Route path="/login" element={<div>Login</div>} />
           <Route element={<ProtectedRoute />}>

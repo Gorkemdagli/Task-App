@@ -41,7 +41,7 @@ describe('Sidebar', () => {
 
   function renderSidebar() {
     return render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Sidebar />
       </MemoryRouter>,
     );

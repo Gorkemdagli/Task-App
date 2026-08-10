@@ -1,4 +1,4 @@
-import type { UserRole, TeamMemberRole } from '@prisma/client';
+import type { TaskStatus, UserRole, TeamMemberRole } from '@prisma/client';
 import { prisma } from './prisma';
 import { AppError } from '../middleware/errorHandler';
 
@@ -64,7 +64,7 @@ export type TaskForPerm = {
   teamId: string;
   assignerId: string;
   assignees: Array<{ userId: string }>;
-  pendingStatus: import('@prisma/client').TaskStatus | null;
+  pendingStatus: TaskStatus | null;
   pendingProposedBy: string | null;
 };
 

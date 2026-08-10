@@ -25,7 +25,10 @@ function renderWithRouter(initialPath = '/dashboard') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={[initialPath]}
+      >
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<div data-testid="child">içerik</div>} />

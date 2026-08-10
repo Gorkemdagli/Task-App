@@ -10,7 +10,7 @@ vi.mock('../../lib/api', () => ({ api: { post: vi.fn() } }));
 describe('LoginPage', () => {
   it('renders fields', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <LoginPage />
       </MemoryRouter>,
     );
@@ -20,7 +20,7 @@ describe('LoginPage', () => {
   it('field errors on empty submit', async () => {
     const u = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <LoginPage />
       </MemoryRouter>,
     );
@@ -34,7 +34,7 @@ describe('LoginPage', () => {
     });
     const u = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <LoginPage />
       </MemoryRouter>,
     );
@@ -45,7 +45,7 @@ describe('LoginPage', () => {
   });
   it('link to /register', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <LoginPage />
       </MemoryRouter>,
     );

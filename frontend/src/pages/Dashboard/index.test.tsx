@@ -20,12 +20,22 @@ vi.mock('@/hooks/queries/useTeams', () => ({
 }));
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/tasks')>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    useTasks: () => ({ data: { tasks: mockTasks, total: mockTasks.length }, isLoading: false, isError: false }),
-    useUpdateTaskStatus: () => ({ mutate: mocks.useUpdateTaskStatus, mutateAsync: mocks.useUpdateTaskStatus }),
-    useProposeTaskStatus: () => ({ mutate: mocks.useProposeTaskStatus, mutateAsync: mocks.useProposeTaskStatus }),
+    useTasks: () => ({
+      data: { tasks: mockTasks, total: mockTasks.length },
+      isLoading: false,
+      isError: false,
+    }),
+    useUpdateTaskStatus: () => ({
+      mutate: mocks.useUpdateTaskStatus,
+      mutateAsync: mocks.useUpdateTaskStatus,
+    }),
+    useProposeTaskStatus: () => ({
+      mutate: mocks.useProposeTaskStatus,
+      mutateAsync: mocks.useProposeTaskStatus,
+    }),
     useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
@@ -50,7 +60,11 @@ const member: AuthUser = {
 const admin: AuthUser = { ...member, role: 'companyAdmin' };
 
 let mockTeams: Array<{ id: string; name: string }> = [];
-let mockTeamDetail: { id: string; name: string; members: Array<{ userId: string; fullName: string; avatarUrl: string | null }> } | null = null;
+let mockTeamDetail: {
+  id: string;
+  name: string;
+  members: Array<{ userId: string; fullName: string; avatarUrl: string | null }>;
+} | null = null;
 
 function makeTask(overrides: Partial<Task>): Task {
   return {
@@ -89,7 +103,7 @@ function renderDashboard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <DashboardPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -194,7 +208,7 @@ describe('DashboardPage', () => {
     expect(card.textContent).toMatch(/Onay Bekliyor|Yapılıyor/);
   });
 
-  it('places proposer\'s pending task in the new (pending) column', () => {
+  it("places proposer's pending task in the new (pending) column", () => {
     // Requester kendi drag'i sonrası yeni kolonu görür.
     // Admin user 'u1' (proposer değil) değil; member 'u1' (proposer).
     useAuthStore.setState({ accessToken: 't', user: member });

@@ -6,7 +6,10 @@ import { FilterBar } from './FilterBar';
 
 function renderWithUrl(initialUrl: string) {
   return render(
-    <MemoryRouter initialEntries={[initialUrl]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[initialUrl]}
+    >
       <FilterBar teams={[{ id: 'team-1', name: 'UX' }]} />
     </MemoryRouter>,
   );

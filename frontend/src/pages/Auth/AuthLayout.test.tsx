@@ -6,7 +6,10 @@ import { AuthLayout } from './AuthLayout';
 describe('AuthLayout', () => {
   it('renders Outlet + BrandPanel', () => {
     render(
-      <MemoryRouter initialEntries={['/x']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/x']}
+      >
         <Routes>
           <Route element={<AuthLayout />}>
             <Route path="/x" element={<div>Child</div>} />

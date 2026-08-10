@@ -62,13 +62,9 @@ describe('proposeTaskStatus (multi-assignee)', () => {
   beforeEach(cleanDb);
 
   it('assignee propose: pending set, proposer auto-ack row, notify pending', async () => {
-    const { admin, b, c, task } = await makeMultiAssigneeTask();
+    const { b, c, task } = await makeMultiAssigneeTask();
 
-    const updated = await tasksService.proposeTaskStatus(
-      task.id,
-      { status: 'in_progress' },
-      b,
-    );
+    const updated = await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     expect(updated.status).toBe('todo');
     expect(updated.pendingStatus).toBe('in_progress');
@@ -95,11 +91,7 @@ describe('proposeTaskStatus (multi-assignee)', () => {
   it('admin propose (multi-assignee, admin not assignee): pending set, no acks', async () => {
     const { admin, task } = await makeMultiAssigneeTask();
 
-    const updated = await tasksService.proposeTaskStatus(
-      task.id,
-      { status: 'in_progress' },
-      admin,
-    );
+    const updated = await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, admin);
 
     // Admin bypass kaldırıldı (2026-07-25): multi-assignee + admin propose →
     // pending. Admin assignee değil → auto-ack row yok.
@@ -121,11 +113,7 @@ describe('proposeTaskStatus (multi-assignee)', () => {
       admin,
     );
 
-    const updated = await tasksService.proposeTaskStatus(
-      task.id,
-      { status: 'done' },
-      b,
-    );
+    const updated = await tasksService.proposeTaskStatus(task.id, { status: 'done' }, b);
 
     expect(updated.status).toBe('done');
     expect(updated.pendingStatus).toBeNull();
@@ -158,7 +146,7 @@ describe('ackTaskStatus', () => {
   beforeEach(cleanDb);
 
   it('kısmi ack: 3 assignees, 1 ack → status değişmez', async () => {
-    const { admin, b, c, d, task } = await makeMultiAssigneeSetup3();
+    const { b, c, task } = await makeMultiAssigneeSetup3();
     // b propose. ackCount=1 (proposer auto-ack).
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
@@ -208,7 +196,7 @@ describe('ackTaskStatus', () => {
   });
 
   it('non-assignee ack: 403', async () => {
-    const { admin, b, c, task } = await makeMultiAssigneeTask();
+    const { admin, b, task } = await makeMultiAssigneeTask();
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
     // admin aynı tenant'ta ama assignee değil → 403
     await expect(tasksService.ackTaskStatus(task.id, admin)).rejects.toMatchObject({
@@ -250,7 +238,7 @@ describe('ackTaskStatus', () => {
   });
 
   it('ack idempotent: 3 assignees, aynı kişi iki kez ack → apply tetiklenmez', async () => {
-    const { admin, b, c, d, task } = await makeMultiAssigneeSetup3();
+    const { b, c, task } = await makeMultiAssigneeSetup3();
     // b propose. ackCount=0.
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
     // c ack: ackCount=1, assignees=3. 1 < 2 → not apply.
@@ -325,11 +313,7 @@ describe('updateTaskFields — pending ack sync', () => {
     const team = await prisma.team.findFirst({ where: { tenantId: admin.tenantId } });
     await addMemberByDisplayId(team!.id, d.displayId, admin);
 
-    await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [b.id, c.id, d.id] },
-      admin,
-    );
+    await tasksService.updateTaskFields(task.id, { assigneeIds: [b.id, c.id, d.id] }, admin);
 
     // Sadece b'nin auto-ack row'u var. D yeni eklendi → ack row yok.
     const beforeApply = await prisma.taskStatusAck.count({ where: { taskId: task.id } });
@@ -353,11 +337,7 @@ describe('updateTaskFields — pending ack sync', () => {
     await tasksService.ackTaskStatus(task.id, c);
 
     // Pending null zaten. b'yi çıkar: status değişmemeli.
-    await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [c.id] },
-      admin,
-    );
+    await tasksService.updateTaskFields(task.id, { assigneeIds: [c.id] }, admin);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
     expect(updated?.status).toBe('in_progress');
@@ -370,11 +350,7 @@ describe('updateTaskFields — pending ack sync', () => {
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     // b'yi çıkar (proposer → pendingCancelledByProposerRemoval=true)
-    await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [c.id] },
-      admin,
-    );
+    await tasksService.updateTaskFields(task.id, { assigneeIds: [c.id] }, admin);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
     expect(updated?.pendingStatus).toBeNull();
@@ -382,18 +358,14 @@ describe('updateTaskFields — pending ack sync', () => {
   });
 
   it('assignee remove (proposer değil) → kalan ack tamam → apply', async () => {
-    const { admin, b, c, d, task } = await makeMultiAssigneeSetup3();
+    const { admin, c, d, task } = await makeMultiAssigneeSetup3();
     // c propose. ackCount=0.
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, c);
     // d ack. ackCount=1, assignees=3. 1 < 2 → not apply.
     await tasksService.ackTaskStatus(task.id, d);
 
     // b'yi çıkar: assignees = {c,d}. ackCount=1, assignees=2. 1 >= 1 → apply.
-    await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [c.id, d.id] },
-      admin,
-    );
+    await tasksService.updateTaskFields(task.id, { assigneeIds: [c.id, d.id] }, admin);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
     expect(updated?.status).toBe('in_progress');
@@ -401,17 +373,13 @@ describe('updateTaskFields — pending ack sync', () => {
   });
 
   it('assignee remove (proposer değil) → kalan ack tamam değil, status değişmez', async () => {
-    const { admin, b, c, d, task } = await makeMultiAssigneeSetup3();
+    const { admin, c, d, task } = await makeMultiAssigneeSetup3();
     // c propose. ackCount=0.
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, c);
 
     // acks: {}. assignees: {b,c,d}. b'yi çıkar: acks = {}. assignees = {c,d}.
     // ackCount=0 < assignees-1=1 → not apply.
-    await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [c.id, d.id] },
-      admin,
-    );
+    await tasksService.updateTaskFields(task.id, { assigneeIds: [c.id, d.id] }, admin);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
     expect(updated?.status).toBe('todo');
@@ -502,11 +470,7 @@ describe('updateTaskStatus (admin direct apply)', () => {
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
     // pending + ack row var
 
-    const updated = await tasksService.updateTaskStatus(
-      task.id,
-      { status: 'done' },
-      admin,
-    );
+    const updated = await tasksService.updateTaskStatus(task.id, { status: 'done' }, admin);
 
     expect(updated.status).toBe('done');
     expect(updated.pendingStatus).toBeNull();
@@ -517,11 +481,7 @@ describe('updateTaskStatus (admin direct apply)', () => {
   it('assignee drag on multi → propose rotası (status değişmez)', async () => {
     const { b, task } = await makeMultiAssigneeTask();
 
-    const updated = await tasksService.updateTaskStatus(
-      task.id,
-      { status: 'in_progress' },
-      b,
-    );
+    const updated = await tasksService.updateTaskStatus(task.id, { status: 'in_progress' }, b);
 
     expect(updated.status).toBe('todo');
     expect(updated.pendingStatus).toBe('in_progress');

@@ -5,7 +5,6 @@ import { createRateLimit } from '../middleware/rateLimit';
 import { requireAuth } from '../middleware/auth';
 import * as authService from '../services/auth.service';
 import { setRefreshCookie, clearRefreshCookie } from '../lib/cookie';
-import { AppError } from '../middleware/errorHandler';
 
 export const authRouter = Router();
 

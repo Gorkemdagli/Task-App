@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { AxiosError } from 'axios';
+import type { AxiosError } from 'axios';
 import { useCreateTask } from '@/hooks/tasks';
 import type { TaskPriority } from '@/hooks/tasks';
 import { PriorityDropdown } from './PriorityDropdown';
@@ -14,12 +14,7 @@ interface CreateTaskDialogProps {
   members: AssigneeOption[];
 }
 
-export function CreateTaskDialog({
-  open,
-  onOpenChange,
-  teamId,
-  members,
-}: CreateTaskDialogProps) {
+export function CreateTaskDialog({ open, onOpenChange, teamId, members }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
@@ -70,8 +65,7 @@ export function CreateTaskDialog({
 
   const noAssignees = assigneeIds.length === 0;
   const noDeadline = !deadline;
-  const submitDisabled =
-    create.isPending || title.trim().length < 3 || noAssignees || noDeadline;
+  const submitDisabled = create.isPending || title.trim().length < 3 || noAssignees || noDeadline;
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>

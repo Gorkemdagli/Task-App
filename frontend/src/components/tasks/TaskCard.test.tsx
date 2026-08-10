@@ -33,7 +33,11 @@ const baseTask: Task = {
 };
 
 function Wrap({ children }: { children: React.ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>;
+  return (
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      {children}
+    </MemoryRouter>
+  );
 }
 
 describe('TaskCard', () => {

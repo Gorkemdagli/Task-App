@@ -21,7 +21,11 @@ vi.mock('@/components/tasks/StatusDropdown', () => ({
     onChange: (s: TaskStatus) => void;
     disabled?: boolean;
   }) => (
-    <div data-testid="status-dropdown" data-value={value} data-disabled={disabled ? 'true' : 'false'}>
+    <div
+      data-testid="status-dropdown"
+      data-value={value}
+      data-disabled={disabled ? 'true' : 'false'}
+    >
       <button type="button" data-testid="status-pick-todo" onClick={() => onChange('todo')}>
         Yapılacak
       </button>
@@ -88,7 +92,7 @@ const proposeMock = vi.fn();
 const updateMock = vi.fn();
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/tasks')>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     useTask: () => ({ data: mockTask, isLoading: false, isError: false }),
@@ -162,7 +166,10 @@ function renderTaskDetail() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/tasks/t1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/tasks/t1']}
+      >
         <Routes>
           <Route path="/tasks/:id" element={<TaskDetailPage />} />
         </Routes>
@@ -176,11 +183,9 @@ describe('TaskDetailPage — status change intercept', () => {
     vi.clearAllMocks();
     // clearAllMocks sonrası implementation bağlantısı kaybolur; onSettled'i
     // simulate etmek için tekrar bağla (dialog close testi).
-    proposeMock.mockImplementation(
-      (_vars: unknown, opts?: { onSettled?: () => void }) => {
-        opts?.onSettled?.();
-      },
-    );
+    proposeMock.mockImplementation((_vars: unknown, opts?: { onSettled?: () => void }) => {
+      opts?.onSettled?.();
+    });
     useAuthStore.setState({ accessToken: 't', user: member });
   });
 
@@ -331,7 +336,12 @@ describe('TaskDetailPage — status change intercept', () => {
       pendingProposer: { id: 'u2', displayId: 'U2', fullName: 'Sedat', avatarUrl: null },
       assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Sedat')],
       statusAcks: [
-        { id: 'a1', userId: 'u2', proposedStatus: 'in_progress', ackedAt: new Date().toISOString() },
+        {
+          id: 'a1',
+          userId: 'u2',
+          proposedStatus: 'in_progress',
+          ackedAt: new Date().toISOString(),
+        },
       ],
     });
     useAuthStore.setState({ accessToken: 't', user: member });

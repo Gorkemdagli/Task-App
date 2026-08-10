@@ -6,9 +6,12 @@ describe('App', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/login');
   });
-  it('shows loading initially', () => {
+  it('shows loading initially', async () => {
     render(<App />);
     expect(screen.getByText(/yükleniyor/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/yükleniyor/i)).not.toBeInTheDocument();
+    });
   });
   it('redirects unauth /dashboard to /login', async () => {
     window.history.pushState({}, '', '/dashboard');
