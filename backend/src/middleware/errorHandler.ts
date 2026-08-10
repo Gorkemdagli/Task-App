@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { toRlsError } from '../db/rlsError';
 
 export class AppError extends Error {
   constructor(
@@ -29,13 +30,19 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     return;
   }
   if (err instanceof ZodError) {
-    res
-      .status(400)
-      .json({
-        error: 'Bad Request',
-        message: 'Geçersiz istek',
-        issues: err.issues.map((i) => ({ path: i.path, message: i.message })),
-      });
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'Geçersiz istek',
+      issues: err.issues.map((i) => ({ path: i.path, message: i.message })),
+    });
+    return;
+  }
+  const rlsError = toRlsError(err);
+  if (rlsError) {
+    res.status(rlsError.statusCode).json({
+      error: rlsError.code,
+      message: rlsError.message,
+    });
     return;
   }
   console.error('Unhandled error:', err);

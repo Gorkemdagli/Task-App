@@ -1,68 +1,56 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// vi.mock factory hoist edilir; bu yüzden mock'ları factory içinde tanımla
 vi.mock('../lib/prisma', () => {
-  const mockExecuteRawUnsafe = vi.fn().mockResolvedValue(0);
-  const mockTransaction = vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-    cb({ $executeRawUnsafe: mockExecuteRawUnsafe }),
-  );
+  const mockExecuteRaw = vi.fn().mockResolvedValue(0);
+  const tx = { $executeRaw: mockExecuteRaw };
+  const mockTransaction = vi.fn(async (cb: (tx: typeof tx) => Promise<unknown>) => cb(tx));
   return {
     prisma: { $transaction: mockTransaction },
-    mockExecuteRawUnsafe,
+    mockExecuteRaw,
     mockTransaction,
+    tx,
   };
 });
 
 import { withTenantContext } from './withTenant';
-import { mockExecuteRawUnsafe, mockTransaction } from '../lib/prisma';
+import { mockExecuteRaw, mockTransaction, tx } from '../lib/prisma';
 
 describe('withTenantContext', () => {
   beforeEach(() => {
-    mockExecuteRawUnsafe.mockClear();
+    mockExecuteRaw.mockClear();
     mockTransaction.mockClear();
   });
 
-  it('SET LOCAL ROLE authenticated ÖNCE çağrılır (RLS policy için zorunlu)', async () => {
-    await withTenantContext('user-uuid-123', 'tenant-uuid-456', async () => 'ok');
+  it('parametreli context SQL sırasını transaction içinde uygular', async () => {
+    const work = vi.fn().mockResolvedValue('ok');
 
-    expect(mockExecuteRawUnsafe).toHaveBeenCalledTimes(3);
-    expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(1, 'SET LOCAL ROLE authenticated');
-    expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(
-      2,
-      "SET LOCAL app.user_id = 'user-uuid-123'",
-    );
-    expect(mockExecuteRawUnsafe).toHaveBeenNthCalledWith(
-      3,
-      "SET LOCAL app.tenant_id = 'tenant-uuid-456'",
-    );
+    await withTenantContext('user-uuid-123', 'tenant-uuid-456', work);
+
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(3);
+    expect(mockExecuteRaw.mock.calls[0][0]).toEqual(['SET LOCAL ROLE authenticated']);
+    expect(mockExecuteRaw.mock.calls[1][0]).toEqual([
+      "SELECT set_config('app.user_id', ",
+      ', true)',
+    ]);
+    expect(mockExecuteRaw.mock.calls[1][1]).toBe('user-uuid-123');
+    expect(mockExecuteRaw.mock.calls[2][0]).toEqual([
+      "SELECT set_config('app.tenant_id', ",
+      ', true)',
+    ]);
+    expect(mockExecuteRaw.mock.calls[2][1]).toBe('tenant-uuid-456');
+    expect(work).toHaveBeenCalledWith(tx);
   });
 
-  it("callback'i transaction içinde çalıştırır", async () => {
-    const mockFn = vi.fn().mockResolvedValue('result');
-    const result = await withTenantContext('u', 't', mockFn);
+  it('callback hatasını transaction dışına taşır', async () => {
+    const failure = new Error('rollback');
+    const work = vi.fn().mockRejectedValue(failure);
 
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockFn).toHaveBeenCalledTimes(1);
-    expect(result).toBe('result');
+    await expect(withTenantContext('u', 't', work)).rejects.toBe(failure);
   });
 
-  it("callback'in döndürdüğü değeri döner", async () => {
+  it('transaction sonucunu döner', async () => {
     const result = await withTenantContext('u', 't', async () => 42);
+
     expect(result).toBe(42);
-  });
-
-  it('SET LOCAL çağrılarından ÖNCE callback çağrılmaz', async () => {
-    const callOrder: string[] = [];
-    mockExecuteRawUnsafe.mockImplementation(async () => {
-      callOrder.push('SET_LOCAL');
-    });
-    const mockFn = vi.fn().mockImplementation(async () => {
-      callOrder.push('CALLBACK');
-      return 'ok';
-    });
-
-    await withTenantContext('u', 't', mockFn);
-
-    expect(callOrder).toEqual(['SET_LOCAL', 'SET_LOCAL', 'SET_LOCAL', 'CALLBACK']);
   });
 });

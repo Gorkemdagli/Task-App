@@ -8,8 +8,6 @@ import { prisma } from '../lib/prisma';
  * (app user postgres rolünde kalır, BYPASSRLS olmasa bile authenticated
  * policy'lerine tabi olmaz).
  *
- * NOT: userId/tenantId interpolated SQL — caller (Faz 2 auth middleware)
- * UUID validate etmeli. Aksi halde SQL injection riski var.
  */
 export async function withTenantContext<T>(
   userId: string,
@@ -20,9 +18,9 @@ export async function withTenantContext<T>(
     async (tx) => {
       // Sıra kritik: ROLE önce, yoksa aşağıdaki SET LOCAL'lar authenticated
       // rolünde olur ama SELECT/INSERT sırasında aktif rol hala app user.
-      await tx.$executeRawUnsafe(`SET LOCAL ROLE authenticated`);
-      await tx.$executeRawUnsafe(`SET LOCAL app.user_id = '${userId}'`);
-      await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
+      await tx.$executeRaw`SET LOCAL ROLE authenticated`;
+      await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       return fn(tx);
     },
     { timeout: 30000 }, // 30s — Prisma Postgres Accelerate latency'yi kaldirir
