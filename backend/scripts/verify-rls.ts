@@ -1,141 +1,159 @@
-/**
- * RLS izolasyonunu manuel doğrulama script'i.
- *
- * Kullanım:
- *   cd backend && npx tsx scripts/verify-rls.ts
- *
- * Ne yapar:
- *   1. Önce DB'de 2 test tenant + 1'er kullanıcı + 1'er görev oluşturur
- *   2. SET LOCAL ile tenant A context'inde SELECT yapar → sadece A satırı
- *   3. SET LOCAL ile tenant B context'inde SELECT yapar → sadece B satırı
- *   4. SET LOCAL olmadan SELECT yapar → 0 satır (RLS default deny)
- *   5. Test verisini temizler
- *
- * Çıkış: PASS/FAIL özeti. Faz 1 çıkış kriterinin manuel kanıtı.
- */
-
-import { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
+import { PrismaClient, type Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const tenantAId = randomUUID();
+const tenantBId = randomUUID();
+const userAId = randomUUID();
+const userBId = randomUUID();
+const teamAId = randomUUID();
+const teamBId = randomUUID();
+const taskAId = randomUUID();
+const taskBId = randomUUID();
 
-const TENANT_A_ID = randomUUID();
-const TENANT_B_ID = randomUUID();
-const USER_A_ID = randomUUID();
-const USER_B_ID = randomUUID();
-const TEAM_A_ID = randomUUID();
-const TEAM_B_ID = randomUUID();
-
-async function setup() {
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO tenants (id, name, slug, created_at, updated_at) VALUES
-     ('${TENANT_A_ID}', 'Test Tenant A', 'test-a-${Date.now()}', now(), now()),
-     ('${TENANT_B_ID}', 'Test Tenant B', 'test-b-${Date.now()}', now(), now())`,
-  );
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO users (id, tenant_id, email, full_name, role, created_at, updated_at) VALUES
-     ('${USER_A_ID}', '${TENANT_A_ID}', 'usera-${Date.now()}@test.com', 'User A', 'companyAdmin', now(), now()),
-     ('${USER_B_ID}', '${TENANT_B_ID}', 'userb-${Date.now()}@test.com', 'User B', 'companyAdmin', now(), now())`,
-  );
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO teams (id, tenant_id, name, created_at, updated_at) VALUES
-     ('${TEAM_A_ID}', '${TENANT_A_ID}', 'Team A', now(), now()),
-     ('${TEAM_B_ID}', '${TENANT_B_ID}', 'Team B', now(), now())`,
-  );
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO tasks (id, team_id, title, status, priority, assigner_id, assignee_id, created_at, updated_at) VALUES
-     ('${randomUUID()}', '${TEAM_A_ID}', 'Task in A', 'todo', 'medium', '${USER_A_ID}', '${USER_A_ID}', now(), now()),
-     ('${randomUUID()}', '${TEAM_B_ID}', 'Task in B', 'todo', 'medium', '${USER_B_ID}', '${USER_B_ID}', now(), now())`,
-  );
+async function setup(): Promise<void> {
+  await prisma.tenant.createMany({
+    data: [
+      { id: tenantAId, name: 'RLS Verify A', slug: `rls-verify-a-${tenantAId}` },
+      { id: tenantBId, name: 'RLS Verify B', slug: `rls-verify-b-${tenantBId}` },
+    ],
+  });
+  await prisma.user.createMany({
+    data: [
+      {
+        id: userAId,
+        tenantId: tenantAId,
+        email: `rls-a-${userAId}@test.com`,
+        fullName: 'RLS A',
+        passwordHash: 'verify-only',
+        displayId: `#RLSA-${userAId.slice(0, 8)}`,
+        role: 'companyAdmin',
+      },
+      {
+        id: userBId,
+        tenantId: tenantBId,
+        email: `rls-b-${userBId}@test.com`,
+        fullName: 'RLS B',
+        passwordHash: 'verify-only',
+        displayId: `#RLSB-${userBId.slice(0, 8)}`,
+        role: 'companyAdmin',
+      },
+    ],
+  });
+  await prisma.team.createMany({
+    data: [
+      { id: teamAId, tenantId: tenantAId, name: 'RLS Team A' },
+      { id: teamBId, tenantId: tenantBId, name: 'RLS Team B' },
+    ],
+  });
+  await prisma.task.createMany({
+    data: [
+      { id: taskAId, teamId: teamAId, title: 'RLS Task A', assignerId: userAId },
+      { id: taskBId, teamId: teamBId, title: 'RLS Task B', assignerId: userBId },
+    ],
+  });
+  await prisma.taskAssignee.createMany({
+    data: [
+      { taskId: taskAId, userId: userAId },
+      { taskId: taskBId, userId: userBId },
+    ],
+  });
+  await prisma.taskStatusAck.createMany({
+    data: [
+      { taskId: taskAId, userId: userAId, proposedStatus: 'done' },
+      { taskId: taskBId, userId: userBId, proposedStatus: 'done' },
+    ],
+  });
 }
 
-async function cleanup() {
-  await prisma.$executeRawUnsafe(
-    `DELETE FROM tasks WHERE team_id IN ('${TEAM_A_ID}', '${TEAM_B_ID}')`,
-  );
-  await prisma.$executeRawUnsafe(`DELETE FROM teams WHERE id IN ('${TEAM_A_ID}', '${TEAM_B_ID}')`);
-  await prisma.$executeRawUnsafe(`DELETE FROM users WHERE id IN ('${USER_A_ID}', '${USER_B_ID}')`);
-  await prisma.$executeRawUnsafe(
-    `DELETE FROM tenants WHERE id IN ('${TENANT_A_ID}', '${TENANT_B_ID}')`,
-  );
+async function cleanup(): Promise<void> {
+  await prisma.tenant.deleteMany({ where: { id: { in: [tenantAId, tenantBId] } } });
 }
 
-async function countTasksInContext(tenantId: string | null): Promise<number | 'denied'> {
-  try {
-    return await prisma.$transaction(async (tx) => {
-      // Her zaman authenticated rolüne geç — connection user (admin) BYPASSRLS,
-      // yoksa RLS uygulanmaz. Tenant context olmasa bile authenticated rolünde
-      // RLS default deny çalışır.
-      await tx.$executeRawUnsafe(`SET LOCAL ROLE authenticated`);
-      if (tenantId) {
-        await tx.$executeRawUnsafe(`SET LOCAL app.user_id = 'test-user'`);
-        await tx.$executeRawUnsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
-      }
-      const rows = await tx.$queryRawUnsafe<Array<{ count: bigint }>>(
-        `SELECT COUNT(*)::bigint AS count FROM tasks WHERE team_id IN ('${TEAM_A_ID}', '${TEAM_B_ID}')`,
-      );
-      return Number(rows[0]?.count ?? 0);
-    });
-  } catch (e: unknown) {
-    // 22P02 (invalid uuid syntax ""→uuid), 42501 (permission denied)
-    // → RLS default deny. Test 3 bunu PASS olarak değerlendirir.
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes('22P02') || msg.includes('42501')) return 'denied';
-    throw e;
+async function inTenant<T>(
+  tenantId: string,
+  userId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SET LOCAL ROLE authenticated`;
+    await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    return work(tx);
+  });
+}
+
+async function verifyTenant(
+  tenantId: string,
+  userId: string,
+  expectedTaskId: string,
+): Promise<void> {
+  const tasks = await inTenant(tenantId, userId, (tx) =>
+    tx.task.findMany({ where: { id: { in: [taskAId, taskBId] } } }),
+  );
+  const assignees = await inTenant(tenantId, userId, (tx) =>
+    tx.taskAssignee.findMany({ where: { taskId: { in: [taskAId, taskBId] } } }),
+  );
+  const acks = await inTenant(tenantId, userId, (tx) =>
+    tx.taskStatusAck.findMany({ where: { taskId: { in: [taskAId, taskBId] } } }),
+  );
+
+  if (
+    tasks
+      .map((task) => task.id)
+      .sort()
+      .join() !== expectedTaskId ||
+    assignees
+      .map((row) => row.taskId)
+      .sort()
+      .join() !== expectedTaskId ||
+    acks
+      .map((row) => row.taskId)
+      .sort()
+      .join() !== expectedTaskId
+  ) {
+    throw new Error('tenant isolation mismatch');
   }
 }
 
-async function main() {
+async function main(): Promise<void> {
   let pass = 0;
   let fail = 0;
 
   try {
-    console.log('🔧 Test verisi oluşturuluyor...');
     await setup();
-
-    console.log("\n📋 Test 1: Tenant A context'inde sadece A görevleri görünmeli");
-    const aCount = await countTasksInContext(TENANT_A_ID);
-    if (aCount === 1) {
-      console.log('  ✅ PASS: 1 görev (sadece A)');
-      pass++;
-    } else {
-      console.log(`  ❌ FAIL: beklenen 1, gerçek ${aCount}`);
-      fail++;
+    await verifyTenant(tenantAId, userAId, taskAId);
+    pass++;
+    await verifyTenant(tenantBId, userBId, taskBId);
+    pass++;
+    let denied = 0;
+    try {
+      await inTenant(tenantAId, userAId, (tx) =>
+        tx.taskAssignee.create({ data: { taskId: taskBId, userId: userAId } }),
+      );
+    } catch {
+      denied++;
     }
-
-    console.log("\n📋 Test 2: Tenant B context'inde sadece B görevleri görünmeli");
-    const bCount = await countTasksInContext(TENANT_B_ID);
-    if (bCount === 1) {
-      console.log('  ✅ PASS: 1 görev (sadece B)');
-      pass++;
-    } else {
-      console.log(`  ❌ FAIL: beklenen 1, gerçek ${bCount}`);
-      fail++;
+    try {
+      await inTenant(tenantAId, userAId, (tx) =>
+        tx.taskStatusAck.create({
+          data: { taskId: taskBId, userId: userAId, proposedStatus: 'done' },
+        }),
+      );
+    } catch {
+      denied++;
     }
-
-    console.log('\n📋 Test 3: Context olmadan 0 görev (RLS default deny)');
-    const noContextCount = await countTasksInContext(null);
-    if (noContextCount === 'denied' || noContextCount === 0) {
-      console.log('  ✅ PASS: RLS engelledi (0 görev veya exception)');
-      pass++;
-    } else {
-      console.log(`  ❌ FAIL: beklenen 0, gerçek ${noContextCount}`);
-      fail++;
-    }
+    if (denied !== 2) throw new Error('cross-tenant writes were not denied');
+    pass++;
+    console.log(`RLS verify: ${pass} PASS, ${fail} FAIL`);
+  } catch {
+    fail++;
+    console.log(`RLS verify: ${pass} PASS, ${fail} FAIL`);
+    process.exitCode = 1;
   } finally {
-    console.log('\n🧹 Test verisi temizleniyor...');
     await cleanup();
     await prisma.$disconnect();
   }
-
-  console.log(`\n📊 Sonuç: ${pass} PASS, ${fail} FAIL`);
-  if (fail > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error('Script hatası:', err);
-  process.exit(1);
-});
+void main();

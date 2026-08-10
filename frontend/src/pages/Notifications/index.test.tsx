@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { NotificationsPage } from './index';
+import { NotificationsPage, getPaginationItems } from './index';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
@@ -52,6 +52,20 @@ describe('NotificationsPage', () => {
   afterEach(() => {
     getSpy?.mockRestore();
     patchSpy.mockRestore();
+  });
+
+  it('uses ellipsis for long pagination ranges', () => {
+    expect(getPaginationItems(15, 1)).toEqual([
+      1,
+      2,
+      3,
+      'ellipsis',
+      5,
+      'ellipsis',
+      10,
+      'ellipsis',
+      15,
+    ]);
   });
 
   it('renders header "Bildirimler"', async () => {
@@ -283,6 +297,30 @@ describe('NotificationsPage', () => {
     expect(await screen.findByTestId('page-num-2')).toBeInTheDocument();
     expect(await screen.findByTestId('page-num-3')).toBeInTheDocument();
     expect(screen.queryByTestId('page-num-4')).not.toBeInTheDocument();
+  });
+
+  it('discovers pages using the same page size as the list', async () => {
+    getSpy = vi
+      .spyOn(api, 'get')
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('initial')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p1')], unreadCount: 0, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('p2')], unreadCount: 0, nextCursor: null },
+      } as never);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith(
+        '/notifications?limit=10&cursor=C2',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(getSpy).not.toHaveBeenCalledWith('/notifications?limit=1&cursor=C2', expect.anything());
   });
 
   it('renders second page button after Next is clicked', async () => {

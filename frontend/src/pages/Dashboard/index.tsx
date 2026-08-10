@@ -3,6 +3,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -28,6 +29,46 @@ const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'in_progress', label: 'Yapılıyor', color: 'border-status-inprogress' },
   { status: 'done', label: 'Yapıldı', color: 'border-status-done' },
 ];
+
+function StatusColumn({
+  column,
+  tasks,
+  isLoading,
+  userId,
+}: {
+  column: (typeof COLUMNS)[number];
+  tasks: Task[];
+  isLoading: boolean;
+  userId?: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.status });
+
+  return (
+    <div
+      ref={setNodeRef}
+      id={column.status}
+      data-testid={`column-${column.status}`}
+      data-status={column.status}
+      className={`rounded-md border-t-4 bg-card/30 p-4 ${column.color} ${isOver ? 'ring-2 ring-primary' : ''}`}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-foreground">{column.label}</h2>
+        <span className="text-xs text-muted-foreground">{tasks.length}</span>
+      </div>
+      <div className="min-h-[200px] space-y-3">
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Yükleniyor…</p>
+        ) : tasks.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Boş</p>
+        ) : (
+          tasks.map((task) => (
+            <TaskCard key={task.id} task={task} draggable currentUserId={userId} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -139,33 +180,19 @@ export function DashboardPage() {
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          {COLUMNS.map((col) => (
-            <div
-              key={col.status}
-              id={col.status}
-              data-testid={`column-${col.status}`}
-              data-status={col.status}
-              className={`rounded-md border-t-4 bg-card/30 p-4 ${col.color}`}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-medium text-foreground">{col.label}</h2>
-                <span className="text-xs text-muted-foreground">{grouped[col.status].length}</span>
-              </div>
-              <div className="space-y-3 min-h-[200px]">
-                {isLoading ? (
-                  <p className="text-xs text-muted-foreground">Yükleniyor…</p>
-                ) : grouped[col.status].length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Boş</p>
-                ) : (
-                  grouped[col.status].map((t) => (
-                    <TaskCard key={t.id} task={t} draggable currentUserId={user?.id} />
-                  ))
-                )}
-              </div>
-            </div>
+          {COLUMNS.map((column) => (
+            <StatusColumn
+              key={column.status}
+              column={column}
+              tasks={grouped[column.status]}
+              isLoading={isLoading}
+              userId={user?.id}
+            />
           ))}
         </div>
-        <DragOverlay>{activeTask ? <TaskCard task={activeTask} currentUserId={user?.id} /> : null}</DragOverlay>
+        <DragOverlay>
+          {activeTask ? <TaskCard task={activeTask} currentUserId={user?.id} /> : null}
+        </DragOverlay>
       </DndContext>
 
       {teamId && teamDetail && (

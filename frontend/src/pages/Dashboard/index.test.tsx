@@ -6,6 +6,15 @@ import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { DashboardPage } from './index';
 import type { Task } from '@/hooks/tasks';
 
+const { useDroppableMock } = vi.hoisted(() => ({
+  useDroppableMock: vi.fn(() => ({ setNodeRef: vi.fn(), isOver: false })),
+}));
+
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, useDroppable: useDroppableMock };
+});
+
 // Hook stub'ları: drag-drop simülasyonu yapmadan sayfa seviyesinde
 // render/role/branch davranışını doğrulamak için.
 const mocks = {
@@ -131,6 +140,17 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yapılacak')).toBeInTheDocument();
     expect(screen.getByText('Yapılıyor')).toBeInTheDocument();
     expect(screen.getByText('Yapıldı')).toBeInTheDocument();
+  });
+
+  it('registers each status column as a drop target', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderDashboard();
+    const calls = useDroppableMock.mock.calls as unknown as Array<[{ id: string }]>;
+    expect(calls.map(([args]) => args)).toEqual([
+      { id: 'todo' },
+      { id: 'in_progress' },
+      { id: 'done' },
+    ]);
   });
 
   it('shows selected team name as heading', () => {

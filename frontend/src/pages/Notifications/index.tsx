@@ -19,6 +19,27 @@ interface PageData {
   nextCursor: string | null;
 }
 
+export type PaginationItem = number | 'ellipsis';
+
+export function getPaginationItems(totalPages: number, currentPage: number): PaginationItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set([1, 2, 3, 5, 10, totalPages]);
+  for (const page of [currentPage - 1, currentPage, currentPage + 1]) {
+    if (page > 0 && page <= totalPages) pages.add(page);
+  }
+
+  const sortedPages = [...pages].sort((a, b) => a - b);
+  const items: PaginationItem[] = [];
+  sortedPages.forEach((page, index) => {
+    if (index > 0 && page - sortedPages[index - 1] > 1) items.push('ellipsis');
+    items.push(page);
+  });
+  return items;
+}
+
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
@@ -80,7 +101,7 @@ export function NotificationsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- imperative fetch on pageIndex change
     setError(null);
 
-    const cursor = pageIndex === 0 ? null : cursors[pageIndex - 1] ?? null;
+    const cursor = pageIndex === 0 ? null : (cursors[pageIndex - 1] ?? null);
     const url = cursor
       ? `/notifications?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
       : `/notifications?limit=${PAGE_SIZE}`;
@@ -93,9 +114,7 @@ export function NotificationsPage() {
         setPageData({ items: res.data.items, nextCursor: res.data.nextCursor });
         const newNextCursor = res.data.nextCursor;
         if (newNextCursor) {
-          setCursors((prev) =>
-            prev.includes(newNextCursor) ? prev : [...prev, newNextCursor],
-          );
+          setCursors((prev) => (prev.includes(newNextCursor) ? prev : [...prev, newNextCursor]));
         }
         setLoading(false);
       })
@@ -110,7 +129,7 @@ export function NotificationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex]);
 
-  // Sayfa sayısını önceden keşfetmek için limit=1 ile ileri yürüyüş.
+  // Sayfa sayısını önceden keşfetmek için aynı sayfa boyutuyla ileri yürüyüş.
   // Sadece nextCursor'a bakılır — kullanıcı sayfaya tıklayana kadar gerçek veri çekilmez.
   useEffect(() => {
     const lastCursor = cursors[cursors.length - 1];
@@ -118,15 +137,13 @@ export function NotificationsPage() {
     const controller = new AbortController();
     api
       .get<{ items: NotificationItemType[]; nextCursor: string | null }>(
-        `/notifications?limit=1&cursor=${encodeURIComponent(lastCursor)}`,
+        `/notifications?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(lastCursor)}`,
         { signal: controller.signal },
       )
       .then((res) => {
         const newNextCursor = res.data.nextCursor;
         if (newNextCursor) {
-          setCursors((prev) =>
-            prev.includes(newNextCursor) ? prev : [...prev, newNextCursor],
-          );
+          setCursors((prev) => (prev.includes(newNextCursor) ? prev : [...prev, newNextCursor]));
         }
       })
       .catch(() => {
@@ -181,22 +198,14 @@ export function NotificationsPage() {
       )}
 
       {loading && !pageData ? (
-        <ul
-          data-testid="notifications-page-skeleton"
-          className="flex flex-col gap-2"
-          aria-hidden
-        >
+        <ul data-testid="notifications-page-skeleton" className="flex flex-col gap-2" aria-hidden>
           {[0, 1, 2].map((i) => (
             <li key={i} className="h-14 animate-pulse rounded-md bg-secondary" />
           ))}
         </ul>
       ) : hasItems ? (
         <>
-          <ul
-            data-testid="notifications-page-list"
-            className="flex flex-col"
-            role="list"
-          >
+          <ul data-testid="notifications-page-list" className="flex flex-col" role="list">
             {groups.map((group) => (
               <li key={group.key} className="flex flex-col">
                 <h2 className="px-1 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -238,29 +247,36 @@ export function NotificationsPage() {
               Önceki
             </Button>
 
-            {Array.from({ length: cursors.length + 1 }, (_, i) => i + 1).map(
-              (pageNum) => {
-                const isActive = pageNum === pageIndex + 1;
+            {getPaginationItems(cursors.length + 1, pageIndex + 1).map((item, index) => {
+              if (item === 'ellipsis') {
                 return (
-                  <button
-                    key={pageNum}
-                    type="button"
-                    onClick={() => setPageIndex(pageNum - 1)}
-                    aria-current={isActive ? 'page' : undefined}
-                    aria-label={`Sayfa ${pageNum}`}
-                    data-testid={`page-num-${pageNum}`}
-                    className={cn(
-                      'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary text-white'
-                        : 'text-foreground hover:bg-secondary',
-                    )}
+                  <span
+                    key={`ellipsis-${index}`}
+                    aria-hidden
+                    className="px-1 text-sm text-muted-foreground"
                   >
-                    {pageNum}
-                  </button>
+                    …
+                  </span>
                 );
-              },
-            )}
+              }
+              const isActive = item === pageIndex + 1;
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setPageIndex(item - 1)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={`Sayfa ${item}`}
+                  data-testid={`page-num-${item}`}
+                  className={cn(
+                    'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium transition-colors',
+                    isActive ? 'bg-primary text-white' : 'text-foreground hover:bg-secondary',
+                  )}
+                >
+                  {item}
+                </button>
+              );
+            })}
 
             <Button
               type="button"
