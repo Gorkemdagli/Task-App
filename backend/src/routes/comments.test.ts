@@ -2,10 +2,38 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
-import { createTeam, addMemberByDisplayId } from '../services/teams.service';
-import * as tasksService from '../services/tasks.service';
-import * as commentsService from '../services/comments.service';
+import {
+  createTeam as createTeamService,
+  addMemberByDisplayId as addMemberService,
+} from '../services/teams.service';
+import * as taskServiceImpl from '../services/tasks.service';
+import * as commentServiceImpl from '../services/comments.service';
 import type { Actor } from '../lib/permissions';
+import { withTenantContext } from '../db/withTenant';
+import type { TenantDb } from '../db/types';
+
+async function inTenant<T>(actor: Actor, work: (db: TenantDb) => Promise<T>): Promise<T> {
+  return withTenantContext(actor.id, actor.tenantId!, work);
+}
+
+const createTeam = (input: Parameters<typeof createTeamService>[1], actor: Actor) =>
+  inTenant(actor, (db) => createTeamService(db, input, actor));
+const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
+  inTenant(actor, (db) => addMemberService(db, teamId, displayId, actor));
+
+const tasksService = {
+  createTask: (input: Parameters<typeof taskServiceImpl.createTask>[1], actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.createTask(db, input, actor)),
+};
+const commentsService = {
+  createComment: (
+    taskId: string,
+    input: Parameters<typeof commentServiceImpl.createComment>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => commentServiceImpl.createComment(db, taskId, input, actor)),
+  listComments: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => commentServiceImpl.listComments(db, taskId, actor)),
+};
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();

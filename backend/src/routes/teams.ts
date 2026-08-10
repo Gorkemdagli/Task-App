@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { requireRole, requireTeamAdmin } from '../middleware/role';
+import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
 import { createTeamSchema, addMemberSchema } from '../schemas/teams.schema';
 import * as teamsService from '../services/teams.service';
+import { runTenantRequest } from '../http/runTenantRequest';
 
 export const teamsRouter = Router();
 
@@ -28,7 +29,9 @@ teamsRouter.post(
   validateBody(createTeamSchema),
   async (req, res, next) => {
     try {
-      const team = await teamsService.createTeam(req.body, req.user!);
+      const team = await runTenantRequest(req, (db, actor) =>
+        teamsService.createTeam(db, req.body, actor),
+      );
       res.status(201).json(team);
     } catch (e) {
       next(e);
@@ -38,7 +41,7 @@ teamsRouter.post(
 
 teamsRouter.get('/', async (req, res, next) => {
   try {
-    const teams = await teamsService.listTeams(req.user!);
+    const teams = await runTenantRequest(req, (db, actor) => teamsService.listTeams(db, actor));
     res.json(teams);
   } catch (e) {
     next(e);
@@ -47,7 +50,9 @@ teamsRouter.get('/', async (req, res, next) => {
 
 teamsRouter.get('/:id', async (req, res, next) => {
   try {
-    const team = await teamsService.getTeam(req.params.id, req.user!);
+    const team = await runTenantRequest(req, (db, actor) =>
+      teamsService.getTeam(db, req.params.id, actor),
+    );
     res.json(team);
   } catch (e) {
     next(e);
@@ -57,14 +62,11 @@ teamsRouter.get('/:id', async (req, res, next) => {
 teamsRouter.post(
   '/:id/members',
   memberWriteLimiter,
-  requireTeamAdmin(),
   validateBody(addMemberSchema),
   async (req, res, next) => {
     try {
-      const member = await teamsService.addMemberByDisplayId(
-        req.params.id,
-        req.body.displayId,
-        req.user!,
+      const member = await runTenantRequest(req, (db, actor) =>
+        teamsService.addMemberByDisplayId(db, req.params.id, req.body.displayId, actor),
       );
       res.status(201).json(member);
     } catch (e) {
@@ -73,16 +75,13 @@ teamsRouter.post(
   },
 );
 
-teamsRouter.delete(
-  '/:id/members/:userId',
-  memberWriteLimiter,
-  requireTeamAdmin(),
-  async (req, res, next) => {
-    try {
-      await teamsService.removeMember(req.params.id, req.params.userId, req.user!);
-      res.status(204).end();
-    } catch (e) {
-      next(e);
-    }
-  },
-);
+teamsRouter.delete('/:id/members/:userId', memberWriteLimiter, async (req, res, next) => {
+  try {
+    await runTenantRequest(req, (db, actor) =>
+      teamsService.removeMember(db, req.params.id, req.params.userId, actor),
+    );
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});

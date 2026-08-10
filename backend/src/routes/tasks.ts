@@ -11,6 +11,7 @@ import {
   listTasksQuerySchema,
 } from '../schemas/tasks.schema';
 import * as tasksService from '../services/tasks.service';
+import { runTenantRequest } from '../http/runTenantRequest';
 
 export const tasksRouter = Router();
 
@@ -24,7 +25,9 @@ tasksRouter.use(requireAuth);
 
 tasksRouter.post('/', writeLimiter, validateBody(createTaskSchema), async (req, res, next) => {
   try {
-    const task = await tasksService.createTask(req.body, req.user!);
+    const task = await runTenantRequest(req, (db, actor) =>
+      tasksService.createTask(db, req.body, actor),
+    );
     res.status(201).json(task);
   } catch (e) {
     next(e);
@@ -39,7 +42,9 @@ tasksRouter.get('/', async (req, res, next) => {
         parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
       );
     }
-    const result = await tasksService.listTasks(parsed.data, req.user!);
+    const result = await runTenantRequest(req, (db, actor) =>
+      tasksService.listTasks(db, parsed.data, actor),
+    );
     res.json(result);
   } catch (e) {
     next(e);
@@ -48,7 +53,9 @@ tasksRouter.get('/', async (req, res, next) => {
 
 tasksRouter.get('/:id', async (req, res, next) => {
   try {
-    const task = await tasksService.getTask(req.params.id, req.user!);
+    const task = await runTenantRequest(req, (db, actor) =>
+      tasksService.getTask(db, req.params.id, actor),
+    );
     res.json(task);
   } catch (e) {
     next(e);
@@ -61,7 +68,9 @@ tasksRouter.patch(
   validateBody(updateTaskStatusSchema),
   async (req, res, next) => {
     try {
-      const task = await tasksService.updateTaskStatus(req.params.id, req.body, req.user!);
+      const task = await runTenantRequest(req, (db, actor) =>
+        tasksService.updateTaskStatus(db, req.params.id, req.body, actor),
+      );
       res.json(task);
     } catch (e) {
       next(e);
@@ -75,7 +84,9 @@ tasksRouter.post(
   validateBody(updateTaskStatusSchema),
   async (req, res, next) => {
     try {
-      const task = await tasksService.proposeTaskStatus(req.params.id, req.body, req.user!);
+      const task = await runTenantRequest(req, (db, actor) =>
+        tasksService.proposeTaskStatus(db, req.params.id, req.body, actor),
+      );
       res.json(task);
     } catch (e) {
       next(e);
@@ -85,7 +96,9 @@ tasksRouter.post(
 
 tasksRouter.post('/:id/status/ack', writeLimiter, async (req, res, next) => {
   try {
-    const result = await tasksService.ackTaskStatus(req.params.id, req.user!);
+    const result = await runTenantRequest(req, (db, actor) =>
+      tasksService.ackTaskStatus(db, req.params.id, actor),
+    );
     res.json(result);
   } catch (e) {
     next(e);
@@ -94,7 +107,9 @@ tasksRouter.post('/:id/status/ack', writeLimiter, async (req, res, next) => {
 
 tasksRouter.post('/:id/status/cancel', writeLimiter, async (req, res, next) => {
   try {
-    const task = await tasksService.cancelTaskStatus(req.params.id, req.user!);
+    const task = await runTenantRequest(req, (db, actor) =>
+      tasksService.cancelTaskStatus(db, req.params.id, actor),
+    );
     res.json(task);
   } catch (e) {
     next(e);
@@ -107,7 +122,9 @@ tasksRouter.patch(
   validateBody(updateTaskPrioritySchema),
   async (req, res, next) => {
     try {
-      const task = await tasksService.updateTaskPriority(req.params.id, req.body, req.user!);
+      const task = await runTenantRequest(req, (db, actor) =>
+        tasksService.updateTaskPriority(db, req.params.id, req.body, actor),
+      );
       res.json(task);
     } catch (e) {
       next(e);
@@ -121,7 +138,9 @@ tasksRouter.patch(
   validateBody(updateTaskFieldsSchema),
   async (req, res, next) => {
     try {
-      const task = await tasksService.updateTaskFields(req.params.id, req.body, req.user!);
+      const task = await runTenantRequest(req, (db, actor) =>
+        tasksService.updateTaskFields(db, req.params.id, req.body, actor),
+      );
       res.json(task);
     } catch (e) {
       next(e);
@@ -131,7 +150,7 @@ tasksRouter.patch(
 
 tasksRouter.delete('/:id', writeLimiter, async (req, res, next) => {
   try {
-    await tasksService.deleteTask(req.params.id, req.user!);
+    await runTenantRequest(req, (db, actor) => tasksService.deleteTask(db, req.params.id, actor));
     res.status(204).end();
   } catch (e) {
     next(e);

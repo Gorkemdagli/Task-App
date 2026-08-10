@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { ValidationError } from '../middleware/errorHandler';
 import { listNotificationsQuerySchema } from '../schemas/notifications.schema';
 import { listNotifications, markAllRead } from '../services/notifications.service';
+import { runTenantRequest } from '../http/runTenantRequest';
 
 export const notificationsRouter = Router();
 
@@ -17,11 +18,9 @@ notificationsRouter.get('/', async (req, res, next) => {
         parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
       );
     }
-    const userId = req.user!.id;
-    const result = await listNotifications(userId, {
-      limit: parsed.data.limit,
-      cursor: parsed.data.cursor,
-    });
+    const result = await runTenantRequest(req, (db, actor) =>
+      listNotifications(db, actor, { limit: parsed.data.limit, cursor: parsed.data.cursor }),
+    );
     res.json(result);
   } catch (err) {
     next(err);
@@ -31,8 +30,7 @@ notificationsRouter.get('/', async (req, res, next) => {
 // PATCH /api/v1/notifications/read-all
 notificationsRouter.patch('/read-all', async (req, res, next) => {
   try {
-    const userId = req.user!.id;
-    await markAllRead(userId);
+    await runTenantRequest(req, (db, actor) => markAllRead(db, actor));
     res.status(204).send();
   } catch (err) {
     next(err);

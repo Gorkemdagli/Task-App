@@ -1,7 +1,7 @@
 import type { TaskComment } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import type { TenantDb } from '../db/types';
 import { AppError } from '../middleware/errorHandler';
-import { assertCanCommentOnTask, type Actor } from '../lib/permissions';
+import { assertCanCommentOnTask, requireTenant, type Actor } from '../lib/permissions';
 import { notifyTaskCommented } from '../lib/notifications';
 import type { CreateCommentInput } from '../schemas/comments.schema';
 
@@ -38,12 +38,13 @@ function toComment(
 
 /** Yorum ekler. Bildirim: assigner + tüm assignees + önceki yorum yazarlarına. */
 export async function createComment(
+  db: TenantDb,
   taskId: string,
   input: CreateCommentInput,
   actor: Actor,
 ): Promise<CommentWithAuthor> {
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
+  const task = await db.task.findFirst({
+    where: { id: taskId, team: { tenantId: requireTenant(actor) } },
     select: {
       id: true,
       title: true,
@@ -58,7 +59,7 @@ export async function createComment(
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
 
   const assigneeIds = task.assignees.map((a) => a.userId);
-  await assertCanCommentOnTask(actor, {
+  await assertCanCommentOnTask(db, actor, {
     id: task.id,
     teamId: task.teamId,
     assignerId: task.assignerId,
@@ -68,7 +69,7 @@ export async function createComment(
     team: { tenantId: task.team.tenantId },
   });
 
-  const comment = await prisma.taskComment.create({
+  const comment = await db.taskComment.create({
     data: {
       taskId: task.id,
       authorId: actor.id,
@@ -77,28 +78,23 @@ export async function createComment(
     include: COMMENT_INCLUDE,
   });
 
-  // Bildirimleri gönder (async, hata olursa logla ama yorumu geri alma)
-  try {
-    await notifyTaskCommented(
-      {
-        id: task.id,
-        title: task.title,
-        assignerId: task.assignerId,
-        assigneeIds,
-      },
-      actor.id,
-    );
-  } catch (err) {
-    console.error('Bildirim gönderilemedi:', err);
-  }
+  await notifyTaskCommented(
+    db,
+    { id: task.id, title: task.title, assignerId: task.assignerId, assigneeIds },
+    actor.id,
+  );
 
   return toComment(comment);
 }
 
 /** Yorumları listeler. Eski → yeni sıralı. */
-export async function listComments(taskId: string, actor: Actor): Promise<CommentWithAuthor[]> {
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
+export async function listComments(
+  db: TenantDb,
+  taskId: string,
+  actor: Actor,
+): Promise<CommentWithAuthor[]> {
+  const task = await db.task.findFirst({
+    where: { id: taskId, team: { tenantId: requireTenant(actor) } },
     select: {
       id: true,
       teamId: true,
@@ -111,7 +107,7 @@ export async function listComments(taskId: string, actor: Actor): Promise<Commen
   });
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
 
-  await assertCanCommentOnTask(actor, {
+  await assertCanCommentOnTask(db, actor, {
     id: task.id,
     teamId: task.teamId,
     assignerId: task.assignerId,
@@ -121,7 +117,7 @@ export async function listComments(taskId: string, actor: Actor): Promise<Commen
     team: { tenantId: task.team.tenantId },
   });
 
-  const comments = await prisma.taskComment.findMany({
+  const comments = await db.taskComment.findMany({
     where: { taskId },
     include: COMMENT_INCLUDE,
     orderBy: { createdAt: 'asc' },

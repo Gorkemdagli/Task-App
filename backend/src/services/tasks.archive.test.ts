@@ -2,10 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
-import { createTeam, addMemberByDisplayId } from '../services/teams.service';
-import * as tasksService from '../services/tasks.service';
-import { archiveExpiredTasks } from './tasks.archive';
+import {
+  createTeam as createTeamService,
+  addMemberByDisplayId as addMemberService,
+} from '../services/teams.service';
+import * as taskServiceImpl from '../services/tasks.service';
+import { archiveExpiredTasks as archiveExpiredTasksService } from './tasks.archive';
 import type { Actor } from '../lib/permissions';
+import { withTenantContext } from '../db/withTenant';
+import type { TenantDb } from '../db/types';
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();
@@ -20,6 +25,21 @@ async function cleanDb() {
   const sk = await redis.keys('session:*');
   if (sk.length) await redis.del(...sk);
 }
+
+async function inTenant<T>(actor: Actor, work: (db: TenantDb) => Promise<T>): Promise<T> {
+  return withTenantContext(actor.id, actor.tenantId!, work);
+}
+
+const createTeam = (input: Parameters<typeof createTeamService>[1], actor: Actor) =>
+  inTenant(actor, (db) => createTeamService(db, input, actor));
+const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
+  inTenant(actor, (db) => addMemberService(db, teamId, displayId, actor));
+const tasksService = {
+  createTask: (input: Parameters<typeof taskServiceImpl.createTask>[1], actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.createTask(db, input, actor)),
+};
+const archiveExpiredTasks = (actor: Actor) =>
+  inTenant(actor, (db) => archiveExpiredTasksService(db, actor.tenantId!));
 
 async function makeSetup() {
   const admin = (
@@ -54,7 +74,7 @@ describe('archiveExpiredTasks', () => {
       data: { status: 'done', deadline: new Date(Date.now() - 86400000) },
     });
 
-    const result = await archiveExpiredTasks();
+    const result = await archiveExpiredTasks(admin);
     expect(result.archivedCount).toBe(1);
 
     const found = await prisma.task.findUnique({ where: { id: t.id } });
@@ -72,7 +92,7 @@ describe('archiveExpiredTasks', () => {
       data: { status: 'done', deadline: new Date(Date.now() + 86400000) },
     });
 
-    const result = await archiveExpiredTasks();
+    const result = await archiveExpiredTasks(admin);
     expect(result.archivedCount).toBe(0);
 
     const found = await prisma.task.findUnique({ where: { id: t.id } });
@@ -91,7 +111,7 @@ describe('archiveExpiredTasks', () => {
       data: { status: 'done', deadline: new Date(Date.now() - 86400000), archivedAt },
     });
 
-    const result = await archiveExpiredTasks();
+    const result = await archiveExpiredTasks(admin);
     expect(result.archivedCount).toBe(0);
 
     const found = await prisma.task.findUnique({ where: { id: t.id } });
@@ -109,7 +129,7 @@ describe('archiveExpiredTasks', () => {
       data: { deadline: new Date(Date.now() - 86400000) },
     });
 
-    const result = await archiveExpiredTasks();
+    const result = await archiveExpiredTasks(admin);
     expect(result.archivedCount).toBe(0);
   });
 
@@ -128,7 +148,7 @@ describe('archiveExpiredTasks', () => {
       data: { status: 'done', deadline: new Date(Date.now() - 86400000) },
     });
 
-    const result = await archiveExpiredTasks();
+    const result = await archiveExpiredTasks(admin);
     expect(result.archivedCount).toBe(2);
   });
 });

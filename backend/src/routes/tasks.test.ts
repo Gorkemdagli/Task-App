@@ -2,9 +2,58 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
-import { createTeam, addMemberByDisplayId } from '../services/teams.service';
-import * as tasksService from '../services/tasks.service';
+import {
+  createTeam as createTeamService,
+  addMemberByDisplayId as addMemberService,
+} from '../services/teams.service';
+import * as taskServiceImpl from '../services/tasks.service';
 import type { Actor } from '../lib/permissions';
+import { withTenantContext } from '../db/withTenant';
+import type { TenantDb } from '../db/types';
+
+async function inTenant<T>(actor: Actor, work: (db: TenantDb) => Promise<T>): Promise<T> {
+  return withTenantContext(actor.id, actor.tenantId!, work);
+}
+
+const createTeam = (input: Parameters<typeof createTeamService>[1], actor: Actor) =>
+  inTenant(actor, (db) => createTeamService(db, input, actor));
+const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
+  inTenant(actor, (db) => addMemberService(db, teamId, displayId, actor));
+
+const tasksService = {
+  createTask: (input: Parameters<typeof taskServiceImpl.createTask>[1], actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.createTask(db, input, actor)),
+  listTasks: (query: Parameters<typeof taskServiceImpl.listTasks>[1], actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.listTasks(db, query, actor)),
+  getTask: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.getTask(db, taskId, actor)),
+  updateTaskStatus: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.updateTaskStatus>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.updateTaskStatus(db, taskId, input, actor)),
+  updateTaskPriority: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.updateTaskPriority>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.updateTaskPriority(db, taskId, input, actor)),
+  proposeTaskStatus: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.proposeTaskStatus>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.proposeTaskStatus(db, taskId, input, actor)),
+  ackTaskStatus: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.ackTaskStatus(db, taskId, actor)),
+  cancelTaskStatus: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.cancelTaskStatus(db, taskId, actor)),
+  updateTaskFields: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.updateTaskFields>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.updateTaskFields(db, taskId, input, actor)),
+  deleteTask: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.deleteTask(db, taskId, actor)),
+};
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();

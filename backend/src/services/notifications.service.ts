@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import type { TenantDb } from '../db/types';
+import type { Actor } from '../lib/permissions';
 import { logger } from '../lib/logger';
 
 export type NotificationDTO = {
@@ -36,13 +37,14 @@ function encodeCursor(createdAt: Date, id: string): string {
 
 /** Kullanıcının bildirimlerini listeler. unreadCount tüm sayfaları kapsar (limit'ten bağımsız). */
 export async function listNotifications(
-  userId: string,
+  db: TenantDb,
+  actor: Actor,
   opts: { limit: number; cursor?: string },
 ): Promise<{ items: NotificationDTO[]; unreadCount: number; nextCursor: string | null }> {
   const where: {
     userId: string;
     OR?: Array<{ createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }>;
-  } = { userId };
+  } = { userId: actor.id };
 
   if (opts.cursor) {
     const c = decodeCursor(opts.cursor);
@@ -53,12 +55,12 @@ export async function listNotifications(
   }
 
   const [rows, unreadCount] = await Promise.all([
-    prisma.notification.findMany({
+    db.notification.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: opts.limit + 1,
     }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    db.notification.count({ where: { userId: actor.id, readAt: null } }),
   ]);
 
   const hasMore = rows.length > opts.limit;
@@ -79,14 +81,14 @@ export async function listNotifications(
 }
 
 /** Tüm okunmamış bildirimleri okundu olarak işaretler. readAt IS NULL filtresi ile idempotent. */
-export async function markAllRead(userId: string): Promise<number> {
+export async function markAllRead(db: TenantDb, actor: Actor): Promise<number> {
   const start = Date.now();
-  const result = await prisma.notification.updateMany({
-    where: { userId, readAt: null },
+  const result = await db.notification.updateMany({
+    where: { userId: actor.id, readAt: null },
     data: { readAt: new Date() },
   });
   logger.info(
-    { userId, updatedCount: result.count, durationMs: Date.now() - start },
+    { updatedCount: result.count, durationMs: Date.now() - start },
     'notifications.markAllRead',
   );
   return result.count;

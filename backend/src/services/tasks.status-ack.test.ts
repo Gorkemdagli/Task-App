@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
+import { withTenantContext } from '../db/withTenant';
+import type { TenantDb } from '../db/types';
 import { redis } from '../lib/redis';
 import { register } from './auth.service';
-import { createTeam, addMemberByDisplayId } from './teams.service';
-import * as tasksService from './tasks.service';
-import { applyExpiredPendingStatuses } from './tasks.archive';
+import {
+  createTeam as createTeamService,
+  addMemberByDisplayId as addMemberService,
+} from './teams.service';
+import * as taskServiceImpl from './tasks.service';
+import { applyExpiredPendingStatuses as applyExpiredPendingStatusesService } from './tasks.archive';
 import type { Actor } from '../lib/permissions';
 
 async function cleanDb() {
@@ -37,6 +42,40 @@ async function makeMember(email: string, tenantId: string): Promise<Actor> {
   await prisma.user.update({ where: { id: r.user.id }, data: { tenantId, role: 'member' } });
   return { ...r.user, role: 'member' as const, tenantId };
 }
+
+async function inTenant<T>(actor: Actor, work: (db: TenantDb) => Promise<T>): Promise<T> {
+  return withTenantContext(actor.id, actor.tenantId!, work);
+}
+
+const createTeam = (input: Parameters<typeof createTeamService>[1], actor: Actor) =>
+  inTenant(actor, (db) => createTeamService(db, input, actor));
+const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
+  inTenant(actor, (db) => addMemberService(db, teamId, displayId, actor));
+const tasksService = {
+  createTask: (input: Parameters<typeof taskServiceImpl.createTask>[1], actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.createTask(db, input, actor)),
+  proposeTaskStatus: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.proposeTaskStatus>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.proposeTaskStatus(db, taskId, input, actor)),
+  ackTaskStatus: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.ackTaskStatus(db, taskId, actor)),
+  cancelTaskStatus: (taskId: string, actor: Actor) =>
+    inTenant(actor, (db) => taskServiceImpl.cancelTaskStatus(db, taskId, actor)),
+  updateTaskFields: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.updateTaskFields>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.updateTaskFields(db, taskId, input, actor)),
+  updateTaskStatus: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.updateTaskStatus>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.updateTaskStatus(db, taskId, input, actor)),
+};
+const applyExpiredPendingStatuses = (actor: Actor) =>
+  inTenant(actor, (db) => applyExpiredPendingStatusesService(db, actor.tenantId!));
 
 /** 2 assigneeli takım: admin + iki member (B, C). */
 async function makeMultiAssigneeTeam() {
@@ -407,7 +446,7 @@ describe('applyExpiredPendingStatuses (cron)', () => {
   beforeEach(cleanDb);
 
   it('deadline geçmiş pending → apply + notify + acks cleared', async () => {
-    const { b, c, task } = await makeMultiAssigneeTask();
+    const { admin, b, c, task } = await makeMultiAssigneeTask();
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     // Deadline'ı geçmişe çek
@@ -416,7 +455,7 @@ describe('applyExpiredPendingStatuses (cron)', () => {
       data: { deadline: new Date(Date.now() - 86400000) },
     });
 
-    const result = await applyExpiredPendingStatuses();
+    const result = await applyExpiredPendingStatuses(admin);
     expect(result.appliedCount).toBe(1);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
@@ -436,7 +475,7 @@ describe('applyExpiredPendingStatuses (cron)', () => {
   });
 
   it('deadline gelecek pending → uygulanmaz', async () => {
-    const { b, task } = await makeMultiAssigneeTask();
+    const { admin, b, task } = await makeMultiAssigneeTask();
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     await prisma.task.update({
@@ -444,7 +483,7 @@ describe('applyExpiredPendingStatuses (cron)', () => {
       data: { deadline: new Date(Date.now() + 86400000) },
     });
 
-    const result = await applyExpiredPendingStatuses();
+    const result = await applyExpiredPendingStatuses(admin);
     expect(result.appliedCount).toBe(0);
 
     const updated = await prisma.task.findUnique({ where: { id: task.id } });
@@ -453,11 +492,11 @@ describe('applyExpiredPendingStatuses (cron)', () => {
   });
 
   it('deadline null pending → uygulanmaz', async () => {
-    const { b, task } = await makeMultiAssigneeTask();
+    const { admin, b, task } = await makeMultiAssigneeTask();
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     // deadline hiç set edilmedi (null)
-    const result = await applyExpiredPendingStatuses();
+    const result = await applyExpiredPendingStatuses(admin);
     expect(result.appliedCount).toBe(0);
   });
 });

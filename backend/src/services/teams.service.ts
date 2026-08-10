@@ -1,14 +1,8 @@
-import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
-import { assertCanManageTeam } from '../lib/permissions';
+import { assertCanManageTeam, isCompanyAdmin, type Actor } from '../lib/permissions';
+import type { TenantDb } from '../db/types';
 import type { CreateTeamInput } from '../schemas/teams.schema';
-import type { TeamMemberRole, UserRole } from '@prisma/client';
-
-type ActorUser = {
-  id: string;
-  role: UserRole;
-  tenantId: string | null;
-};
+import type { TeamMemberRole } from '@prisma/client';
 
 export interface TeamSummary {
   id: string;
@@ -33,33 +27,14 @@ export interface TeamDetail extends TeamSummary {
   taskCount: number;
 }
 
-function isCompanyAdmin(actor: ActorUser): boolean {
-  return actor.role === 'companyAdmin';
-}
-
-function requireTenant(actor: ActorUser): string {
-  if (actor.tenantId === null) {
-    throw new AppError(403, 'Bu işlem için bir şirkete dahil olmalısınız', 'NO_TENANT');
-  }
-  return actor.tenantId;
-}
-
-/**
- * Yeni takım oluşturur. Yalnızca companyAdmin. Takım tenant'a bağlanır.
- */
-export async function createTeam(input: CreateTeamInput, actor: ActorUser): Promise<TeamSummary> {
-  if (!isCompanyAdmin(actor)) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
-  const tenantId = requireTenant(actor);
-  const team = await prisma.team.create({
-    data: {
-      tenantId,
-      name: input.name,
-      description: input.description ?? null,
-    },
-    include: { _count: { select: { members: true } } },
-  });
+function toSummary(team: {
+  id: string;
+  name: string;
+  description: string | null;
+  tenantId: string;
+  createdAt: Date;
+  _count: { members: number };
+}): TeamSummary {
   return {
     id: team.id,
     name: team.name,
@@ -70,135 +45,99 @@ export async function createTeam(input: CreateTeamInput, actor: ActorUser): Prom
   };
 }
 
-/**
- * companyAdmin: tenant'ın tüm takımları. Diğerleri: yalnız üye oldukları takımlar.
- * Tenantless user (tenantId: null): tenantless user has no teams by definition.
- */
-export async function listTeams(actor: ActorUser): Promise<TeamSummary[]> {
-  // Tenantless user has no teams by definition.
-  if (actor.tenantId === null) return [];
+export async function createTeam(
+  db: TenantDb,
+  input: CreateTeamInput,
+  actor: Actor,
+): Promise<TeamSummary> {
+  if (!isCompanyAdmin(actor)) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  if (!actor.tenantId) {
+    throw new AppError(403, 'Bu işlem için bir şirkete dahil olmalısınız', 'NO_TENANT');
+  }
+  const team = await db.team.create({
+    data: { tenantId: actor.tenantId, name: input.name, description: input.description ?? null },
+    include: { _count: { select: { members: true } } },
+  });
+  return toSummary(team);
+}
 
-  const where = isCompanyAdmin(actor)
-    ? { tenantId: actor.tenantId }
-    : { tenantId: actor.tenantId, members: { some: { userId: actor.id } } };
-
-  const teams = await prisma.team.findMany({
-    where,
+export async function listTeams(db: TenantDb, actor: Actor): Promise<TeamSummary[]> {
+  if (!actor.tenantId) return [];
+  const teams = await db.team.findMany({
+    where: isCompanyAdmin(actor)
+      ? { tenantId: actor.tenantId }
+      : { tenantId: actor.tenantId, members: { some: { userId: actor.id } } },
     include: { _count: { select: { members: true } } },
     orderBy: { createdAt: 'asc' },
   });
-  return teams.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description,
-    tenantId: t.tenantId,
-    memberCount: t._count.members,
-    createdAt: t.createdAt,
-  }));
+  return teams.map(toSummary);
 }
 
-/**
- * Takım detayı. Tenant guard: cross-tenant → 404. Erişim: üye veya companyAdmin.
- * taskCount = tüm task'lar (FAZ-5'te status filtreleri eklenecek).
- */
-export async function getTeam(teamId: string, actor: ActorUser): Promise<TeamDetail> {
-  const tenantId = requireTenant(actor);
-  const team = await prisma.team.findFirst({
-    where: { id: teamId, tenantId },
+export async function getTeam(db: TenantDb, teamId: string, actor: Actor): Promise<TeamDetail> {
+  const team = await db.team.findFirst({
+    where: { id: teamId, tenantId: actor.tenantId ?? undefined },
     include: {
       members: {
         include: {
-          user: {
-            select: { id: true, displayId: true, fullName: true, avatarUrl: true },
-          },
+          user: { select: { id: true, displayId: true, fullName: true, avatarUrl: true } },
         },
         orderBy: { joinedAt: 'asc' },
       },
-      _count: { select: { tasks: true } },
+      _count: { select: { members: true, tasks: true } },
     },
   });
   if (!team) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
-
-  const isMember = team.members.some((m) => m.userId === actor.id);
-  if (!isMember && !isCompanyAdmin(actor)) {
+  if (!isCompanyAdmin(actor) && !team.members.some((member) => member.userId === actor.id)) {
     throw new AppError(403, 'Bu takıma erişim yetkiniz yok', 'FORBIDDEN');
   }
-
   return {
-    id: team.id,
-    name: team.name,
-    description: team.description,
-    tenantId: team.tenantId,
-    memberCount: team.members.length,
-    createdAt: team.createdAt,
-    members: team.members.map((m) => ({
-      userId: m.userId,
-      displayId: m.user.displayId,
-      fullName: m.user.fullName,
-      avatarUrl: m.user.avatarUrl,
-      role: m.role,
-      joinedAt: m.joinedAt,
+    ...toSummary(team),
+    members: team.members.map((member) => ({
+      userId: member.userId,
+      displayId: member.user.displayId,
+      fullName: member.user.fullName,
+      avatarUrl: member.user.avatarUrl,
+      role: member.role,
+      joinedAt: member.joinedAt,
     })),
     taskCount: team._count.tasks,
   };
 }
 
-/**
- * displayId ile takıma üye ekler. Yalnızca companyAdmin.
- * Cross-tenant koruması: eklenen user farklı tenant'taysa 404.
- */
 export async function addMemberByDisplayId(
+  db: TenantDb,
   teamId: string,
   displayId: string,
-  actor: ActorUser,
+  actor: Actor,
 ): Promise<TeamMemberInfo> {
-  await assertCanManageTeam(actor, teamId);
-
-  const tenantId = requireTenant(actor);
-  const team = await prisma.team.findFirst({
-    where: { id: teamId, tenantId },
-    select: { id: true },
-  });
-  if (!team) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
-
-  const user = await prisma.user.findUnique({
-    where: { displayId },
-    select: {
-      id: true,
-      displayId: true,
-      fullName: true,
-      avatarUrl: true,
-      tenantId: true,
+  await assertCanManageTeam(db, actor, teamId);
+  if (!actor.tenantId) {
+    throw new AppError(403, 'Bu işlem için bir şirkete dahil olmalısınız', 'NO_TENANT');
+  }
+  const user = await db.user.findFirst({
+    where: {
+      displayId,
+      OR: [{ tenantId: actor.tenantId }, { tenantId: null }],
     },
+    select: { id: true, displayId: true, fullName: true, avatarUrl: true, tenantId: true },
   });
-  if (!user) {
-    throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
-  }
-  // Tenantless user (NULL): admin ekliyorsa user'ı admin'in tenant'ına transfer et.
-  // Farklı tenant'taki user: eklenemez, 404 (bilgi sızıntısı önlemi).
+  if (!user) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+
   if (user.tenantId === null) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { tenantId: tenantId },
-    });
-  } else if (user.tenantId !== tenantId) {
-    throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+    await db.user.update({ where: { id: user.id }, data: { tenantId: actor.tenantId } });
   }
 
-  const existing = await prisma.teamMember.findUnique({
+  const existing = await db.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId: user.id } },
   });
-  if (existing) {
-    throw new AppError(409, 'Bu kullanıcı zaten takım üyesi', 'CONFLICT_MEMBER');
-  }
+  if (existing) throw new AppError(409, 'Bu kullanıcı zaten takım üyesi', 'CONFLICT_MEMBER');
 
-  const member = await prisma.teamMember.create({
+  const member = await db.teamMember.create({
     data: { teamId, userId: user.id, role: 'member' },
-    include: {
-      user: { select: { displayId: true, fullName: true, avatarUrl: true } },
-    },
+    include: { user: { select: { displayId: true, fullName: true, avatarUrl: true } } },
   });
-
   return {
     userId: member.userId,
     displayId: member.user.displayId,
@@ -209,31 +148,14 @@ export async function addMemberByDisplayId(
   };
 }
 
-/**
- * Takımdan üye çıkarır. Yalnızca companyAdmin. Son admin'i çıkarmaya izin verilir (YAGNI: min-member guard).
- */
 export async function removeMember(
+  db: TenantDb,
   teamId: string,
   userId: string,
-  actor: ActorUser,
+  actor: Actor,
 ): Promise<void> {
-  await assertCanManageTeam(actor, teamId);
-
-  const tenantId = requireTenant(actor);
-  const team = await prisma.team.findFirst({
-    where: { id: teamId, tenantId },
-    select: { id: true },
-  });
-  if (!team) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
-
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } },
-  });
-  if (!member) {
-    throw new AppError(404, 'Üye bulunamadı', 'NOT_FOUND');
-  }
-
-  await prisma.teamMember.delete({
-    where: { teamId_userId: { teamId, userId } },
-  });
+  await assertCanManageTeam(db, actor, teamId);
+  const member = await db.teamMember.findUnique({ where: { teamId_userId: { teamId, userId } } });
+  if (!member) throw new AppError(404, 'Üye bulunamadı', 'NOT_FOUND');
+  await db.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
 }

@@ -1,5 +1,5 @@
 import type { TaskStatus, UserRole, TeamMemberRole } from '@prisma/client';
-import { prisma } from './prisma';
+import type { TenantDb } from '../db/types';
 import { AppError } from '../middleware/errorHandler';
 
 export type Actor = {
@@ -8,7 +8,6 @@ export type Actor = {
   tenantId: string | null;
 };
 
-/** Tenant atanmamış user için ortak guard. Şirket-bağımlı tüm işlemlerde çağrılır. */
 export function requireTenant(actor: Actor): string {
   if (actor.tenantId === null) {
     throw new AppError(403, 'Bu işlem için bir şirkete dahil olmalısınız', 'NO_TENANT');
@@ -20,44 +19,42 @@ export function isCompanyAdmin(actor: Actor): boolean {
   return actor.role === 'companyAdmin';
 }
 
-/** Verilen takımdaki actor rolünü döner (null = üye değil). */
-export async function getTeamRole(teamId: string, userId: string): Promise<TeamMemberRole | null> {
-  const m = await prisma.teamMember.findUnique({
+export async function getTeamRole(
+  db: TenantDb,
+  teamId: string,
+  userId: string,
+): Promise<TeamMemberRole | null> {
+  const member = await db.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } },
     select: { role: true },
   });
-  return m?.role ?? null;
+  return member?.role ?? null;
 }
 
-/** Tenant + takım üyeliği kontrolü. Cross-tenant → 404 (bilgi sızıntısı önlemi). */
 export async function loadTeamForActor(
-  teamId: string,
+  db: TenantDb,
   actor: Actor,
+  teamId: string,
 ): Promise<{ id: string; tenantId: string }> {
-  const tenantId = requireTenant(actor);
-  const team = await prisma.team.findFirst({
-    where: { id: teamId, tenantId },
+  const team = await db.team.findFirst({
+    where: { id: teamId, tenantId: requireTenant(actor) },
     select: { id: true, tenantId: true },
   });
   if (!team) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
   return team;
 }
 
-/** Actor bu takımda admin mi? (companyAdmin her zaman geçer.) */
-export async function isTeamAdminOf(actor: Actor, teamId: string): Promise<boolean> {
+export async function isTeamAdminOf(db: TenantDb, actor: Actor, teamId: string): Promise<boolean> {
   if (isCompanyAdmin(actor)) return true;
-  const role = await getTeamRole(teamId, actor.id);
+  const role = await getTeamRole(db, teamId, actor.id);
   return role === 'teamAdmin';
 }
 
-/** Actor bu takımın üyesi mi? (companyAdmin her zaman geçer.) */
-export async function isTeamMemberOf(actor: Actor, teamId: string): Promise<boolean> {
+export async function isTeamMemberOf(db: TenantDb, actor: Actor, teamId: string): Promise<boolean> {
   if (isCompanyAdmin(actor)) return true;
-  const role = await getTeamRole(teamId, actor.id);
+  const role = await getTeamRole(db, teamId, actor.id);
   return role !== null;
 }
-
-// ─── Task permission helpers ────────────────────────────────────────────
 
 export type TaskForPerm = {
   id: string;
@@ -68,83 +65,120 @@ export type TaskForPerm = {
   pendingProposedBy: string | null;
 };
 
-/** Görev oluşturma: companyAdmin veya hedef takımın teamAdmin'i. */
-export async function assertCanCreateTask(actor: Actor, teamId: string): Promise<void> {
-  if (!(await isTeamAdminOf(actor, teamId))) {
+export async function assertCanCreateTask(
+  db: TenantDb,
+  actor: Actor,
+  teamId: string,
+): Promise<void> {
+  await loadTeamForActor(db, actor, teamId);
+  if (!(await isTeamAdminOf(db, actor, teamId))) {
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }
 }
 
-/** Görev görüntüleme: companyAdmin, takım üyesi. Cross-tenant → 404. */
 export async function assertCanViewTask(
+  db: TenantDb,
   actor: Actor,
   task: TaskForPerm & { team: { tenantId: string } },
 ): Promise<void> {
-  const tenantId = requireTenant(actor);
-  if (task.team.tenantId !== tenantId) {
+  if (task.team.tenantId !== requireTenant(actor)) {
     throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
   }
-  if (!(await isTeamMemberOf(actor, task.teamId))) {
+  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
     throw new AppError(403, 'Bu göreve erişim yetkiniz yok', 'FORBIDDEN');
   }
 }
 
-/** Görev durumu güncelleme: assignees içinden biri, teamAdmin veya companyAdmin. */
-export async function assertCanUpdateTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (task.assignees.some((a) => a.userId === actor.id)) return;
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+export async function assertCanUpdateTaskStatus(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Multi-assignee task'ta status teklifi: assignee veya admin. */
-export async function assertCanProposeTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (task.assignees.some((a) => a.userId === actor.id)) return;
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+export async function assertCanProposeTaskStatus(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Multi-assignee task ack: yalnız assignees. */
-export async function assertCanAckTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (task.assignees.some((a) => a.userId === actor.id)) return;
+export async function assertCanAckTaskStatus(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Pending status teklifini iptal: proposer veya admin. */
-export async function assertCanCancelTaskStatus(actor: Actor, task: TaskForPerm): Promise<void> {
+export async function assertCanCancelTaskStatus(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
   if (task.pendingProposedBy === actor.id) return;
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Görev önceliği güncelleme: yalnız teamAdmin veya companyAdmin. */
-export async function assertCanUpdateTaskPriority(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+export async function assertCanUpdateTaskPriority(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Genel alan güncelleme (title/description/deadline/assignee): assigner, teamAdmin veya companyAdmin. */
-export async function assertCanUpdateTaskFields(actor: Actor, task: TaskForPerm): Promise<void> {
+export async function assertCanUpdateTaskFields(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
   if (task.assignerId === actor.id) return;
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Görev silme: yalnız teamAdmin veya companyAdmin. */
-export async function assertCanDeleteTask(actor: Actor, task: TaskForPerm): Promise<void> {
-  if (await isTeamAdminOf(actor, task.teamId)) return;
+export async function assertCanDeleteTask(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Takım üyesi ekleme/çıkarma: bu takımın teamAdmin'i veya companyAdmin. */
-export async function assertCanManageTeam(actor: Actor, teamId: string): Promise<void> {
-  if (await isTeamAdminOf(actor, teamId)) return;
+export async function assertCanManageTeam(
+  db: TenantDb,
+  actor: Actor,
+  teamId: string,
+): Promise<void> {
+  await loadTeamForActor(db, actor, teamId);
+  if (await isTeamAdminOf(db, actor, teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
-/** Yorum ekleme/listeleme: takım üyesi veya companyAdmin. */
 export async function assertCanCommentOnTask(
+  db: TenantDb,
   actor: Actor,
   task: TaskForPerm & { team: { tenantId: string } },
 ): Promise<void> {
-  await assertCanViewTask(actor, task);
+  await assertCanViewTask(db, actor, task);
 }

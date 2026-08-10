@@ -4,6 +4,17 @@
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 
+-- Tenantless users may be claimed by an admin. They have no tenant data;
+-- writes can only transition them into the current tenant.
+DROP POLICY IF EXISTS "tenant_isolation" ON "users";
+CREATE POLICY "tenant_isolation" ON "users"
+  FOR ALL TO authenticated
+  USING (
+    "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    OR "tenant_id" IS NULL
+  )
+  WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true)::uuid);
+
 ALTER TABLE "task_assignees" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "task_assignees" FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "tenant_isolation" ON "task_assignees";

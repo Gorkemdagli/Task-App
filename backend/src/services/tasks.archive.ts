@@ -1,65 +1,53 @@
-import { prisma } from '../lib/prisma';
+import type { TenantDb } from '../db/types';
 import { notifyTaskStatusChanged } from '../lib/notifications';
 
-/**
- * "Yapıldı" + deadline geçmiş + henüz arşivlenmemiş görevleri arşive taşır.
- * Pure function: cron ve admin endpoint aynı kodu çağırır, test kolay.
- */
-export async function archiveExpiredTasks(): Promise<{ archivedCount: number }> {
-  const now = new Date();
-  const result = await prisma.task.updateMany({
+export async function archiveExpiredTasks(
+  db: TenantDb,
+  tenantId: string,
+): Promise<{ archivedCount: number }> {
+  const result = await db.task.updateMany({
     where: {
+      team: { tenantId },
       status: 'done',
-      deadline: { not: null, lt: now },
+      deadline: { not: null, lt: new Date() },
       archivedAt: null,
     },
-    data: {
-      archivedAt: now,
-    },
+    data: { archivedAt: new Date() },
   });
   return { archivedCount: result.count };
 }
 
-/**
- * Deadline geçmiş + pending status teklifi olan görevleri otomatik uygular.
- * Tüm assignees'e `task_status_changed` bildirimi gönderir.
- */
-export async function applyExpiredPendingStatuses(): Promise<{ appliedCount: number }> {
-  const now = new Date();
-  const pending = await prisma.task.findMany({
+export async function applyExpiredPendingStatuses(
+  db: TenantDb,
+  tenantId: string,
+): Promise<{ appliedCount: number }> {
+  const pending = await db.task.findMany({
     where: {
+      team: { tenantId },
       pendingStatus: { not: null },
-      deadline: { not: null, lt: now },
+      deadline: { not: null, lt: new Date() },
     },
-    include: {
-      assignees: { select: { userId: true } },
-    },
+    include: { assignees: { select: { userId: true } } },
   });
 
   let appliedCount = 0;
-
   for (const task of pending) {
     if (task.pendingStatus === null) continue;
-
     const applyStatus = task.pendingStatus;
     const proposerId = task.pendingProposedBy;
-
-    await prisma.$transaction([
-      prisma.task.update({
-        where: { id: task.id },
-        data: {
-          status: applyStatus,
-          pendingStatus: null,
-          pendingProposedBy: null,
-          pendingProposedAt: null,
-        },
-      }),
-      prisma.taskStatusAck.deleteMany({ where: { taskId: task.id } }),
-    ]);
-
-    const recipientIds = task.assignees.map((a) => a.userId);
+    await db.task.update({
+      where: { id: task.id },
+      data: {
+        status: applyStatus,
+        pendingStatus: null,
+        pendingProposedBy: null,
+        pendingProposedAt: null,
+      },
+    });
+    await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
     await notifyTaskStatusChanged(
-      recipientIds,
+      db,
+      task.assignees.map((assignee) => assignee.userId),
       task,
       task.status,
       applyStatus,
@@ -67,6 +55,5 @@ export async function applyExpiredPendingStatuses(): Promise<{ appliedCount: num
     );
     appliedCount++;
   }
-
   return { appliedCount };
 }

@@ -4,6 +4,7 @@ import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
 import { createCommentSchema } from '../schemas/comments.schema';
 import * as commentsService from '../services/comments.service';
+import { runTenantRequest } from '../http/runTenantRequest';
 
 export const commentsRouter = Router({ mergeParams: true });
 
@@ -22,7 +23,9 @@ commentsRouter.post(
   async (req, res, next) => {
     try {
       const { taskId } = req.params as { taskId: string };
-      const comment = await commentsService.createComment(taskId, req.body, req.user!);
+      const comment = await runTenantRequest(req, (db, actor) =>
+        commentsService.createComment(db, taskId, req.body, actor),
+      );
       res.status(201).json(comment);
     } catch (e) {
       next(e);
@@ -33,7 +36,9 @@ commentsRouter.post(
 commentsRouter.get('/', async (req, res, next) => {
   try {
     const { taskId } = req.params as { taskId: string };
-    const comments = await commentsService.listComments(taskId, req.user!);
+    const comments = await runTenantRequest(req, (db, actor) =>
+      commentsService.listComments(db, taskId, actor),
+    );
     res.json({ comments });
   } catch (e) {
     next(e);

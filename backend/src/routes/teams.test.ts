@@ -2,14 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import {
-  createTeam,
-  listTeams,
-  getTeam,
-  addMemberByDisplayId,
-  removeMember,
+  createTeam as createTeamService,
+  listTeams as listTeamsService,
+  getTeam as getTeamService,
+  addMemberByDisplayId as addMemberByDisplayIdService,
+  removeMember as removeMemberService,
 } from '../services/teams.service';
 import { register } from '../services/auth.service';
 import { AppError } from '../middleware/errorHandler';
+import { withTenantContext } from '../db/withTenant';
 
 async function cleanDb() {
   await prisma.teamMember.deleteMany();
@@ -28,6 +29,25 @@ async function cleanDb() {
 }
 
 type Actor = { id: string; role: 'companyAdmin' | 'teamAdmin' | 'member'; tenantId: string | null };
+
+async function inTenant<T>(
+  actor: Actor,
+  work: (db: Parameters<typeof withTenantContext>[2]) => Promise<T>,
+) {
+  if (!actor.tenantId) return work(undefined as never);
+  return withTenantContext(actor.id, actor.tenantId, work);
+}
+
+const createTeam = (input: Parameters<typeof createTeamService>[1], actor: Actor) =>
+  inTenant(actor, (db) => createTeamService(db, input, actor));
+const listTeams = (actor: Actor) =>
+  actor.tenantId ? inTenant(actor, (db) => listTeamsService(db, actor)) : Promise.resolve([]);
+const getTeam = (teamId: string, actor: Actor) =>
+  inTenant(actor, (db) => getTeamService(db, teamId, actor));
+const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
+  inTenant(actor, (db) => addMemberByDisplayIdService(db, teamId, displayId, actor));
+const removeMember = (teamId: string, userId: string, actor: Actor) =>
+  inTenant(actor, (db) => removeMemberService(db, teamId, userId, actor));
 
 async function makeAdmin(email: string, tenantName?: string) {
   const r = await register({

@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from './errorHandler';
-import { assertCanManageTeam } from '../lib/permissions';
 
 type Role = 'companyAdmin' | 'teamAdmin' | 'member';
 
@@ -21,33 +20,5 @@ export function requireRole(roles: Role[]) {
       return;
     }
     next();
-  };
-}
-
-/**
- * Takım bağlamında admin kontrolü: companyAdmin her zaman; aksi halde
- * `req.params[paramName]` (default `id`) ile belirtilen takımın TeamMember
- * kaydında `role === 'teamAdmin'` olmalı. Per-team rol DB'de yaşadığı için
- * JWT'ye güvenemeyiz — her istekte kontrol gerekir.
- *
- * @example router.post('/teams/:id/members', requireAuth, requireTeamAdmin(), controller.add);
- */
-export function requireTeamAdmin(paramName = 'id') {
-  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
-    try {
-      if (!req.user) {
-        next(new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED'));
-        return;
-      }
-      const teamId = req.params[paramName];
-      if (!teamId) {
-        next(new AppError(400, 'Takım ID eksik', 'BAD_REQUEST'));
-        return;
-      }
-      await assertCanManageTeam(req.user, teamId);
-      next();
-    } catch (e) {
-      next(e);
-    }
   };
 }

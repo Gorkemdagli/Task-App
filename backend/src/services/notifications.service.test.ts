@@ -1,6 +1,31 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../lib/prisma';
-import { listNotifications, markAllRead } from './notifications.service';
+import {
+  listNotifications as listNotificationsService,
+  markAllRead as markAllReadService,
+} from './notifications.service';
+import { withTenantContext } from '../db/withTenant';
+import type { TenantDb } from '../db/types';
+import type { Actor } from '../lib/permissions';
+
+async function forUser<T>(
+  userId: string,
+  work: (db: TenantDb, actor: Actor) => Promise<T>,
+): Promise<T> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, tenantId: true },
+  });
+  if (!user.tenantId) throw new Error('test user must have tenant');
+  return withTenantContext(user.id, user.tenantId, (db) =>
+    work(db, { id: user.id, role: user.role, tenantId: user.tenantId }),
+  );
+}
+
+const listNotifications = (userId: string, opts: { limit: number; cursor?: string }) =>
+  forUser(userId, (db, actor) => listNotificationsService(db, actor, opts));
+const markAllRead = (userId: string) =>
+  forUser(userId, (db, actor) => markAllReadService(db, actor));
 
 async function cleanDb() {
   // Notification.userId FK → User.id with onDelete: Cascade; tenants/users must die last.
