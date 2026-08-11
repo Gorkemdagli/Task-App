@@ -29,7 +29,7 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/şifre gerekli/i)).toBeInTheDocument();
   });
   it('form-top on 401', async () => {
-    (api.post as any).mockRejectedValueOnce({
+    vi.mocked(api.post).mockRejectedValueOnce({
       response: { status: 401, data: { message: 'E-posta veya şifre hatalı' } },
     });
     const u = userEvent.setup();

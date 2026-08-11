@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
-import { ValidationError } from '../middleware/errorHandler';
 import {
   createTaskSchema,
   updateTaskStatusSchema,
@@ -12,6 +11,7 @@ import {
 } from '../schemas/tasks.schema';
 import * as tasksService from '../services/tasks.service';
 import { runTenantRequest } from '../http/runTenantRequest';
+import { parseQuery } from '../http/parseQuery';
 
 export const tasksRouter = Router();
 
@@ -36,14 +36,12 @@ tasksRouter.post('/', writeLimiter, validateBody(createTaskSchema), async (req, 
 
 tasksRouter.get('/', async (req, res, next) => {
   try {
-    const parsed = listTasksQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      throw new ValidationError(
-        parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
-      );
-    }
+    const parsed = parseQuery<Parameters<typeof tasksService.listTasks>[1]>(
+      listTasksQuerySchema,
+      req.query,
+    );
     const result = await runTenantRequest(req, (db, actor) =>
-      tasksService.listTasks(db, parsed.data, actor),
+      tasksService.listTasks(db, parsed, actor),
     );
     res.json(result);
   } catch (e) {

@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { TaskStatus, TaskPriority } from '@/hooks/tasks';
+import { appendTaskFilterParams } from '@/lib/taskFilterParams';
 
 export interface TaskFilters {
   status: TaskStatus[];
@@ -41,15 +42,8 @@ function readFromSearch(sp: URLSearchParams): TaskFilters {
 }
 
 function writeToSearch(filters: TaskFilters): URLSearchParams {
-  const sp = new URLSearchParams();
-  if (filters.status.length) sp.set('status', filters.status.join(','));
-  if (filters.priority.length) sp.set('priority', filters.priority.join(','));
-  if (filters.teamId) sp.set('teamId', filters.teamId);
-  if (filters.assigneeIds.length) sp.set('assigneeIds', filters.assigneeIds.join(','));
+  const sp = appendTaskFilterParams(new URLSearchParams(), filters);
   if (filters.deadline && filters.deadline !== 'all') sp.set('deadline', filters.deadline);
-  if (filters.deadlineFrom) sp.set('deadlineFrom', filters.deadlineFrom);
-  if (filters.deadlineTo) sp.set('deadlineTo', filters.deadlineTo);
-  if (filters.includeArchived) sp.set('includeArchived', 'true');
   return sp;
 }
 

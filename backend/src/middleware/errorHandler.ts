@@ -1,17 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { toRlsError } from '../db/rlsError';
+import { AppError } from '../lib/appError';
 
-export class AppError extends Error {
-  constructor(
-    public statusCode: number,
-    public message: string,
-    public code?: string,
-  ) {
-    super(message);
-    this.name = 'AppError';
-  }
-}
+export { AppError } from '../lib/appError';
 
 export class ValidationError extends AppError {
   constructor(public issues: { path: (string | number)[]; message: string }[]) {

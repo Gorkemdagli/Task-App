@@ -30,6 +30,8 @@ const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'done', label: 'Yapıldı', color: 'border-status-done' },
 ];
 
+const EMPTY_TASKS: Task[] = [];
+
 function StatusColumn({
   column,
   tasks,
@@ -91,7 +93,7 @@ export function DashboardPage() {
   const teamMembers = teamDetail?.members ?? [];
 
   const { data: tasksData, isLoading } = useTasks(teamId ? { teamId } : undefined);
-  const tasks = tasksData?.tasks ?? [];
+  const tasks = tasksData?.tasks ?? EMPTY_TASKS;
 
   const updateStatusDirect = useUpdateTaskStatus();
   const proposeStatus = useProposeTaskStatus();

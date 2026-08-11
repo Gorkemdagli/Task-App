@@ -89,14 +89,18 @@ export async function assertCanViewTask(
   }
 }
 
+async function assertCurrentTeamMember(db: TenantDb, actor: Actor, teamId: string): Promise<void> {
+  if (!(await isTeamMemberOf(db, actor, teamId))) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+}
+
 export async function assertCanUpdateTaskStatus(
   db: TenantDb,
   actor: Actor,
   task: TaskForPerm,
 ): Promise<void> {
-  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
+  await assertCurrentTeamMember(db, actor, task.teamId);
   if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
   if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
@@ -107,9 +111,7 @@ export async function assertCanProposeTaskStatus(
   actor: Actor,
   task: TaskForPerm,
 ): Promise<void> {
-  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
+  await assertCurrentTeamMember(db, actor, task.teamId);
   if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
   if (await isTeamAdminOf(db, actor, task.teamId)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
@@ -120,9 +122,7 @@ export async function assertCanAckTaskStatus(
   actor: Actor,
   task: TaskForPerm,
 ): Promise<void> {
-  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
+  await assertCurrentTeamMember(db, actor, task.teamId);
   if (task.assignees.some((assignee) => assignee.userId === actor.id)) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }

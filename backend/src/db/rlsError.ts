@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 
 export function toRlsError(error: unknown): AppError | null {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;

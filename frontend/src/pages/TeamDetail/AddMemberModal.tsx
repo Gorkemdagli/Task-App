@@ -10,6 +10,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { getApiErrorMessage } from '@/lib/apiError';
 import { useAddMember } from '@/hooks/queries/useTeamMutations';
 
 interface AddMemberModalProps {
@@ -40,10 +41,7 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
       reset();
       setOpen(false);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'Üye eklenemedi.';
-      setError(msg);
+      setError(getApiErrorMessage(err, 'Üye eklenemedi.'));
     }
   }
 

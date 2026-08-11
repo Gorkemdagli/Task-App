@@ -10,6 +10,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { getApiErrorMessage } from '@/lib/apiError';
 import { useCreateTeam } from '@/hooks/queries/useTeamMutations';
 
 export function CreateTeamModal() {
@@ -40,10 +41,7 @@ export function CreateTeamModal() {
       reset();
       setOpen(false);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'Takım oluşturulamadı.';
-      setError(msg);
+      setError(getApiErrorMessage(err, 'Takım oluşturulamadı.'));
     }
   }
 

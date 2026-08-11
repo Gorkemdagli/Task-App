@@ -81,6 +81,26 @@ const TASK_INCLUDE = {
   },
 } as const;
 
+function taskPermissionInput(task: {
+  id: string;
+  teamId: string;
+  assignerId: string;
+  pendingStatus: TaskStatus | null;
+  pendingProposedBy: string | null;
+  assigneeIds?: Set<string>;
+  assignees?: Array<{ userId: string }>;
+}) {
+  const assigneeIds = task.assigneeIds ?? new Set((task.assignees ?? []).map((a) => a.userId));
+  return {
+    id: task.id,
+    teamId: task.teamId,
+    assignerId: task.assignerId,
+    assignees: Array.from(assigneeIds).map((userId) => ({ userId })),
+    pendingStatus: task.pendingStatus,
+    pendingProposedBy: task.pendingProposedBy,
+  };
+}
+
 /** Görev oluşturur. Tüm atananlar aynı takımın üyesi olmalı. */
 export async function createTask(
   db: TenantDb,
@@ -184,12 +204,7 @@ export async function getTask(
   });
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
   await assertCanViewTask(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: task.assignees.map((a) => ({ userId: a.userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
+    ...taskPermissionInput(task),
     team: { tenantId: task.team.tenantId },
   });
   return task as TaskWithRelations;
@@ -234,14 +249,7 @@ export async function updateTaskStatus(
   actor: Actor,
 ): Promise<TaskWithRelations> {
   const task = await loadTaskWithAssignees(db, taskId, actor);
-  await assertCanUpdateTaskStatus(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanUpdateTaskStatus(db, actor, taskPermissionInput(task));
 
   // Cross-tenant guard
   if (task.tenantId !== actor.tenantId) {
@@ -300,14 +308,7 @@ async function proposeTaskStatusInternal(
     tenantId: string;
   },
 ): Promise<TaskWithRelations> {
-  await assertCanProposeTaskStatus(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanProposeTaskStatus(db, actor, taskPermissionInput(task));
 
   // Tek-assignee ise atomik apply
   if (task.assigneeIds.size === 1) {
@@ -380,14 +381,7 @@ export async function ackTaskStatus(
     throw new AppError(400, 'Bekleyen status teklifi yok', 'NO_PENDING');
   }
 
-  await assertCanAckTaskStatus(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanAckTaskStatus(db, actor, taskPermissionInput(task));
 
   const pendingStatus = task.pendingStatus;
 
@@ -437,14 +431,7 @@ export async function cancelTaskStatus(
     throw new AppError(400, 'Bekleyen status teklifi yok', 'NO_PENDING');
   }
 
-  await assertCanCancelTaskStatus(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanCancelTaskStatus(db, actor, taskPermissionInput(task));
 
   await db.task.update({
     where: { id: taskId },
@@ -466,14 +453,7 @@ export async function updateTaskPriority(
   actor: Actor,
 ): Promise<TaskWithRelations> {
   const task = await loadTaskWithAssignees(db, taskId, actor);
-  await assertCanUpdateTaskPriority(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanUpdateTaskPriority(db, actor, taskPermissionInput(task));
 
   const updated = await db.task.update({
     where: { id: taskId },
@@ -490,14 +470,7 @@ export async function updateTaskFields(
   actor: Actor,
 ): Promise<TaskWithRelations> {
   const task = await loadTaskWithAssignees(db, taskId, actor);
-  await assertCanUpdateTaskFields(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanUpdateTaskFields(db, actor, taskPermissionInput(task));
 
   let nextAssigneeIds: string[] | undefined;
   let addedAssigneeIds: string[] = [];
@@ -598,13 +571,6 @@ export async function updateTaskFields(
 
 export async function deleteTask(db: TenantDb, taskId: string, actor: Actor): Promise<void> {
   const task = await loadTaskWithAssignees(db, taskId, actor);
-  await assertCanDeleteTask(db, actor, {
-    id: task.id,
-    teamId: task.teamId,
-    assignerId: task.assignerId,
-    assignees: Array.from(task.assigneeIds).map((userId) => ({ userId })),
-    pendingStatus: task.pendingStatus,
-    pendingProposedBy: task.pendingProposedBy,
-  });
+  await assertCanDeleteTask(db, actor, taskPermissionInput(task));
   await db.task.delete({ where: { id: taskId } });
 }

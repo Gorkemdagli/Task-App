@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { appendTaskFilterParams } from '../lib/taskFilterParams';
 import { useAuthStore } from '../stores/authStore';
+import { invalidateTaskQueries } from './taskQueryInvalidation';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -35,7 +37,12 @@ export interface Task {
   pendingStatus: TaskStatus | null;
   pendingProposedBy: string | null;
   pendingProposedAt: string | null;
-  pendingProposer: { id: string; displayId: string; fullName: string; avatarUrl: string | null } | null;
+  pendingProposer: {
+    id: string;
+    displayId: string;
+    fullName: string;
+    avatarUrl: string | null;
+  } | null;
   statusAcks: TaskStatusAck[];
   team: { id: string; name: string; tenantId: string };
   assigner: { id: string; displayId: string; fullName: string; avatarUrl: string | null };
@@ -64,14 +71,7 @@ export interface ListTasksFilters {
 
 function toQuery(filters: ListTasksFilters | undefined): string {
   if (!filters) return '';
-  const sp = new URLSearchParams();
-  if (filters.status?.length) sp.set('status', filters.status.join(','));
-  if (filters.priority?.length) sp.set('priority', filters.priority.join(','));
-  if (filters.teamId) sp.set('teamId', filters.teamId);
-  if (filters.assigneeIds?.length) sp.set('assigneeIds', filters.assigneeIds.join(','));
-  if (filters.deadlineFrom) sp.set('deadlineFrom', filters.deadlineFrom);
-  if (filters.deadlineTo) sp.set('deadlineTo', filters.deadlineTo);
-  if (filters.includeArchived) sp.set('includeArchived', 'true');
+  const sp = appendTaskFilterParams(new URLSearchParams(), filters);
   if (filters.limit) sp.set('limit', String(filters.limit));
   if (filters.offset) sp.set('offset', String(filters.offset));
   const qs = sp.toString();
@@ -158,8 +158,7 @@ export function useUpdateTaskStatus() {
       if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
     },
     onSettled: (_d, _e, vars) => {
-      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, vars.taskId);
     },
   });
 }
@@ -169,7 +168,9 @@ export function useProposeTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
-      const r = await api.post<Task>(`/tasks/${vars.taskId}/status/propose`, { status: vars.status });
+      const r = await api.post<Task>(`/tasks/${vars.taskId}/status/propose`, {
+        status: vars.status,
+      });
       return r.data;
     },
     onMutate: async (vars) => {
@@ -193,8 +194,7 @@ export function useProposeTaskStatus() {
       if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
     },
     onSettled: (_d, _e, vars) => {
-      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, vars.taskId);
     },
   });
 }
@@ -208,8 +208,7 @@ export function useAckTaskStatus() {
       return r.data;
     },
     onSettled: (_d, _e, taskId) => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, taskId);
     },
   });
 }
@@ -223,8 +222,7 @@ export function useCancelTaskStatus() {
       return r.data;
     },
     onSettled: (_d, _e, taskId) => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, taskId);
     },
   });
 }
@@ -233,12 +231,13 @@ export function useUpdateTaskPriority() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: { taskId: string; priority: TaskPriority }) => {
-      const r = await api.patch<Task>(`/tasks/${vars.taskId}/priority`, { priority: vars.priority });
+      const r = await api.patch<Task>(`/tasks/${vars.taskId}/priority`, {
+        priority: vars.priority,
+      });
       return r.data;
     },
     onSettled: (_d, _e, vars) => {
-      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, vars.taskId);
     },
   });
 }
@@ -258,8 +257,7 @@ export function useUpdateTaskFields() {
       return r.data;
     },
     onSettled: (_d, _e, vars) => {
-      qc.invalidateQueries({ queryKey: ['task', vars.taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      invalidateTaskQueries(qc, vars.taskId);
     },
   });
 }

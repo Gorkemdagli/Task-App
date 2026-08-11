@@ -8,8 +8,8 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import type { Task, TaskStatus } from '../../hooks/tasks';
+import { TaskAssigneeIdentity } from './TaskAssigneeIdentity';
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: 'Yapılacak',
@@ -65,16 +65,12 @@ export function PendingAckModal({
                   key={a.userId}
                   className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-6 w-6">
-                      {a.user.avatarUrl && <AvatarImage src={a.user.avatarUrl} alt={a.user.fullName} />}
-                      <AvatarFallback>{a.user.fullName.slice(0, 2)}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{a.user.fullName}</span>
-                    {isProposer && (
-                      <span className="text-xs text-muted-foreground">(öneren)</span>
-                    )}
-                  </div>
+                  <TaskAssigneeIdentity
+                    assignee={a}
+                    suffix={
+                      isProposer && <span className="text-xs text-muted-foreground">(öneren)</span>
+                    }
+                  />
                   {acked ? (
                     <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                       <Check className="h-3 w-3" />
@@ -94,11 +90,7 @@ export function PendingAckModal({
 
         <DialogFooter className="gap-2">
           {canCancel && (
-            <Button
-              variant="secondary"
-              onClick={onCancel}
-              disabled={isAcking || isCanceling}
-            >
+            <Button variant="secondary" onClick={onCancel} disabled={isAcking || isCanceling}>
               {isCanceling ? 'İptal ediliyor...' : 'İptal'}
             </Button>
           )}

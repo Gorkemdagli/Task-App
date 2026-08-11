@@ -54,7 +54,7 @@ describe('RegisterPage', () => {
     expect(screen.getByText('Orta')).toBeInTheDocument();
   });
   it('form-top on 409', async () => {
-    (api.post as any).mockRejectedValueOnce({
+    vi.mocked(api.post).mockRejectedValueOnce({
       response: { status: 409, data: { message: 'Bu e-posta zaten kullanılıyor' } },
     });
     const u = userEvent.setup();

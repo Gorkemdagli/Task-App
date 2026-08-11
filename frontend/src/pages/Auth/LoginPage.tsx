@@ -5,8 +5,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { loginSchema, type LoginInput } from '../../lib/schemas';
 import { api } from '../../lib/api';
 import { queryClient } from '../../lib/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
+import { FormError } from '../../components/auth/FormError';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 
@@ -31,8 +33,8 @@ export function LoginPage() {
       clearActiveTeam();
       queryClient.clear();
       navigate('/dashboard');
-    } catch (err: any) {
-      setFormError(err?.response?.data?.message ?? 'Beklenmeyen bir hata oluştu');
+    } catch (err: unknown) {
+      setFormError(getApiErrorMessage(err, 'Beklenmeyen bir hata oluştu'));
     }
   };
 
@@ -42,11 +44,7 @@ export function LoginPage() {
         <h2 className="text-2xl font-semibold text-foreground">Giriş Yap</h2>
         <p className="mt-1 text-sm text-secondary-foreground">TaskFlow hesabınla devam et.</p>
       </div>
-      {formError && (
-        <div className="rounded-md border border-priority-high bg-card px-3 py-2 text-sm text-priority-high">
-          {formError}
-        </div>
-      )}
+      <FormError message={formError} />
       <div>
         <label className="mb-1 block text-sm text-foreground" htmlFor="email">
           E-posta
