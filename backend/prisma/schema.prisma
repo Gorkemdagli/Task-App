@@ -10,7 +10,6 @@ datasource db {
 
 enum UserRole {
   member
-  teamAdmin
   companyAdmin
 }
 
@@ -148,6 +147,7 @@ model Task {
   comments        TaskComment[]
 
   pendingStatus     TaskStatus? @map("pending_status")
+  pendingVersion    Int         @default(0) @map("pending_version")
   pendingProposedBy String?     @map("pending_proposed_by") @db.Uuid
   pendingProposedAt DateTime?   @map("pending_proposed_at") @db.Timestamptz(6)
 
@@ -177,12 +177,13 @@ model TaskStatusAck {
   taskId         String     @map("task_id") @db.Uuid
   userId         String     @map("user_id") @db.Uuid
   proposedStatus TaskStatus @map("proposed_status")
+  pendingVersion Int        @map("pending_version")
   ackedAt        DateTime   @default(now()) @map("acked_at") @db.Timestamptz(6)
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([taskId, userId])
+  @@unique([taskId, userId, pendingVersion])
   @@index([taskId])
   @@map("task_status_acks")
 }

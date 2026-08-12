@@ -13,6 +13,8 @@ import {
   type TaskStatus,
 } from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
+import { useTeam } from '@/hooks/queries/useTeams';
+import { getApiErrorMessage } from '@/lib/apiError';
 import {
   canCommentOnTask,
   canDeleteTask,
@@ -33,6 +35,7 @@ export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const { data: task, isLoading } = useTask(id);
+  const { data: teamDetail } = useTeam(task?.teamId);
   const { data: commentsData } = useTaskComments(id);
   const updateStatus = useUpdateTaskStatus();
   const proposeStatus = useProposeTaskStatus();
@@ -63,8 +66,11 @@ export function TaskDetailPage() {
     );
   }
 
-  // Şirket admin her zaman; user.role === 'teamAdmin' kabul (per-task detay backend'de)
-  const isTeamAdminOfThisTeam = isCompanyAdmin(user);
+  const isTeamAdminOfThisTeam =
+    isCompanyAdmin(user) ||
+    teamDetail?.members.some(
+      (member) => member.userId === user?.id && member.role === 'teamAdmin',
+    ) === true;
 
   const allowedStatus = canUpdateTaskStatus(user, task, isTeamAdminOfThisTeam);
   const allowedPriority = canUpdateTaskPriority(user, task, isTeamAdminOfThisTeam);
@@ -82,7 +88,7 @@ export function TaskDetailPage() {
   const handleStatusChange = (status: TaskStatus) => {
     if (!id) return;
     if (task.assignees.length > 1) {
-      setProposeIntent(status);                    // admin + member → modal
+      setProposeIntent(status); // admin + member → modal
     } else if (isTeamAdminOfThisTeam) {
       updateStatus.mutate({ taskId: id, status }); // tek + admin → direct
     } else {
@@ -119,7 +125,8 @@ export function TaskDetailPage() {
                   : `${task.pendingProposer?.fullName ?? 'Biri'} status değişikliği teklif etti`}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Kalan ack: {task.assignees.length - task.statusAcks.length} / {task.assignees.length}
+                Kalan ack: {task.assignees.length - task.statusAcks.length} /{' '}
+                {task.assignees.length}
               </div>
             </div>
             <PendingStatusBadge status={task.pendingStatus} />
@@ -128,7 +135,9 @@ export function TaskDetailPage() {
             {canAck && (
               <button
                 type="button"
-                onClick={() => id && ackStatus.mutate(id)}
+                onClick={() =>
+                  id && ackStatus.mutate({ taskId: id, pendingVersion: task.pendingVersion })
+                }
                 disabled={ackStatus.isPending}
                 className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
               >
@@ -239,13 +248,25 @@ export function TaskDetailPage() {
         <PendingAckModal
           task={task}
           yourAcked={yourAcked}
+          canAck={canAck}
           canCancel={canCancel}
-          onAck={() => id && ackStatus.mutate(id)}
+          onAck={() => id && ackStatus.mutate({ taskId: id, pendingVersion: task.pendingVersion })}
           onCancel={() => id && cancelStatus.mutate(id)}
           onClose={() => setAckModalDismissed(true)}
           isAcking={ackStatus.isPending}
           isCanceling={cancelStatus.isPending}
         />
+      )}
+
+      {ackStatus.isError && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {['STALE_PENDING_VERSION', 'CONCURRENT_MODIFICATION'].includes(
+            (ackStatus.error as { response?: { data?: { error?: string } } })?.response?.data
+              ?.error ?? '',
+          )
+            ? 'Teklif değişti. Güncel durum yüklendi.'
+            : getApiErrorMessage(ackStatus.error, 'Teklif değişti. Güncel durum yüklendi.')}
+        </p>
       )}
 
       {proposeIntent && task && (

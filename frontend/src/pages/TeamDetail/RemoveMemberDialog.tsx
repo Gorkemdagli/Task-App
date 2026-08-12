@@ -15,6 +15,7 @@ interface RemoveMemberDialogProps {
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
   loading: boolean;
+  error: string | null;
 }
 
 export function RemoveMemberDialog({
@@ -22,6 +23,7 @@ export function RemoveMemberDialog({
   onClose,
   onConfirm,
   loading,
+  error,
 }: RemoveMemberDialogProps) {
   return (
     <Dialog open={Boolean(member)} onOpenChange={(next) => !next && onClose()}>
@@ -30,9 +32,14 @@ export function RemoveMemberDialog({
           <DialogTitle>Üyeyi Çıkar</DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">{member?.fullName}</span> bu takımdan
-            çıkarılacak. Takıma ait görev atamaları etkilenmez.
+            çıkarılacak.
           </DialogDescription>
         </DialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <DialogFooter className="gap-2">
           <DialogClose asChild>
             <Button type="button" variant="ghost" size="md" disabled={loading}>

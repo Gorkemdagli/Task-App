@@ -17,6 +17,7 @@ const baseTask: Task = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   pendingStatus: 'in_progress',
+  pendingVersion: 1,
   pendingProposedBy: 'u1',
   pendingProposedAt: new Date().toISOString(),
   pendingProposer: { id: 'u1', displayId: 'AAAAA', fullName: 'Ali Yılmaz', avatarUrl: null },
@@ -102,7 +103,13 @@ describe('PendingAckModal', () => {
       task: {
         ...baseTask,
         statusAcks: [
-          { id: 'a1', userId: 'u2', proposedStatus: 'in_progress', ackedAt: new Date().toISOString() },
+          {
+            id: 'a1',
+            userId: 'u2',
+            proposedStatus: 'in_progress',
+            pendingVersion: 1,
+            ackedAt: new Date().toISOString(),
+          },
         ],
       },
     });

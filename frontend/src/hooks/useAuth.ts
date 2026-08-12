@@ -8,14 +8,12 @@ export function useAuth() {
 
   const isAuthenticated = !!token;
   const isCompanyAdmin = user?.role === 'companyAdmin';
-  const isTeamAdmin = user?.role === 'teamAdmin' || user?.role === 'companyAdmin';
 
   return {
     user,
     token,
     isAuthenticated,
     isCompanyAdmin,
-    isTeamAdmin,
     setUser,
     clearAuth,
   } as {
@@ -23,7 +21,6 @@ export function useAuth() {
     token: string | null;
     isAuthenticated: boolean;
     isCompanyAdmin: boolean;
-    isTeamAdmin: boolean;
     setUser: (u: AuthUser | null) => void;
     clearAuth: () => void;
   };

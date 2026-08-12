@@ -6,7 +6,6 @@ const state = vi.hoisted(() => ({
   findTenants: vi.fn(),
   transaction: vi.fn(),
   archive: vi.fn(),
-  apply: vi.fn(),
 }));
 
 vi.mock('../lib/maintenancePrisma', () => ({
@@ -17,7 +16,6 @@ vi.mock('../lib/maintenancePrisma', () => ({
 }));
 vi.mock('../services/tasks.archive', () => ({
   archiveExpiredTasks: state.archive,
-  applyExpiredPendingStatuses: state.apply,
 }));
 
 describe('archive worker isolation', () => {
@@ -26,7 +24,6 @@ describe('archive worker isolation', () => {
     state.findTenants.mockReset();
     state.transaction.mockReset();
     state.archive.mockReset();
-    state.apply.mockReset();
   });
 
   it('continues with the next tenant after a batch failure', async () => {
@@ -36,15 +33,12 @@ describe('archive worker isolation', () => {
       if (tenantId === 'tenant-a') throw new Error('tenant-a failed');
       return { archivedCount: 2 };
     });
-    state.apply.mockResolvedValue({ appliedCount: 3 });
 
     const { runArchiveBatch } = await import('../archive-worker');
-    await expect(runArchiveBatch()).resolves.toEqual({ archivedCount: 2, appliedCount: 3 });
+    await expect(runArchiveBatch()).resolves.toEqual({ archivedCount: 2 });
 
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-a');
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-b');
-    expect(state.apply).toHaveBeenCalledTimes(1);
-    expect(state.apply).toHaveBeenCalledWith(expect.anything(), 'tenant-b');
   });
 
   it('keeps the web entrypoint free of worker-only dependencies', () => {

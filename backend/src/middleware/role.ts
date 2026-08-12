@@ -1,11 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from './errorHandler';
 
-type Role = 'companyAdmin' | 'teamAdmin' | 'member';
+type Role = 'companyAdmin' | 'member';
 
 /**
- * Rol bazlı yetki kontrolü. `requireAuth` zincirinin arkasında kullanılmalı.
- * FAZ-7'de `teamAdmin` eklenince aynı middleware birden fazla rolü kabul edebilir.
+ * Global rol bazlı yetki kontrolü. `requireAuth` zincirinin arkasında kullanılmalı.
  *
  * @example router.post('/teams', requireAuth, requireRole(['companyAdmin']), controller.create);
  */

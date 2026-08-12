@@ -100,8 +100,10 @@ backend/prisma/migrations/dev.db*
 # Husky internal hooks (real .husky/ hooks tracked via pre-commit)
 .husky/*
 !.husky/pre-commit
+.husky
 
 # Project documentation (kept local, not on remote)
+
 CLAUDE.md
 PROJECT.md
 FRONTEND.md
@@ -112,4 +114,4 @@ docs/
 graphify-out
 review.md
 AGENTS.md
-toda.md
+todo.md

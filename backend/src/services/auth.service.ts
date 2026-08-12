@@ -32,7 +32,7 @@ export interface AuthUser {
   displayId: string;
   email: string;
   fullName: string;
-  role: 'companyAdmin' | 'teamAdmin' | 'member';
+  role: 'companyAdmin' | 'member';
   tenantId: string | null;
   tenantName?: string | null;
 }
@@ -83,7 +83,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
       fullName: input.fullName,
       displayId,
       passwordHash,
-      role: 'companyAdmin',
+      role: input.companyName ? 'companyAdmin' : 'member',
     },
   });
   const r = issueTokens({
@@ -121,9 +121,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   return r;
 }
 
-export async function refresh(
-  refreshToken: string,
-): Promise<AuthResult> {
+export async function refresh(refreshToken: string): Promise<AuthResult> {
   let p;
   try {
     p = verifyRefreshToken(refreshToken);

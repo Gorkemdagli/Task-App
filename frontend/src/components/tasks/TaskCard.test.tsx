@@ -17,6 +17,7 @@ const baseTask: Task = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   pendingStatus: null,
+  pendingVersion: 0,
   pendingProposedBy: null,
   pendingProposedAt: null,
   pendingProposer: null,
@@ -183,5 +184,39 @@ describe('TaskCard', () => {
     expect(card?.getAttribute('data-pending')).toBe('true');
     expect(card?.className).toContain('border-yellow-500');
     expect(container.textContent).toMatch(/Onay Bekliyor/);
+  });
+
+  it('keeps pending task link accessible when drag is disabled', () => {
+    const pendingTask = {
+      ...baseTask,
+      pendingStatus: 'in_progress' as const,
+      pendingProposer: {
+        id: 'u2',
+        displayId: 'BBBBB',
+        fullName: 'Selin Demir',
+        avatarUrl: null,
+      },
+    };
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={pendingTask} currentUserId="u-other" draggable />
+      </Wrap>,
+    );
+
+    const card = container.querySelector('[data-testid="task-card-t1"]');
+    expect(card).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('link')).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('keeps drag attributes on non-pending draggable tasks', () => {
+    const { container } = render(
+      <Wrap>
+        <TaskCard task={baseTask} draggable />
+      </Wrap>,
+    );
+
+    const card = container.querySelector('[data-testid="task-card-t1"]');
+    expect(card).toHaveAttribute('role', 'button');
+    expect(card).toHaveAttribute('tabindex', '0');
   });
 });

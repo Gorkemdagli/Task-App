@@ -15,7 +15,7 @@ const user: AuthUser = {
   displayId: 'A3X9K',
   email: 'a@x.com',
   fullName: 'Ada Yılmaz',
-  role: 'teamAdmin',
+  role: 'member',
   tenantId: 't1',
   tenantName: 'Acme A.Ş.',
 };
@@ -43,7 +43,7 @@ describe('MobileSidebar', () => {
     useUiStore.setState({ mobileSheetOpen: true });
     renderMs();
     expect(screen.getByText('Acme A.Ş.')).toBeInTheDocument();
-    expect(screen.getByText('Takım Admini')).toBeInTheDocument();
+    expect(screen.getByText('Üye')).toBeInTheDocument();
   });
 
   it('shows empty-state hint when no active team is selected', () => {

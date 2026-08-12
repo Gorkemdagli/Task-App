@@ -21,10 +21,11 @@ async function cleanDb() {
 
 describe('register', () => {
   beforeEach(cleanDb);
-  it('creates user with personal tenant', async () => {
+  it('creates tenantless member without company', async () => {
     const r = await register({ fullName: 'Ali', email: 'ali@test.com', password: 'hunter22' });
     expect(r.user.email).toBe('ali@test.com');
-    expect(r.user.role).toBe('companyAdmin');
+    expect(r.user.tenantId).toBeNull();
+    expect(r.user.role).toBe('member');
     expect(r.user.displayId).toMatch(/^[A-Z2-9]{5}$/);
     expect(r.accessToken).toBeDefined();
   });

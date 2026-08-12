@@ -2,7 +2,7 @@
  * Faz 1 seed verisi:
  *   - 2 tenant (Acme Corp, Globex Inc)
  *   - Her tenant'ta 2 takım (Engineering, Design)
- *   - Her tenant'ta 5 kullanıcı (1 companyAdmin, 1 teamAdmin, 3 member)
+ *   - Her tenant'ta 5 kullanıcı (1 companyAdmin, 1 takım admin üyeliği, 3 member)
  *   - Her takımda 5-6 görev (toplam ~10 per tenant)
  *   - Bazı görevlerde 2-3 yorum
  *   - Her takımda 1 kanal + 2-3 mesaj
@@ -83,7 +83,7 @@ async function seedTenant(
         fullName: 'Team Admin',
         passwordHash: '$2b$12$0000000000000000000000000000000000000000000000000000000',
         displayId: seedDisplayId(seedIndex + 1),
-        role: 'teamAdmin',
+        role: 'member',
       },
       {
         id: memberIds[0],

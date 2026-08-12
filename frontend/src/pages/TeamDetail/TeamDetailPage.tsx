@@ -27,7 +27,8 @@ export function TeamDetailPage() {
   // DB'de yaşar).
   const viewerMembership = team?.members.find((m) => m.userId === user?.id);
   const isTeamAdminOfThisTeam = viewerMembership?.role === 'teamAdmin';
-  const canManage = isCompanyAdmin || isTeamAdminOfThisTeam;
+  const canManageMembers = isCompanyAdmin || isTeamAdminOfThisTeam;
+  const canManageRoles = isCompanyAdmin;
 
   // URL değişirse activeTeamId'yi senkronize et (sidebar ile).
   useEffect(() => {
@@ -78,16 +79,20 @@ export function TeamDetailPage() {
             Üyeler{' '}
             <span className="text-sm text-secondary-foreground">({team.members.length})</span>
           </h2>
-          {canManage && <AddMemberModal teamId={team.id} />}
+          {canManageMembers && <AddMemberModal teamId={team.id} />}
         </div>
-        <MemberList members={team.members} teamId={team.id} canManage={canManage} />
+        <MemberList
+          members={team.members}
+          teamId={team.id}
+          canManageMembers={canManageMembers}
+          canManageRoles={canManageRoles}
+        />
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">
-            Görevler{' '}
-            <span className="text-sm text-secondary-foreground">({tasks.length})</span>
+            Görevler <span className="text-sm text-secondary-foreground">({tasks.length})</span>
           </h2>
         </div>
         {tasksLoading ? (
@@ -97,7 +102,10 @@ export function TeamDetailPage() {
             Bu takımda görev yok.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-md border border-border bg-card" data-testid="team-tasks-list">
+          <div
+            className="overflow-hidden rounded-md border border-border bg-card"
+            data-testid="team-tasks-list"
+          >
             {tasks.map((t) => (
               <TaskCardRow key={t.id} task={t} />
             ))}

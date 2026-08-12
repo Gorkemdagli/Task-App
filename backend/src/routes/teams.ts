@@ -3,7 +3,11 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
-import { createTeamSchema, addMemberSchema } from '../schemas/teams.schema';
+import {
+  createTeamSchema,
+  addMemberSchema,
+  updateTeamMemberRoleSchema,
+} from '../schemas/teams.schema';
 import * as teamsService from '../services/teams.service';
 import { runTenantRequest } from '../http/runTenantRequest';
 
@@ -18,6 +22,11 @@ const memberWriteLimiter = createRateLimit({
   windowMs: 60_000,
   max: 30,
   keyPrefix: 'rl:teams-members',
+});
+const memberRoleLimiter = createRateLimit({
+  windowMs: 60_000,
+  max: 10,
+  keyPrefix: 'rl:teams-member-role',
 });
 
 teamsRouter.use(requireAuth);
@@ -85,3 +94,19 @@ teamsRouter.delete('/:id/members/:userId', memberWriteLimiter, async (req, res, 
     next(e);
   }
 });
+
+teamsRouter.patch(
+  '/:id/members/:userId/role',
+  memberRoleLimiter,
+  validateBody(updateTeamMemberRoleSchema),
+  async (req, res, next) => {
+    try {
+      const member = await runTenantRequest(req, (db, actor) =>
+        teamsService.updateTeamMemberRole(db, req.params.id, req.params.userId, req.body, actor),
+      );
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  },
+);

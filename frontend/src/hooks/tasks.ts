@@ -19,6 +19,7 @@ export interface TaskStatusAck {
   id: string;
   userId: string;
   proposedStatus: TaskStatus;
+  pendingVersion: number;
   ackedAt: string;
 }
 
@@ -35,6 +36,7 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   pendingStatus: TaskStatus | null;
+  pendingVersion: number;
   pendingProposedBy: string | null;
   pendingProposedAt: string | null;
   pendingProposer: {
@@ -203,12 +205,15 @@ export function useProposeTaskStatus() {
 export function useAckTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (taskId: string) => {
-      const r = await api.post<{ task: Task; applied: boolean }>(`/tasks/${taskId}/status/ack`);
+    mutationFn: async (vars: { taskId: string; pendingVersion: number }) => {
+      const r = await api.post<{ task: Task; applied: boolean }>(
+        `/tasks/${vars.taskId}/status/ack`,
+        { pendingVersion: vars.pendingVersion },
+      );
       return r.data;
     },
-    onSettled: (_d, _e, taskId) => {
-      invalidateTaskQueries(qc, taskId);
+    onSettled: (_d, _e, vars) => {
+      invalidateTaskQueries(qc, vars.taskId);
     },
   });
 }

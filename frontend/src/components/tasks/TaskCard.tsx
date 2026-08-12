@@ -53,8 +53,7 @@ export function TaskCard({
   disabled = false,
   currentUserId,
 }: TaskCardProps) {
-  const isPending =
-    task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
+  const isPending = task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
 
   // Pending varken sürükleme kilitli (admin override yoksa)
   const dragEnabled = draggable && !disabled && !isPending;
@@ -74,7 +73,7 @@ export function TaskCard({
     <div
       ref={handleRef}
       {...(dragEnabled ? listeners : {})}
-      {...(draggable ? attributes : {})}
+      {...(dragEnabled ? attributes : {})}
       data-testid={`task-card-${task.id}`}
       data-priority={task.priority}
       data-pending={isPending ? 'true' : undefined}

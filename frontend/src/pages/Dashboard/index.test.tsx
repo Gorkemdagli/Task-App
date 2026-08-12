@@ -72,7 +72,12 @@ let mockTeams: Array<{ id: string; name: string }> = [];
 let mockTeamDetail: {
   id: string;
   name: string;
-  members: Array<{ userId: string; fullName: string; avatarUrl: string | null }>;
+  members: Array<{
+    userId: string;
+    fullName: string;
+    avatarUrl: string | null;
+    role: 'member' | 'teamAdmin';
+  }>;
 } | null = null;
 
 function makeTask(overrides: Partial<Task>): Task {
@@ -89,6 +94,7 @@ function makeTask(overrides: Partial<Task>): Task {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     pendingStatus: null,
+    pendingVersion: 0,
     pendingProposedBy: null,
     pendingProposedAt: null,
     pendingProposer: null,
@@ -126,7 +132,7 @@ describe('DashboardPage', () => {
     mockTeamDetail = {
       id: 'team-1',
       name: 'UX',
-      members: [{ userId: 'u1', fullName: 'Ada', avatarUrl: null }],
+      members: [{ userId: 'u1', fullName: 'Ada', avatarUrl: null, role: 'member' }],
     };
     mockTasks = [];
   });
@@ -180,8 +186,12 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('add-task-button')).toBeInTheDocument();
   });
 
-  it('shows "+ Görev Ekle" button for teamAdmin', () => {
-    useAuthStore.setState({ accessToken: 't', user: { ...member, role: 'teamAdmin' } });
+  it('shows "+ Görev Ekle" button for team admin membership', () => {
+    mockTeamDetail = {
+      ...mockTeamDetail!,
+      members: [{ userId: 'u1', fullName: 'Ada', avatarUrl: null, role: 'teamAdmin' }],
+    };
+    useAuthStore.setState({ accessToken: 't', user: member });
     renderDashboard();
     expect(screen.getByTestId('add-task-button')).toBeInTheDocument();
   });

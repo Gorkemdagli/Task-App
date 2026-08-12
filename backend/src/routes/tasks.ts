@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { createRateLimit } from '../middleware/rateLimit';
@@ -8,6 +9,7 @@ import {
   updateTaskPrioritySchema,
   updateTaskFieldsSchema,
   listTasksQuerySchema,
+  ackTaskStatusSchema,
 } from '../schemas/tasks.schema';
 import * as tasksService from '../services/tasks.service';
 import { runTenantRequest } from '../http/runTenantRequest';
@@ -20,6 +22,11 @@ const writeLimiter = createRateLimit({
   max: 30,
   keyPrefix: 'rl:tasks-write',
 });
+
+const statusTransactionOptions = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxRetries: 3,
+} as const;
 
 tasksRouter.use(requireAuth);
 
@@ -66,8 +73,10 @@ tasksRouter.patch(
   validateBody(updateTaskStatusSchema),
   async (req, res, next) => {
     try {
-      const task = await runTenantRequest(req, (db, actor) =>
-        tasksService.updateTaskStatus(db, req.params.id, req.body, actor),
+      const task = await runTenantRequest(
+        req,
+        (db, actor) => tasksService.updateTaskStatus(db, req.params.id, req.body, actor),
+        statusTransactionOptions,
       );
       res.json(task);
     } catch (e) {
@@ -82,8 +91,10 @@ tasksRouter.post(
   validateBody(updateTaskStatusSchema),
   async (req, res, next) => {
     try {
-      const task = await runTenantRequest(req, (db, actor) =>
-        tasksService.proposeTaskStatus(db, req.params.id, req.body, actor),
+      const task = await runTenantRequest(
+        req,
+        (db, actor) => tasksService.proposeTaskStatus(db, req.params.id, req.body, actor),
+        statusTransactionOptions,
       );
       res.json(task);
     } catch (e) {
@@ -92,21 +103,30 @@ tasksRouter.post(
   },
 );
 
-tasksRouter.post('/:id/status/ack', writeLimiter, async (req, res, next) => {
-  try {
-    const result = await runTenantRequest(req, (db, actor) =>
-      tasksService.ackTaskStatus(db, req.params.id, actor),
-    );
-    res.json(result);
-  } catch (e) {
-    next(e);
-  }
-});
+tasksRouter.post(
+  '/:id/status/ack',
+  writeLimiter,
+  validateBody(ackTaskStatusSchema),
+  async (req, res, next) => {
+    try {
+      const result = await runTenantRequest(
+        req,
+        (db, actor) => tasksService.ackTaskStatus(db, req.params.id, req.body, actor),
+        statusTransactionOptions,
+      );
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 tasksRouter.post('/:id/status/cancel', writeLimiter, async (req, res, next) => {
   try {
-    const task = await runTenantRequest(req, (db, actor) =>
-      tasksService.cancelTaskStatus(db, req.params.id, actor),
+    const task = await runTenantRequest(
+      req,
+      (db, actor) => tasksService.cancelTaskStatus(db, req.params.id, actor),
+      statusTransactionOptions,
     );
     res.json(task);
   } catch (e) {

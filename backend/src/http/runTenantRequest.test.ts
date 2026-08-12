@@ -42,4 +42,16 @@ describe('runTenantRequest', () => {
     expect(withTenantContext).toHaveBeenCalledWith('user-id', 'tenant-id', expect.any(Function));
     expect(work).toHaveBeenCalledWith(tx, actor);
   });
+
+  it('transaction seçeneklerini iletir', async () => {
+    const tx = {};
+    const work = vi.fn().mockResolvedValue('done');
+    withTenantContext.mockImplementation(async (_userId, _tenantId, callback) => callback(tx));
+
+    await runTenantRequest(reqWith(actor), work, { maxRetries: 3 });
+
+    expect(withTenantContext).toHaveBeenCalledWith('user-id', 'tenant-id', expect.any(Function), {
+      maxRetries: 3,
+    });
+  });
 });

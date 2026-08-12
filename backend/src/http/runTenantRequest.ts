@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { withTenantContext } from '../db/withTenant';
+import { withTenantContext, type TenantTransactionOptions } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
 import { type Actor, requireTenant } from '../lib/permissions';
 import { AppError } from '../middleware/errorHandler';
@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 export async function runTenantRequest<T>(
   req: Request,
   work: (db: TenantDb, actor: Actor) => Promise<T>,
+  options?: TenantTransactionOptions,
 ): Promise<T> {
   const actor = req.user;
   if (!actor) {
@@ -14,5 +15,8 @@ export async function runTenantRequest<T>(
   }
 
   const tenantId = requireTenant(actor);
-  return withTenantContext(actor.id, tenantId, (db) => work(db, actor));
+  const callback = (db: TenantDb) => work(db, actor);
+  return options
+    ? withTenantContext(actor.id, tenantId, callback, options)
+    : withTenantContext(actor.id, tenantId, callback);
 }

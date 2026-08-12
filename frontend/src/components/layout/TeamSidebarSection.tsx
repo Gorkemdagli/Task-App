@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 
 const roleLabel: Record<AuthUser['role'], string> = {
   companyAdmin: 'Şirket Admini',
-  teamAdmin: 'Takım Admini',
   member: 'Üye',
 };
 

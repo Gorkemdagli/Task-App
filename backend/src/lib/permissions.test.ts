@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
 import { assertCanManageTeam, getTeamRole, type Actor } from './permissions';
 
-const actor: Actor = { id: 'user-a', role: 'teamAdmin', tenantId: 'tenant-a' };
+const actor: Actor = { id: 'user-a', role: 'member', tenantId: 'tenant-a' };
 
 function mockDb() {
   return {

@@ -40,3 +40,14 @@ export function useRemoveMember(teamId: string) {
     },
   });
 }
+
+export function useUpdateMemberRole(teamId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: teamsService.TeamMemberRole }) =>
+      teamsService.updateMemberRole(teamId, userId, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teamKeys.detail(teamId) });
+    },
+  });
+}

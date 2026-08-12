@@ -5,7 +5,7 @@ export interface AuthUser {
   displayId: string;
   email: string;
   fullName: string;
-  role: 'companyAdmin' | 'teamAdmin' | 'member';
+  role: 'companyAdmin' | 'member';
   // NULL = tenantless user (register'da companyName vermedi, henüz bir
   // şirkete dahil değil). Admin bu user'ı takıma eklediğinde tenantId set olur.
   tenantId: string | null;

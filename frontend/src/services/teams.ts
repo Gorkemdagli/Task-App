@@ -60,3 +60,12 @@ export async function addMember(teamId: string, input: AddMemberInput): Promise<
 export async function removeMember(teamId: string, userId: string): Promise<void> {
   await api.delete(`/teams/${teamId}/members/${userId}`);
 }
+
+export async function updateMemberRole(
+  teamId: string,
+  userId: string,
+  role: TeamMemberRole,
+): Promise<TeamMember> {
+  const r = await api.patch<TeamMember>(`/teams/${teamId}/members/${userId}/role`, { role });
+  return r.data;
+}

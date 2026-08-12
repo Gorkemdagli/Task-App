@@ -71,8 +71,8 @@ describe('RLS tenant isolation for task relations', () => {
     });
     await prisma.taskStatusAck.createMany({
       data: [
-        { taskId: taskAId, userId: userAId, proposedStatus: 'done' },
-        { taskId: taskBId, userId: userBId, proposedStatus: 'done' },
+        { taskId: taskAId, userId: userAId, proposedStatus: 'done', pendingVersion: 0 },
+        { taskId: taskBId, userId: userBId, proposedStatus: 'done', pendingVersion: 0 },
       ],
     });
   });
@@ -100,7 +100,7 @@ describe('RLS tenant isolation for task relations', () => {
     await expect(
       asTenant(tenantAId, userAId, (db) =>
         db.taskStatusAck.create({
-          data: { taskId: taskBId, userId: userAId, proposedStatus: 'done' },
+          data: { taskId: taskBId, userId: userAId, proposedStatus: 'done', pendingVersion: 0 },
         }),
       ),
     ).rejects.toBeDefined();

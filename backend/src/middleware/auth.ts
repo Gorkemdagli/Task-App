@@ -13,7 +13,7 @@ declare global {
         displayId: string;
         email: string;
         fullName: string;
-        role: 'companyAdmin' | 'teamAdmin' | 'member';
+        role: 'companyAdmin' | 'member';
         tenantId: string | null;
       };
     }

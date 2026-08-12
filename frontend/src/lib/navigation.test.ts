@@ -26,7 +26,6 @@ describe('navigation', () => {
   it('canSeeNavItem gates by requiredRoles', () => {
     const permissions = PRIMARY_NAV.find((i) => i.path === '/permissions')!;
     expect(canSeeNavItem(permissions, 'companyAdmin')).toBe(true);
-    expect(canSeeNavItem(permissions, 'teamAdmin')).toBe(false);
     expect(canSeeNavItem(permissions, 'member')).toBe(false);
     expect(canSeeNavItem(permissions, undefined)).toBe(false);
   });

@@ -20,6 +20,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 export function PendingAckModal({
   task,
   yourAcked,
+  canAck = !yourAcked,
   canCancel,
   onAck,
   onCancel,
@@ -29,6 +30,7 @@ export function PendingAckModal({
 }: {
   task: Task;
   yourAcked: boolean;
+  canAck?: boolean;
   canCancel: boolean;
   onAck: () => void;
   onCancel: () => void;
@@ -94,7 +96,7 @@ export function PendingAckModal({
               {isCanceling ? 'İptal ediliyor...' : 'İptal'}
             </Button>
           )}
-          {!yourAcked && (
+          {canAck && !yourAcked && (
             <Button onClick={onAck} disabled={isAcking || isCanceling}>
               {isAcking ? 'Onaylanıyor...' : 'Onayla'}
             </Button>

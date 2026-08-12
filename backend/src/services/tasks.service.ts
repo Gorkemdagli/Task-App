@@ -11,8 +11,6 @@ import {
   assertCanUpdateTaskPriority,
   assertCanUpdateTaskStatus,
   assertCanViewTask,
-  isCompanyAdmin,
-  isTeamAdminOf,
   type Actor,
   loadTeamForActor,
   requireTenant,
@@ -28,6 +26,7 @@ import type {
   UpdateTaskFieldsInput,
   UpdateTaskPriorityInput,
   UpdateTaskStatusInput,
+  AckTaskStatusInput,
 } from '../schemas/tasks.schema';
 
 export interface TaskWithRelations {
@@ -43,6 +42,7 @@ export interface TaskWithRelations {
   createdAt: Date;
   updatedAt: Date;
   pendingStatus: TaskStatus | null;
+  pendingVersion: number;
   pendingProposedBy: string | null;
   pendingProposedAt: Date | null;
   pendingProposer: {
@@ -55,6 +55,7 @@ export interface TaskWithRelations {
     id: string;
     userId: string;
     proposedStatus: TaskStatus;
+    pendingVersion: number;
     ackedAt: Date;
   }>;
   team: { id: string; name: string; tenantId: string };
@@ -77,7 +78,7 @@ const TASK_INCLUDE = {
     orderBy: { assignedAt: 'asc' as const },
   },
   statusAcks: {
-    select: { id: true, userId: true, proposedStatus: true, ackedAt: true },
+    select: { id: true, userId: true, proposedStatus: true, pendingVersion: true, ackedAt: true },
   },
 } as const;
 
@@ -216,30 +217,128 @@ async function loadTaskWithAssignees(
   actor: Actor,
 ): Promise<{
   id: string;
+  title: string;
+  status: TaskStatus;
   teamId: string;
   assignerId: string;
   assigneeIds: Set<string>;
   pendingStatus: TaskStatus | null;
+  pendingVersion: number;
   pendingProposedBy: string | null;
+  statusAcks: Array<{ userId: string; pendingVersion: number }>;
   tenantId: string;
 }> {
   const task = await db.task.findFirst({
     where: { id: taskId, team: { tenantId: requireTenant(actor) } },
     include: {
-      assignees: { select: { userId: true } },
       team: { select: { tenantId: true } },
+      assignees: { select: { userId: true } },
+      statusAcks: { select: { userId: true, pendingVersion: true } },
     },
   });
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
   return {
     id: task.id,
+    title: task.title,
+    status: task.status,
     teamId: task.teamId,
     assignerId: task.assignerId,
     assigneeIds: new Set(task.assignees.map((a) => a.userId)),
     pendingStatus: task.pendingStatus,
+    pendingVersion: task.pendingVersion,
     pendingProposedBy: task.pendingProposedBy,
+    statusAcks: task.statusAcks,
     tenantId: task.team.tenantId,
   };
+}
+
+async function lockTask(db: TenantDb, taskId: string, actor: Actor) {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE
+  `;
+  if (rows.length === 0) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
+  return loadTaskWithAssignees(db, taskId, actor);
+}
+
+async function applyStatusLocked(
+  db: TenantDb,
+  task: Awaited<ReturnType<typeof loadTaskWithAssignees>>,
+  status: TaskStatus,
+  actorId: string,
+): Promise<TaskWithRelations> {
+  const updated = await db.task.update({
+    where: { id: task.id },
+    data: { status, pendingStatus: null, pendingProposedBy: null, pendingProposedAt: null },
+    include: TASK_INCLUDE,
+  });
+  await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
+
+  if (task.status !== status) {
+    await notifyTaskStatusChanged(
+      db,
+      updated.assignees.map((assignee) => assignee.userId),
+      updated,
+      task.status,
+      status,
+      actorId,
+    );
+  }
+  return updated as TaskWithRelations;
+}
+
+async function proposeStatusLocked(
+  db: TenantDb,
+  task: Awaited<ReturnType<typeof loadTaskWithAssignees>>,
+  status: TaskStatus,
+  actor: Actor,
+): Promise<TaskWithRelations> {
+  await assertCanProposeTaskStatus(db, actor, taskPermissionInput(task));
+  if (task.assigneeIds.size === 1) return applyStatusLocked(db, task, status, actor.id);
+
+  const pendingVersion = task.pendingVersion + 1;
+  await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
+  if (task.assigneeIds.has(actor.id)) {
+    await db.taskStatusAck.create({
+      data: {
+        taskId: task.id,
+        userId: actor.id,
+        proposedStatus: status,
+        pendingVersion,
+      },
+    });
+  }
+
+  const updated = await db.task.update({
+    where: { id: task.id },
+    data: {
+      pendingStatus: status,
+      pendingProposedBy: actor.id,
+      pendingProposedAt: new Date(),
+      pendingVersion,
+    },
+    include: TASK_INCLUDE,
+  });
+
+  await notifyTaskStatusPending(
+    db,
+    Array.from(task.assigneeIds),
+    updated,
+    status,
+    actor.id,
+    updated.pendingProposer?.fullName ?? 'Birisi',
+  );
+  return updated as TaskWithRelations;
+}
+
+async function transitionStatusLocked(
+  db: TenantDb,
+  task: Awaited<ReturnType<typeof loadTaskWithAssignees>>,
+  input: UpdateTaskStatusInput,
+  actor: Actor,
+): Promise<TaskWithRelations> {
+  await assertCanUpdateTaskStatus(db, actor, taskPermissionInput(task));
+  if (task.assigneeIds.size === 1) return applyStatusLocked(db, task, input.status, actor.id);
+  return proposeStatusLocked(db, task, input.status, actor);
 }
 
 export async function updateTaskStatus(
@@ -248,107 +347,8 @@ export async function updateTaskStatus(
   input: UpdateTaskStatusInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
-  await assertCanUpdateTaskStatus(db, actor, taskPermissionInput(task));
-
-  // Cross-tenant guard
-  if (task.tenantId !== actor.tenantId) {
-    throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
-  }
-
-  // Multi-assignee + assignee (non-admin) → propose rotası
-  const isAdmin = isCompanyAdmin(actor) || (await isTeamAdminOf(db, actor, task.teamId));
-  if (!isAdmin && task.assigneeIds.size > 1 && task.assigneeIds.has(actor.id)) {
-    return proposeTaskStatusInternal(db, taskId, input.status, actor, task);
-  }
-
-  // Admin veya tek-assignee → direct apply (pending varsa temizle)
-  return applyStatusDirect(db, taskId, input.status, actor);
-}
-
-async function applyStatusDirect(
-  db: TenantDb,
-  taskId: string,
-  status: TaskStatus,
-  actor: Actor,
-): Promise<TaskWithRelations> {
-  const before = await db.task.findFirst({
-    where: { id: taskId },
-    select: { status: true, title: true, assignees: { select: { userId: true } } },
-  });
-  if (!before) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
-
-  const updated = await db.task.update({
-    where: { id: taskId },
-    data: { status, pendingStatus: null, pendingProposedBy: null, pendingProposedAt: null },
-    include: TASK_INCLUDE,
-  });
-  if (before.status !== status) await db.taskStatusAck.deleteMany({ where: { taskId } });
-
-  if (before.status !== status) {
-    const recipientIds = updated.assignees.map((a) => a.userId);
-    await notifyTaskStatusChanged(db, recipientIds, updated, before.status, status, actor.id);
-  }
-
-  return updated as TaskWithRelations;
-}
-
-async function proposeTaskStatusInternal(
-  db: TenantDb,
-  taskId: string,
-  status: TaskStatus,
-  actor: Actor,
-  task: {
-    id: string;
-    teamId: string;
-    assignerId: string;
-    assigneeIds: Set<string>;
-    pendingStatus: TaskStatus | null;
-    pendingProposedBy: string | null;
-    tenantId: string;
-  },
-): Promise<TaskWithRelations> {
-  await assertCanProposeTaskStatus(db, actor, taskPermissionInput(task));
-
-  // Tek-assignee ise atomik apply
-  if (task.assigneeIds.size === 1) {
-    return applyStatusDirect(db, taskId, status, actor);
-  }
-
-  // Pending'i sıfırla + ack rows temizle (her ack'te ayrı row oluşur)
-  const recipientsForAck = Array.from(task.assigneeIds).filter((uid) => uid !== actor.id);
-  // Proposer assignee ise implicit yes'i explicit ack row'a yaz: banner'da
-  // "önerdi ve onayladı" + kalan ack sayısı doğru görünsün. ackTaskStatus
-  // threshold mekanizması proposer'ı zaten count'tan dışlıyor.
-  const proposerIsAssignee = task.assigneeIds.has(actor.id);
-
-  await db.taskStatusAck.deleteMany({ where: { taskId } });
-  if (proposerIsAssignee) {
-    await db.taskStatusAck.create({
-      data: { taskId, userId: actor.id, proposedStatus: status },
-    });
-  }
-  const updated = await db.task.update({
-    where: { id: taskId },
-    data: {
-      pendingStatus: status,
-      pendingProposedBy: actor.id,
-      pendingProposedAt: new Date(),
-    },
-    include: TASK_INCLUDE,
-  });
-
-  // Bildirim: ack bekleyen assignees'e
-  await notifyTaskStatusPending(
-    db,
-    recipientsForAck,
-    updated,
-    status,
-    actor.id,
-    updated.pendingProposer?.fullName ?? 'Birisi',
-  );
-
-  return updated as TaskWithRelations;
+  const task = await lockTask(db, taskId, actor);
+  return transitionStatusLocked(db, task, input, actor);
 }
 
 export async function proposeTaskStatus(
@@ -357,63 +357,64 @@ export async function proposeTaskStatus(
   input: UpdateTaskStatusInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
-  if (task.tenantId !== actor.tenantId) {
-    throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
-  }
-
-  // Admin de dahil tüm propose'lar proposeTaskStatusInternal'a girer:
-  // tek-assignee → atomik apply, multi-assignee → pending + ack bekleme.
-  // Admin bypass kaldırıldı (2026-07-25 admin multi-assignee confirm PR).
-  return proposeTaskStatusInternal(db, taskId, input.status, actor, task);
+  const task = await lockTask(db, taskId, actor);
+  return proposeStatusLocked(db, task, input.status, actor);
 }
 
 export async function ackTaskStatus(
   db: TenantDb,
   taskId: string,
-  actor: Actor,
+  inputOrActor: AckTaskStatusInput | Actor,
+  actorArg?: Actor,
 ): Promise<{ task: TaskWithRelations; applied: boolean }> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
-  if (task.tenantId !== actor.tenantId) {
-    throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
-  }
+  const actor = actorArg ?? (inputOrActor as Actor);
+  const input = actorArg ? (inputOrActor as AckTaskStatusInput) : undefined;
+  const task = await lockTask(db, taskId, actor);
   if (task.pendingStatus === null) {
     throw new AppError(400, 'Bekleyen status teklifi yok', 'NO_PENDING');
+  }
+  const pendingVersion = input?.pendingVersion ?? task.pendingVersion;
+  if (pendingVersion !== task.pendingVersion) {
+    throw new AppError(409, 'Teklif sürümü güncel değil', 'STALE_PENDING_VERSION');
   }
 
   await assertCanAckTaskStatus(db, actor, taskPermissionInput(task));
 
   const pendingStatus = task.pendingStatus;
 
-  // Upsert ack
-  try {
-    await db.taskStatusAck.upsert({
-      where: { taskId_userId: { taskId, userId: actor.id } },
-      create: { taskId, userId: actor.id, proposedStatus: pendingStatus },
-      update: { ackedAt: new Date(), proposedStatus: pendingStatus },
-    });
-  } catch (e) {
-    throw new AppError(409, 'Ack yarış durumu, tekrar deneyin', 'CONFLICT');
-  }
-
-  // Proposer implicit yes. Apply koşulu: non-proposer ack sayısı >= assignees.count - 1
-  // Proposer kendi ack'ı threshold'u tek başına karşılamamalı (front-end'de modal gösterilse bile).
-  const ackCount = await db.taskStatusAck.count({
-    where: { taskId, userId: { not: task.pendingProposedBy ?? '' } },
+  await db.taskStatusAck.upsert({
+    where: {
+      taskId_userId_pendingVersion: {
+        taskId,
+        userId: actor.id,
+        pendingVersion,
+      },
+    },
+    create: {
+      taskId,
+      userId: actor.id,
+      proposedStatus: pendingStatus,
+      pendingVersion,
+    },
+    update: { ackedAt: new Date(), proposedStatus: pendingStatus },
   });
-  if (ackCount < task.assigneeIds.size - 1) {
+
+  const currentAcks = await db.taskStatusAck.findMany({
+    where: { taskId, pendingVersion: task.pendingVersion },
+    select: { userId: true },
+  });
+  const ackedIds = new Set(currentAcks.map((ack) => ack.userId));
+  const unanimous = Array.from(task.assigneeIds).every((id) => ackedIds.has(id));
+  if (!unanimous) {
     const updated = await getTask(db, taskId, actor);
     return { task: updated, applied: false };
   }
 
-  // Tüm ack tamam → apply
-  const updated = await applyStatusDirect(
+  const updated = await applyStatusLocked(
     db,
-    taskId,
+    task,
     pendingStatus,
-    task.pendingProposedBy
-      ? ({ id: task.pendingProposedBy, role: 'member', tenantId: task.tenantId } as Actor)
-      : actor,
+    task.pendingProposedBy ?? actor.id,
   );
   return { task: updated, applied: true };
 }
@@ -423,10 +424,7 @@ export async function cancelTaskStatus(
   taskId: string,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
-  if (task.tenantId !== actor.tenantId) {
-    throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
-  }
+  const task = await lockTask(db, taskId, actor);
   if (task.pendingStatus === null) {
     throw new AppError(400, 'Bekleyen status teklifi yok', 'NO_PENDING');
   }
@@ -435,11 +433,7 @@ export async function cancelTaskStatus(
 
   await db.task.update({
     where: { id: taskId },
-    data: {
-      pendingStatus: null,
-      pendingProposedBy: null,
-      pendingProposedAt: null,
-    },
+    data: { pendingStatus: null, pendingProposedBy: null, pendingProposedAt: null },
   });
   await db.taskStatusAck.deleteMany({ where: { taskId } });
 
@@ -452,7 +446,7 @@ export async function updateTaskPriority(
   input: UpdateTaskPriorityInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
+  const task = await lockTask(db, taskId, actor);
   await assertCanUpdateTaskPriority(db, actor, taskPermissionInput(task));
 
   const updated = await db.task.update({
@@ -469,7 +463,7 @@ export async function updateTaskFields(
   input: UpdateTaskFieldsInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await loadTaskWithAssignees(db, taskId, actor);
+  const task = await lockTask(db, taskId, actor);
   await assertCanUpdateTaskFields(db, actor, taskPermissionInput(task));
 
   let nextAssigneeIds: string[] | undefined;
@@ -535,22 +529,18 @@ export async function updateTaskFields(
   ) {
     // Proposer implicit yes: ackCount (proposer hariç) >= assignees.count - 1
     const ackCount = await db.taskStatusAck.count({
-      where: { taskId, userId: { not: task.pendingProposedBy ?? '' } },
+      where: {
+        taskId,
+        pendingVersion: task.pendingVersion,
+        userId: { not: task.pendingProposedBy ?? '' },
+      },
     });
     if (ackCount >= updated.assignees.length - 1) {
-      const newAssigneeIds = updated.assignees.map((a) => a.userId);
       const pendingActor: Actor = task.pendingProposedBy
         ? { id: task.pendingProposedBy, role: 'member', tenantId: task.tenantId }
         : actor;
-      await applyStatusDirect(db, taskId, task.pendingStatus, pendingActor);
-      await notifyTaskStatusChanged(
-        db,
-        newAssigneeIds,
-        updated,
-        updated.status,
-        task.pendingStatus,
-        pendingActor.id,
-      );
+      const lockedTask = await loadTaskWithAssignees(db, taskId, actor);
+      await applyStatusLocked(db, lockedTask, task.pendingStatus, pendingActor.id);
       return getTask(db, taskId, actor);
     }
   }
@@ -559,11 +549,22 @@ export async function updateTaskFields(
   if (addedAssigneeIds.length > 0) {
     const recipients = new Set(addedAssigneeIds);
     recipients.delete(actor.id);
-    await Promise.all(
-      Array.from(recipients).map((userId) =>
-        notifyTaskAssigned(db, userId, updated.id, updated.title),
-      ),
-    );
+    if (task.pendingStatus !== null && !pendingCancelledByProposerRemoval) {
+      await notifyTaskStatusPending(
+        db,
+        Array.from(recipients),
+        updated,
+        task.pendingStatus,
+        task.pendingProposedBy ?? actor.id,
+        updated.pendingProposer?.fullName ?? 'Birisi',
+      );
+    } else {
+      await Promise.all(
+        Array.from(recipients).map((userId) =>
+          notifyTaskAssigned(db, userId, updated.id, updated.title),
+        ),
+      );
+    }
   }
 
   return updated as TaskWithRelations;

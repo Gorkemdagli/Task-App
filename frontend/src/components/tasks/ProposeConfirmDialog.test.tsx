@@ -17,6 +17,7 @@ const baseTask: Task = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   pendingStatus: null,
+  pendingVersion: 0,
   pendingProposedBy: null,
   pendingProposedAt: null,
   pendingProposer: { id: 'u1', displayId: 'AAAAA', fullName: 'Ali Yılmaz', avatarUrl: null },

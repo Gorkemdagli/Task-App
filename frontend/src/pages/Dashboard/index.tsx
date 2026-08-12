@@ -106,7 +106,11 @@ export function DashboardPage() {
     return map;
   }, [tasks, user?.id]);
 
-  const isTeamAdminOfThisTeam = isCompanyAdmin(user) || user?.role === 'teamAdmin';
+  const isTeamAdminOfThisTeam =
+    isCompanyAdmin(user) ||
+    teamDetail?.members.some(
+      (member) => member.userId === user?.id && member.role === 'teamAdmin',
+    ) === true;
   const canCreate = isCompanyAdmin(user) || isTeamAdminOfThisTeam;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));

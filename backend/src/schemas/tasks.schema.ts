@@ -18,6 +18,11 @@ export const updateTaskStatusSchema = z.object({
 });
 export type UpdateTaskStatusInput = z.infer<typeof updateTaskStatusSchema>;
 
+export const ackTaskStatusSchema = z.object({
+  pendingVersion: z.number().int().positive(),
+});
+export type AckTaskStatusInput = z.infer<typeof ackTaskStatusSchema>;
+
 export const updateTaskPrioritySchema = z.object({
   priority: taskPrioritySchema,
 });

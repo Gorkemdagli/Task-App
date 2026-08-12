@@ -1,7 +1,7 @@
 import { AppError } from '../middleware/errorHandler';
 import { assertCanManageTeam, isCompanyAdmin, type Actor } from '../lib/permissions';
 import type { TenantDb } from '../db/types';
-import type { CreateTeamInput } from '../schemas/teams.schema';
+import type { CreateTeamInput, UpdateTeamMemberRoleInput } from '../schemas/teams.schema';
 import type { TeamMemberRole } from '@prisma/client';
 
 export interface TeamSummary {
@@ -157,5 +157,56 @@ export async function removeMember(
   await assertCanManageTeam(db, actor, teamId);
   const member = await db.teamMember.findUnique({ where: { teamId_userId: { teamId, userId } } });
   if (!member) throw new AppError(404, 'Üye bulunamadı', 'NOT_FOUND');
+
+  const activeAssignment = await db.taskAssignee.findFirst({
+    where: {
+      userId,
+      task: {
+        teamId,
+        OR: [{ status: { not: 'done' } }, { pendingStatus: { not: null } }],
+      },
+    },
+    select: { taskId: true },
+  });
+  if (activeAssignment) {
+    throw new AppError(
+      409,
+      'Üyeyi çıkarmadan önce aktif görevlerini yeniden atayın ve bekleyen status tekliflerini tamamlayın veya iptal edin.',
+      'MEMBER_HAS_ACTIVE_TASKS',
+    );
+  }
   await db.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
+}
+
+export async function updateTeamMemberRole(
+  db: TenantDb,
+  teamId: string,
+  userId: string,
+  input: UpdateTeamMemberRoleInput,
+  actor: Actor,
+): Promise<TeamMemberInfo> {
+  await assertCanManageTeam(db, actor, teamId);
+  if (!isCompanyAdmin(actor)) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+
+  const member = await db.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId } },
+    include: { user: { select: { displayId: true, fullName: true, avatarUrl: true } } },
+  });
+  if (!member) throw new AppError(404, 'Üye bulunamadı', 'NOT_FOUND');
+
+  const updated = await db.teamMember.update({
+    where: { teamId_userId: { teamId, userId } },
+    data: { role: input.role },
+    include: { user: { select: { displayId: true, fullName: true, avatarUrl: true } } },
+  });
+  return {
+    userId: updated.userId,
+    displayId: updated.user.displayId,
+    fullName: updated.user.fullName,
+    avatarUrl: updated.user.avatarUrl,
+    role: updated.role,
+    joinedAt: updated.joinedAt,
+  };
 }

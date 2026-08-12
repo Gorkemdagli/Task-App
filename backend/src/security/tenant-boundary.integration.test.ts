@@ -137,6 +137,11 @@ describe('tenant boundary integration', () => {
       tasksService.updateTaskStatus(task.id, { status: 'done' }, intruder),
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
 
+    await expect(removeMember(team.id, tenantAMember.id, tenantAAdmin)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'MEMBER_HAS_ACTIVE_TASKS',
+    });
+    await prisma.task.update({ where: { id: task.id }, data: { status: 'done' } });
     await removeMember(team.id, tenantAMember.id, tenantAAdmin);
     await expect(
       tasksService.updateTaskStatus(task.id, { status: 'done' }, tenantAMember),

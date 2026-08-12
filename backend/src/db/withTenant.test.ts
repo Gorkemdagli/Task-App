@@ -53,4 +53,49 @@ describe('withTenantContext', () => {
 
     expect(result).toBe(42);
   });
+
+  it('P2034 için yeni transaction ile retry yapar', async () => {
+    const conflict = Object.assign(new Error('serialization'), { code: 'P2034' });
+    mockTransaction
+      .mockImplementationOnce(async (cb) => {
+        await cb(tx);
+        throw conflict;
+      })
+      .mockImplementationOnce(async (cb) => {
+        await cb(tx);
+        throw conflict;
+      })
+      .mockImplementationOnce(async (cb) => cb(tx));
+
+    await expect(withTenantContext('u', 't', async () => 'ok', { maxRetries: 3 })).resolves.toBe(
+      'ok',
+    );
+    expect(mockTransaction).toHaveBeenCalledTimes(3);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(9);
+  });
+
+  it('retry sonrası P2034 için 409 döner', async () => {
+    const conflict = Object.assign(new Error('serialization'), { code: 'P2034' });
+    mockTransaction.mockImplementation(async (cb) => {
+      await cb(tx);
+      throw conflict;
+    });
+
+    await expect(
+      withTenantContext('u', 't', async () => 'ok', { maxRetries: 3 }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONCURRENT_MODIFICATION',
+    });
+    expect(mockTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('business error retry edilmez', async () => {
+    const failure = new Error('business');
+    mockTransaction.mockImplementationOnce(async (cb) => cb(tx));
+    const work = vi.fn().mockRejectedValue(failure);
+
+    await expect(withTenantContext('u', 't', work, { maxRetries: 3 })).rejects.toBe(failure);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
 });

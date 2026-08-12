@@ -9,7 +9,6 @@ import {
   addMemberByDisplayId as addMemberService,
 } from './teams.service';
 import * as taskServiceImpl from './tasks.service';
-import { applyExpiredPendingStatuses as applyExpiredPendingStatusesService } from './tasks.archive';
 import type { Actor } from '../lib/permissions';
 
 async function cleanDb() {
@@ -74,8 +73,6 @@ const tasksService = {
     actor: Actor,
   ) => inTenant(actor, (db) => taskServiceImpl.updateTaskStatus(db, taskId, input, actor)),
 };
-const applyExpiredPendingStatuses = (actor: Actor) =>
-  inTenant(actor, (db) => applyExpiredPendingStatusesService(db, actor.tenantId!));
 
 /** 2 assigneeli takım: admin + iki member (B, C). */
 async function makeMultiAssigneeTeam() {
@@ -99,6 +96,23 @@ async function makeMultiAssigneeTask() {
 
 describe('proposeTaskStatus (multi-assignee)', () => {
   beforeEach(cleanDb);
+
+  it('concurrent proposals serialize and stale ack is rejected', async () => {
+    const { b, c, task } = await makeMultiAssigneeTask();
+
+    const proposals = await Promise.all([
+      tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b),
+      tasksService.proposeTaskStatus(task.id, { status: 'done' }, c),
+    ]);
+
+    expect(new Set(proposals.map((proposal) => proposal.pendingVersion))).toEqual(new Set([1, 2]));
+    const current = await prisma.task.findUnique({ where: { id: task.id } });
+    expect(current?.pendingVersion).toBe(2);
+
+    await expect(
+      inTenant(b, (db) => taskServiceImpl.ackTaskStatus(db, task.id, { pendingVersion: 1 }, b)),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PENDING_VERSION' });
+  });
 
   it('assignee propose: pending set, proposer auto-ack row, notify pending', async () => {
     const { b, c, task } = await makeMultiAssigneeTask();
@@ -183,6 +197,18 @@ describe('proposeTaskStatus (multi-assignee)', () => {
 
 describe('ackTaskStatus', () => {
   beforeEach(cleanDb);
+
+  it('rejects ack from an older pending version', async () => {
+    const { b, c, task } = await makeMultiAssigneeTask();
+    const first = await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
+    expect(first.pendingVersion).toBe(1);
+    const second = await tasksService.proposeTaskStatus(task.id, { status: 'done' }, b);
+    expect(second.pendingVersion).toBe(2);
+
+    await expect(
+      inTenant(c, (db) => taskServiceImpl.ackTaskStatus(db, task.id, { pendingVersion: 1 }, c)),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PENDING_VERSION' });
+  });
 
   it('kısmi ack: 3 assignees, 1 ack → status değişmez', async () => {
     const { b, c, task } = await makeMultiAssigneeSetup3();
@@ -442,77 +468,18 @@ async function makeMultiAssigneeSetup3() {
   return { admin, b, c, d, team, task };
 }
 
-describe('applyExpiredPendingStatuses (cron)', () => {
-  beforeEach(cleanDb);
-
-  it('deadline geçmiş pending → apply + notify + acks cleared', async () => {
-    const { admin, b, c, task } = await makeMultiAssigneeTask();
-    await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
-
-    // Deadline'ı geçmişe çek
-    await prisma.task.update({
-      where: { id: task.id },
-      data: { deadline: new Date(Date.now() - 86400000) },
-    });
-
-    const result = await applyExpiredPendingStatuses(admin);
-    expect(result.appliedCount).toBe(1);
-
-    const updated = await prisma.task.findUnique({ where: { id: task.id } });
-    expect(updated?.status).toBe('in_progress');
-    expect(updated?.pendingStatus).toBeNull();
-
-    const acks = await prisma.taskStatusAck.findMany({ where: { taskId: task.id } });
-    expect(acks).toHaveLength(0);
-
-    // Bildirim: actor=proposer b, recipients=[b,c]. b hariç → sadece c.
-    const notifs = await prisma.notification.findMany({
-      where: { type: 'task_status_changed' },
-    });
-    expect(notifs).toHaveLength(1);
-    expect(notifs[0].userId).toBe(c.id);
-    expect(notifs[0].payload).toMatchObject({ oldStatus: 'todo', newStatus: 'in_progress' });
-  });
-
-  it('deadline gelecek pending → uygulanmaz', async () => {
-    const { admin, b, task } = await makeMultiAssigneeTask();
-    await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
-
-    await prisma.task.update({
-      where: { id: task.id },
-      data: { deadline: new Date(Date.now() + 86400000) },
-    });
-
-    const result = await applyExpiredPendingStatuses(admin);
-    expect(result.appliedCount).toBe(0);
-
-    const updated = await prisma.task.findUnique({ where: { id: task.id } });
-    expect(updated?.status).toBe('todo');
-    expect(updated?.pendingStatus).toBe('in_progress');
-  });
-
-  it('deadline null pending → uygulanmaz', async () => {
-    const { admin, b, task } = await makeMultiAssigneeTask();
-    await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
-
-    // deadline hiç set edilmedi (null)
-    const result = await applyExpiredPendingStatuses(admin);
-    expect(result.appliedCount).toBe(0);
-  });
-});
-
 describe('updateTaskStatus (admin direct apply)', () => {
   beforeEach(cleanDb);
 
-  it('admin direct update: pending clear + acks delete', async () => {
+  it('admin multi-assignee update creates new pending proposal', async () => {
     const { admin, b, task } = await makeMultiAssigneeTask();
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
     // pending + ack row var
 
     const updated = await tasksService.updateTaskStatus(task.id, { status: 'done' }, admin);
 
-    expect(updated.status).toBe('done');
-    expect(updated.pendingStatus).toBeNull();
+    expect(updated.status).toBe('todo');
+    expect(updated.pendingStatus).toBe('done');
     const acks = await prisma.taskStatusAck.findMany({ where: { taskId: task.id } });
     expect(acks).toHaveLength(0);
   });

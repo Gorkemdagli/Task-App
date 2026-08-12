@@ -10,7 +10,7 @@ import {
   type LucideProps,
 } from 'lucide-react';
 
-export type AppRole = 'companyAdmin' | 'teamAdmin' | 'member';
+export type AppRole = 'companyAdmin' | 'member';
 
 export interface NavItem {
   path: string;

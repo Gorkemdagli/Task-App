@@ -85,6 +85,10 @@ vi.mock('@/components/tasks/PendingAckModal', () => ({
   ),
 }));
 
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeam: () => ({ data: { members: [] }, isLoading: false, isError: false }),
+}));
+
 let mockTask: Task | null = null;
 // Dialog kapanış testi için proposeMock onSettled callback'ini invoke etsin.
 // vi.clearAllMocks() implementation'ı siler, beforeEach'te tekrar bağlanır.
@@ -137,6 +141,7 @@ function makeTask(overrides: Partial<Task>): Task {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     pendingStatus: null,
+    pendingVersion: 0,
     pendingProposedBy: null,
     pendingProposedAt: null,
     pendingProposer: null,
@@ -264,8 +269,8 @@ describe('TaskDetailPage — status change intercept', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it('global teamAdmin without team admin membership uses proposal flow', async () => {
-    useAuthStore.setState({ accessToken: 't', user: { ...member, role: 'teamAdmin' } });
+  it('member without team admin membership uses proposal flow', async () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
     mockTask = makeTask({
       assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin')],
     });
@@ -340,6 +345,7 @@ describe('TaskDetailPage — status change intercept', () => {
           id: 'a1',
           userId: 'u2',
           proposedStatus: 'in_progress',
+          pendingVersion: 1,
           ackedAt: new Date().toISOString(),
         },
       ],

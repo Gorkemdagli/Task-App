@@ -33,20 +33,11 @@ describe('useAuth', () => {
     useAuthStore.setState({ accessToken: 't', user: { ...baseUser, role: 'companyAdmin' } });
     const { result } = renderHook(() => useAuth());
     expect(result.current.isCompanyAdmin).toBe(true);
-    expect(result.current.isTeamAdmin).toBe(true);
   });
 
-  it('isCompanyAdmin false for teamAdmin and member', () => {
-    useAuthStore.setState({ accessToken: 't', user: { ...baseUser, role: 'teamAdmin' } });
-    const { result } = renderHook(() => useAuth());
-    expect(result.current.isCompanyAdmin).toBe(false);
-    expect(result.current.isTeamAdmin).toBe(true);
-  });
-
-  it('member has neither admin flag', () => {
+  it('member is not company admin', () => {
     useAuthStore.setState({ accessToken: 't', user: { ...baseUser, role: 'member' } });
     const { result } = renderHook(() => useAuth());
     expect(result.current.isCompanyAdmin).toBe(false);
-    expect(result.current.isTeamAdmin).toBe(false);
   });
 });

@@ -147,9 +147,12 @@ describe('getTeam', () => {
     const admin = await makeAdmin('admin@a.com', 'Acme');
     // other: kişisel tenant, sonra admin'in tenant'ına taşı
     const otherRaw = await makeAdmin('other@a.com');
-    await prisma.user.update({ where: { id: otherRaw.id }, data: { tenantId: admin.tenantId } });
+    await prisma.user.update({
+      where: { id: otherRaw.id },
+      data: { tenantId: admin.tenantId, role: 'companyAdmin' },
+    });
     // Actor tipi için tenantId'yi tazele
-    const other: Actor = { ...otherRaw, tenantId: admin.tenantId };
+    const other: Actor = { ...otherRaw, role: 'companyAdmin', tenantId: admin.tenantId };
     const t = await createTeam({ name: 'Eng' }, admin);
     const detail = await getTeam(t.id, other);
     expect(detail.name).toBe('Eng');
