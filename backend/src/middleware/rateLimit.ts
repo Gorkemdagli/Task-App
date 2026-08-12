@@ -1,11 +1,19 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Options } from 'express-rate-limit';
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import { redis } from '../lib/redis';
 
-export function createRateLimit(opts: { windowMs: number; max: number; keyPrefix: string }) {
+interface CreateRateLimitOptions {
+  windowMs: number;
+  max: number;
+  keyPrefix: string;
+  keyGenerator?: Options['keyGenerator'];
+}
+
+export function createRateLimit(opts: CreateRateLimitOptions) {
   return rateLimit({
     windowMs: opts.windowMs,
     max: opts.max,
+    keyGenerator: opts.keyGenerator,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     store: new RedisStore({
