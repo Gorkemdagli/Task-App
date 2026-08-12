@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
-import { createRateLimit } from '../middleware/rateLimit';
+import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
 import {
   createTaskSchema,
   updateTaskStatusSchema,
@@ -16,12 +16,6 @@ import { runTenantRequest } from '../http/runTenantRequest';
 import { parseQuery } from '../http/parseQuery';
 
 export const tasksRouter = Router();
-
-const writeLimiter = createRateLimit({
-  windowMs: 60_000,
-  max: 30,
-  keyPrefix: 'rl:tasks-write',
-});
 
 const statusTransactionOptions = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -41,7 +35,7 @@ tasksRouter.post('/', writeLimiter, validateBody(createTaskSchema), async (req, 
   }
 });
 
-tasksRouter.get('/', async (req, res, next) => {
+tasksRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const parsed = parseQuery<Parameters<typeof tasksService.listTasks>[1]>(
       listTasksQuerySchema,
@@ -56,7 +50,7 @@ tasksRouter.get('/', async (req, res, next) => {
   }
 });
 
-tasksRouter.get('/:id', async (req, res, next) => {
+tasksRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const task = await runTenantRequest(req, (db, actor) =>
       tasksService.getTask(db, req.params.id, actor),

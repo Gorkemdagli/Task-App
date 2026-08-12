@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
-import { createRateLimit } from '../middleware/rateLimit';
+import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
 import { authenticatedReadLimiter } from '../middleware/rateLimitProfiles';
 import { runTenantRequest } from '../http/runTenantRequest';
 import { updateCompanyPermissionsSchema, updateCompanyRoleSchema } from '../schemas/users.schema';
@@ -14,15 +14,9 @@ usersRouter.get('/users/me', requireAuth, authenticatedReadLimiter, (req, res) =
   res.json(req.user!);
 });
 
-const companyUsersLimiter = createRateLimit({
-  windowMs: 60_000,
-  max: 10,
-  keyPrefix: 'rl:company-users',
-});
-
 usersRouter.use(requireAuth, requireRole(['companyAdmin']));
 
-usersRouter.get('/company/users', companyUsersLimiter, async (req, res, next) => {
+usersRouter.get('/company/users', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const users = await runTenantRequest(req, (db, actor) =>
       companyUsersService.listCompanyUsers(db, actor),
@@ -35,7 +29,7 @@ usersRouter.get('/company/users', companyUsersLimiter, async (req, res, next) =>
 
 usersRouter.patch(
   '/users/:id/role',
-  companyUsersLimiter,
+  writeLimiter,
   validateBody(updateCompanyRoleSchema),
   async (req, res, next) => {
     try {
@@ -51,7 +45,7 @@ usersRouter.patch(
 
 usersRouter.patch(
   '/users/:id/permissions',
-  companyUsersLimiter,
+  writeLimiter,
   validateBody(updateCompanyPermissionsSchema),
   async (req, res, next) => {
     try {

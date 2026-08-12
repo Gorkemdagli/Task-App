@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
+import { writeLimiter } from '../middleware/rateLimitProfiles';
 import { archiveExpiredTasks } from '../services/tasks.archive';
 import { runTenantRequest } from '../http/runTenantRequest';
 
@@ -10,6 +11,7 @@ adminRouter.use(requireAuth);
 
 adminRouter.post(
   '/tasks/archive-expired',
+  writeLimiter,
   requireRole(['companyAdmin']),
   async (req, res, next) => {
     try {

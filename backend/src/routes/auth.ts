@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import { registerSchema, loginSchema } from '../schemas/auth.schema';
 import { validateBody } from '../middleware/validate';
-import { createRateLimit } from '../middleware/rateLimit';
+import {
+  registerLimiter,
+  loginLimiter,
+  refreshLimiter,
+  writeLimiter,
+} from '../middleware/rateLimitProfiles';
 import { requireAuth } from '../middleware/auth';
 import * as authService from '../services/auth.service';
 import { setRefreshCookie, clearRefreshCookie } from '../lib/cookie';
 
 export const authRouter = Router();
-
-const registerLimiter = createRateLimit({ windowMs: 60_000, max: 5, keyPrefix: 'rl:register' });
-const loginLimiter = createRateLimit({ windowMs: 60_000, max: 10, keyPrefix: 'rl:login' });
-const refreshLimiter = createRateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'rl:refresh' });
-const logoutLimiter = createRateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'rl:logout' });
 
 authRouter.post(
   '/register',
@@ -55,7 +55,7 @@ authRouter.post('/refresh', refreshLimiter, async (req, res, next) => {
   }
 });
 
-authRouter.post('/logout', logoutLimiter, requireAuth, async (req, res, next) => {
+authRouter.post('/logout', requireAuth, writeLimiter, async (req, res, next) => {
   try {
     const token = req.headers.authorization!.slice(7).trim();
     const refreshCookie = req.cookies?.refreshToken;

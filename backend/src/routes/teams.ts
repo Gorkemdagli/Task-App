@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
-import { createRateLimit } from '../middleware/rateLimit';
+import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
 import {
   createTeamSchema,
   addMemberSchema,
@@ -13,27 +13,11 @@ import { runTenantRequest } from '../http/runTenantRequest';
 
 export const teamsRouter = Router();
 
-const createLimiter = createRateLimit({
-  windowMs: 60_000,
-  max: 10,
-  keyPrefix: 'rl:teams-create',
-});
-const memberWriteLimiter = createRateLimit({
-  windowMs: 60_000,
-  max: 30,
-  keyPrefix: 'rl:teams-members',
-});
-const memberRoleLimiter = createRateLimit({
-  windowMs: 60_000,
-  max: 10,
-  keyPrefix: 'rl:teams-member-role',
-});
-
 teamsRouter.use(requireAuth);
 
 teamsRouter.post(
   '/',
-  createLimiter,
+  writeLimiter,
   requireRole(['companyAdmin']),
   validateBody(createTeamSchema),
   async (req, res, next) => {
@@ -48,7 +32,7 @@ teamsRouter.post(
   },
 );
 
-teamsRouter.get('/', async (req, res, next) => {
+teamsRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const teams = await runTenantRequest(req, (db, actor) => teamsService.listTeams(db, actor));
     res.json(teams);
@@ -57,7 +41,7 @@ teamsRouter.get('/', async (req, res, next) => {
   }
 });
 
-teamsRouter.get('/:id', async (req, res, next) => {
+teamsRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const team = await runTenantRequest(req, (db, actor) =>
       teamsService.getTeam(db, req.params.id, actor),
@@ -70,7 +54,7 @@ teamsRouter.get('/:id', async (req, res, next) => {
 
 teamsRouter.post(
   '/:id/members',
-  memberWriteLimiter,
+  writeLimiter,
   validateBody(addMemberSchema),
   async (req, res, next) => {
     try {
@@ -84,7 +68,7 @@ teamsRouter.post(
   },
 );
 
-teamsRouter.delete('/:id/members/:userId', memberWriteLimiter, async (req, res, next) => {
+teamsRouter.delete('/:id/members/:userId', writeLimiter, async (req, res, next) => {
   try {
     await runTenantRequest(req, (db, actor) =>
       teamsService.removeMember(db, req.params.id, req.params.userId, actor),
@@ -97,7 +81,7 @@ teamsRouter.delete('/:id/members/:userId', memberWriteLimiter, async (req, res, 
 
 teamsRouter.patch(
   '/:id/members/:userId/role',
-  memberRoleLimiter,
+  writeLimiter,
   validateBody(updateTeamMemberRoleSchema),
   async (req, res, next) => {
     try {

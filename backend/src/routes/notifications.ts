@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
 import { listNotificationsQuerySchema } from '../schemas/notifications.schema';
 import { listNotifications, markAllRead } from '../services/notifications.service';
 import { runTenantRequest } from '../http/runTenantRequest';
@@ -10,7 +11,7 @@ export const notificationsRouter = Router();
 notificationsRouter.use(requireAuth);
 
 // GET /api/v1/notifications?cursor=&limit=
-notificationsRouter.get('/', async (req, res, next) => {
+notificationsRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const parsed = parseQuery<Parameters<typeof listNotifications>[2]>(
       listNotificationsQuerySchema,
@@ -24,7 +25,7 @@ notificationsRouter.get('/', async (req, res, next) => {
 });
 
 // PATCH /api/v1/notifications/read-all
-notificationsRouter.patch('/read-all', async (req, res, next) => {
+notificationsRouter.patch('/read-all', writeLimiter, async (req, res, next) => {
   try {
     await runTenantRequest(req, (db, actor) => markAllRead(db, actor));
     res.status(204).send();
