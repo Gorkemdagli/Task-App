@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register, login, refresh, logout, isTokenBlacklisted } from './auth.service';
+import { verifyAccessToken, verifyRefreshToken } from '../lib/jwt';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -97,6 +98,42 @@ describe('refresh', () => {
     await refresh(reg.refreshToken);
     await expect(refresh(reg.refreshToken)).rejects.toMatchObject({ statusCode: 401 });
   });
+
+  it('rotates the refresh session and rejects replay of the old token', async () => {
+    const registered = await register({
+      fullName: 'Rotate',
+      email: 'rotate@example.com',
+      password: 'hunter22',
+    });
+    const oldPayload = verifyRefreshToken(registered.refreshToken);
+
+    const rotated = await refresh(registered.refreshToken);
+    const newPayload = verifyRefreshToken(rotated.refreshToken);
+
+    expect(newPayload.jti).not.toBe(oldPayload.jti);
+    expect(await redis.exists(`session:${oldPayload.jti}`)).toBe(0);
+    expect(await redis.exists(`blacklist:jti:${oldPayload.jti}`)).toBe(1);
+    expect(await redis.exists(`session:${newPayload.jti}`)).toBe(1);
+    await expect(refresh(registered.refreshToken)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'TOKEN_REVOKED',
+    });
+  });
+
+  it('rejects a signed refresh token whose Redis session is missing', async () => {
+    const registered = await register({
+      fullName: 'Missing',
+      email: 'missing-session@example.com',
+      password: 'hunter22',
+    });
+    const payload = verifyRefreshToken(registered.refreshToken);
+    await redis.del(`session:${payload.jti}`);
+
+    await expect(refresh(registered.refreshToken)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'TOKEN_REVOKED',
+    });
+  });
 });
 
 describe('logout', () => {
@@ -106,5 +143,20 @@ describe('logout', () => {
     const jti = JSON.parse(Buffer.from(reg.accessToken.split('.')[1], 'base64').toString()).jti;
     await logout(reg.accessToken);
     expect(await isTokenBlacklisted(jti)).toBe(true);
+  });
+
+  it('revokes access and deletes the refresh session', async () => {
+    const registered = await register({
+      fullName: 'Logout',
+      email: 'logout-session@example.com',
+      password: 'hunter22',
+    });
+    const accessPayload = verifyAccessToken(registered.accessToken);
+    const refreshPayload = verifyRefreshToken(registered.refreshToken);
+
+    await logout(registered.accessToken, registered.refreshToken);
+
+    expect(await redis.exists(`blacklist:jti:${accessPayload.jti}`)).toBe(1);
+    expect(await redis.exists(`session:${refreshPayload.jti}`)).toBe(0);
   });
 });

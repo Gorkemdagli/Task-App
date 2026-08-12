@@ -133,4 +133,29 @@ describe('POST /api/v1/auth/logout', () => {
     const r = await request(createApp()).post('/api/v1/auth/logout');
     expect(r.status).toBe(401);
   });
+
+  it('rejects access and refresh token reuse after logout', async () => {
+    const reg = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({ fullName: 'Aa', email: 'reuse@x.com', password: 'hunter22' });
+    const refreshCookie = reg.headers['set-cookie']![0];
+
+    const logoutResponse = await request(createApp())
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${reg.body.accessToken}`)
+      .set('Cookie', refreshCookie);
+    expect(logoutResponse.status).toBe(204);
+
+    expect(
+      (
+        await request(createApp())
+          .get('/api/v1/users/me')
+          .set('Authorization', `Bearer ${reg.body.accessToken}`)
+      ).status,
+    ).toBe(401);
+
+    expect(
+      (await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', refreshCookie)).status,
+    ).toBe(401);
+  });
 });
