@@ -18,39 +18,42 @@ import { NotificationsPage } from './pages/Notifications';
 import { LandingPage } from './pages/Landing/LandingPage';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
+import { getMe } from './lib/api';
+import { queryClient } from './lib/react-query';
 
-/**
- * Auth bootstrap wrapper. Runs once on mount to refresh the access token
- * via the httpOnly refresh cookie, then mounts the router.
- *
- * Note: the "AppShell" function name here pre-dates the layout shell under
- * components/layout/AppShell.tsx. They live in different modules so there's
- * no naming collision; this one is intentionally local.
- */
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-        // 204 = oturum yok, beklenen durum. Body yok, r.json() çağırma.
-        if (r.ok && r.status !== 204) {
-          const data = await r.json();
-          setAccessToken(data.accessToken);
-          // Refresh response now includes user (matches login/register shape).
-          // Older backends without user field: silently skip → store stays null.
-          if (data.user) setUser(data.user);
+        const response = await fetch('/api/v1/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (response.status === 204) {
+          clearAuth();
+          queryClient.clear();
+          return;
         }
+        if (!response.ok) throw new Error('Auth refresh failed');
+
+        const data = (await response.json()) as { accessToken: string };
+        setAccessToken(data.accessToken);
+        const canonicalUser = await getMe();
+        setUser(canonicalUser);
       } catch {
-        // Session yok; user null kalır, login sayfası gösterilir.
+        queryClient.clear();
+        clearAuth();
       } finally {
         setBootstrapped(true);
       }
     })();
-  }, [setAccessToken, setUser]);
+  }, [clearAuth, setAccessToken, setUser]);
 
   if (!bootstrapped) {
     return (

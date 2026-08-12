@@ -57,6 +57,7 @@ export const api = createApi({ baseURL: '/api/v1' });
 // Auth durumunu store'dan okur. FAZ-3 takip işi: backend'de GET /api/v1/users/me
 // yok — login yanıtındaki user kullanılıyor. İleride backend hazır olunca
 // network call ile değiştirilecek.
-export async function getMe(): Promise<AuthUser | null> {
-  return useAuthStore.getState().user;
+export async function getMe(): Promise<AuthUser> {
+  const response = await api.get<AuthUser>('/users/me');
+  return response.data;
 }
