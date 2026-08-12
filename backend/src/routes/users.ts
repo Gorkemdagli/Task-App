@@ -3,7 +3,6 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
-import { authenticatedReadLimiter } from '../middleware/rateLimitProfiles';
 import { runTenantRequest } from '../http/runTenantRequest';
 import { updateCompanyPermissionsSchema, updateCompanyRoleSchema } from '../schemas/users.schema';
 import * as companyUsersService from '../services/company-users.service';

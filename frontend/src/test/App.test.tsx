@@ -5,8 +5,8 @@ import { getMe } from '../lib/api';
 import { queryClient } from '../lib/react-query';
 import { useAuthStore } from '../stores/authStore';
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const actual = await importOriginal();
+vi.mock('../lib/api', async () => {
+  const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
   return { ...actual, getMe: vi.fn() };
 });
 
