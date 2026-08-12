@@ -15,6 +15,7 @@ declare global {
         fullName: string;
         role: 'companyAdmin' | 'member';
         tenantId: string | null;
+        tenantName: string | null;
       };
     }
   }
@@ -44,10 +45,19 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
         fullName: true,
         role: true,
         tenantId: true,
+        tenant: { select: { name: true } },
       },
     });
     if (!user) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
-    req.user = user;
+    req.user = {
+      id: user.id,
+      displayId: user.displayId,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      tenantId: user.tenantId,
+      tenantName: user.tenant?.name ?? null,
+    };
     next();
   } catch (err) {
     next(err);
