@@ -1,4 +1,17 @@
 import { z } from 'zod';
+import { parseCalendarDate } from '../lib/calendarDate';
+
+const calendarDateSchema = z.string().transform((value, ctx) => {
+  try {
+    return parseCalendarDate(value);
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Tarih YYYY-MM-DD formatında olmalı',
+    });
+    return z.NEVER;
+  }
+});
 
 export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done']);
 export const taskPrioritySchema = z.enum(['low', 'medium', 'high']);
@@ -6,7 +19,7 @@ export const taskPrioritySchema = z.enum(['low', 'medium', 'high']);
 export const createTaskSchema = z.object({
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().max(5000).optional(),
-  deadline: z.coerce.date().optional(),
+  deadline: calendarDateSchema.optional(),
   priority: taskPrioritySchema,
   assigneeIds: z.array(z.string().uuid()).min(1),
   teamId: z.string().uuid(),
@@ -32,7 +45,7 @@ export const updateTaskFieldsSchema = z
   .object({
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(5000).nullable().optional(),
-    deadline: z.coerce.date().nullable().optional(),
+    deadline: calendarDateSchema.nullable().optional(),
     assigneeIds: z.array(z.string().uuid()).min(1).optional(),
   })
   .refine(
@@ -62,8 +75,8 @@ export const listTasksQuerySchema = z.object({
     .transform((v) => (Array.isArray(v) ? v : v.split(',')))
     .pipe(z.array(z.string().uuid()))
     .optional(),
-  deadlineFrom: z.coerce.date().optional(),
-  deadlineTo: z.coerce.date().optional(),
+  deadlineFrom: calendarDateSchema.optional(),
+  deadlineTo: calendarDateSchema.optional(),
   includeArchived: z
     .union([z.literal('true'), z.literal('false')])
     .transform((v) => v === 'true')

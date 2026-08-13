@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
@@ -62,6 +62,46 @@ async function makeSetup() {
 
 describe('archiveExpiredTasks', () => {
   beforeEach(cleanDb);
+  afterEach(() => vi.useRealTimers());
+
+  it('uses the next UTC calendar day as the archive boundary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-13T12:00:00.000Z'));
+    const { admin, member, team } = await makeSetup();
+    const dates = [
+      new Date('2026-08-12T00:00:00.000Z'),
+      new Date('2026-08-13T00:00:00.000Z'),
+      new Date('2026-08-14T00:00:00.000Z'),
+    ];
+    const tasks = await Promise.all(
+      dates.map((deadline, index) =>
+        tasksService
+          .createTask(
+            {
+              title: `boundary-${index}`,
+              priority: 'low',
+              assigneeIds: [member.id],
+              teamId: team.id,
+            },
+            admin,
+          )
+          .then((task) =>
+            prisma.task.update({
+              where: { id: task.id },
+              data: { status: 'done', deadline },
+            }),
+          ),
+      ),
+    );
+
+    const result = await archiveExpiredTasks(admin);
+    expect(result.archivedCount).toBe(1);
+    const archived = await prisma.task.findMany({
+      where: { id: { in: tasks.map((task) => task.id) }, archivedAt: { not: null } },
+    });
+    expect(archived).toHaveLength(1);
+    expect(archived[0].deadline?.toISOString()).toBe('2026-08-12T00:00:00.000Z');
+  });
 
   it('archives done tasks with past deadline', async () => {
     const { admin, member, team } = await makeSetup();

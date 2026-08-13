@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TaskCard } from './TaskCard';
 import type { Task } from '@/hooks/tasks';
+import { addCalendarDays, utcTodayCalendarDate } from '@/lib/calendarDate';
 
 const baseTask: Task = {
   id: 't1',
@@ -10,7 +11,7 @@ const baseTask: Task = {
   description: 'Mobil tarafta hata var',
   status: 'todo',
   priority: 'high',
-  deadline: new Date(Date.now() + 86400000).toISOString(),
+  deadline: '2099-01-02',
   archivedAt: null,
   teamId: 'team-1',
   assignerId: 'u1',
@@ -102,7 +103,7 @@ describe('TaskCard', () => {
   });
 
   it('renders overdue indicator when deadline passed and status not done', () => {
-    const past = new Date(Date.now() - 2 * 86400000).toISOString();
+    const past = '2020-01-01';
     const { container } = render(
       <Wrap>
         <TaskCard task={{ ...baseTask, deadline: past }} />
@@ -112,7 +113,7 @@ describe('TaskCard', () => {
   });
 
   it('does not apply overdue styling when status is done', () => {
-    const past = new Date(Date.now() - 2 * 86400000).toISOString();
+    const past = '2020-01-01';
     const { container } = render(
       <Wrap>
         <TaskCard task={{ ...baseTask, status: 'done', deadline: past }} />
@@ -133,7 +134,7 @@ describe('TaskCard', () => {
   });
 
   it('formats future deadline as Yarın or Bugün', () => {
-    const tomorrow = new Date(Date.now() + 86400000).toISOString();
+    const tomorrow = addCalendarDays(utcTodayCalendarDate(), 1);
     const { container } = render(
       <Wrap>
         <TaskCard task={{ ...baseTask, deadline: tomorrow }} />

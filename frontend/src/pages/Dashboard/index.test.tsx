@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 import { DashboardPage } from './index';
 import type { Task } from '@/hooks/tasks';
 
@@ -134,6 +135,7 @@ describe('DashboardPage', () => {
       name: 'UX',
       members: [{ userId: 'u1', fullName: 'Ada', avatarUrl: null, role: 'member' }],
     };
+    useTeamStore.setState({ activeTeamId: null });
     mockTasks = [];
   });
 
@@ -310,6 +312,33 @@ describe('DashboardPage', () => {
     renderDashboard();
     expect(screen.getByTestId('team-tab-team-1')).toBeInTheDocument();
     expect(screen.getByTestId('team-tab-team-2')).toBeInTheDocument();
+  });
+
+  it('uses the store-selected team for the Dashboard', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTeams = [
+      { id: 'team-1', name: 'UX' },
+      { id: 'team-2', name: 'Backend' },
+    ];
+    useTeamStore.setState({ activeTeamId: 'team-2' });
+
+    renderDashboard();
+
+    expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
+    expect(screen.getByTestId('team-tab-team-2').className).toContain('border-primary');
+  });
+
+  it('writes Dashboard tab selection to the shared team store', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTeams = [
+      { id: 'team-1', name: 'UX' },
+      { id: 'team-2', name: 'Backend' },
+    ];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('team-tab-team-2'));
+
+    expect(useTeamStore.getState().activeTeamId).toBe('team-2');
   });
 });
 

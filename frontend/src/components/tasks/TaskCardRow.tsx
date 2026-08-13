@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import type { Task, TaskPriority } from '@/hooks/tasks';
 import { AssigneeAvatarStack } from './AssigneeAvatarStack';
 import { PendingStatusBadge } from './PendingStatusBadge';
+import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = {
   high: '🔴 Yüksek',
@@ -16,18 +17,13 @@ const STATUS_LABEL: Record<Task['status'], string> = {
   done: 'Yapıldı',
 };
 
-function formatDeadline(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
-}
-
 interface TaskCardRowProps {
   task: Task;
 }
 
 export function TaskCardRow({ task }: TaskCardRowProps) {
-  const overdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
+  const overdue =
+    task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
   const isPending = task.pendingStatus !== null;
 
   return (
@@ -61,7 +57,7 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
       </div>
       <div className="flex items-center gap-3 text-xs">
         <span className={cn('text-muted-foreground', overdue && 'text-priority-high font-medium')}>
-          Son: {formatDeadline(task.deadline)}
+          Son: {formatCalendarDateDisplay(task.deadline)}
         </span>
         <AssigneeAvatarStack assignees={task.assignees} max={2} size="sm" />
       </div>

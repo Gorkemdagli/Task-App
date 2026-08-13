@@ -1,4 +1,5 @@
 import type { TenantDb } from '../db/types';
+import { startOfUtcToday } from '../lib/calendarDate';
 
 export async function archiveExpiredTasks(
   db: TenantDb,
@@ -8,7 +9,7 @@ export async function archiveExpiredTasks(
     where: {
       team: { tenantId },
       status: 'done',
-      deadline: { not: null, lt: new Date() },
+      deadline: { not: null, lt: startOfUtcToday() },
       archivedAt: null,
     },
     data: { archivedAt: new Date() },

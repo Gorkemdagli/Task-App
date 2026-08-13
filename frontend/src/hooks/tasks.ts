@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { appendTaskFilterParams } from '../lib/taskFilterParams';
 import { useAuthStore } from '../stores/authStore';
 import { invalidateTaskQueries } from './taskQueryInvalidation';
+import { patchTaskCaches, restoreTaskCaches, snapshotTaskCaches } from '../lib/taskCache';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -149,15 +150,12 @@ export function useUpdateTaskStatus() {
       return r.data;
     },
     onMutate: async (vars) => {
-      await qc.cancelQueries({ queryKey: ['task', vars.taskId] });
-      const prev = qc.getQueryData<Task>(['task', vars.taskId]);
-      if (prev) {
-        qc.setQueryData<Task>(['task', vars.taskId], { ...prev, status: vars.status });
-      }
-      return { prev, taskId: vars.taskId };
+      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
+      patchTaskCaches(qc, vars.taskId, (task) => ({ ...task, status: vars.status }));
+      return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
+      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
       invalidateTaskQueries(qc, vars.taskId);
@@ -176,24 +174,40 @@ export function useProposeTaskStatus() {
       return r.data;
     },
     onMutate: async (vars) => {
-      await qc.cancelQueries({ queryKey: ['task', vars.taskId] });
-      const prev = qc.getQueryData<Task>(['task', vars.taskId]);
-      // Optimistic: pending status set + pendingProposedBy set → isProposer=true olur,
-      // refetch bitmeden önce PendingAckModal proposera flash etmez.
+      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
       const actorId = useAuthStore.getState().user?.id ?? null;
-      if (prev) {
-        qc.setQueryData<Task>(['task', vars.taskId], {
-          ...prev,
+      const actor = useAuthStore.getState().user;
+      patchTaskCaches(qc, vars.taskId, (task) => {
+        if (task.assignees.length === 1) {
+          return {
+            ...task,
+            status: vars.status,
+            pendingStatus: null,
+            pendingProposedBy: null,
+            pendingProposedAt: null,
+            pendingProposer: null,
+            statusAcks: [],
+          };
+        }
+        return {
+          ...task,
           pendingStatus: vars.status,
           pendingProposedBy: actorId,
           pendingProposedAt: new Date().toISOString(),
-        });
-      }
-      return { prev, taskId: vars.taskId };
+          pendingProposer: actor
+            ? {
+                id: actor.id,
+                displayId: actor.displayId,
+                fullName: actor.fullName,
+                avatarUrl: null,
+              }
+            : task.pendingProposer,
+        };
+      });
+      return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      // Sessiz revert
-      if (ctx?.prev && ctx.taskId) qc.setQueryData(['task', ctx.taskId], ctx.prev);
+      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
       invalidateTaskQueries(qc, vars.taskId);
@@ -241,6 +255,14 @@ export function useUpdateTaskPriority() {
       });
       return r.data;
     },
+    onMutate: async (vars) => {
+      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
+      patchTaskCaches(qc, vars.taskId, (task) => ({ ...task, priority: vars.priority }));
+      return { snapshot, taskId: vars.taskId };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+    },
     onSettled: (_d, _e, vars) => {
       invalidateTaskQueries(qc, vars.taskId);
     },
@@ -261,6 +283,24 @@ export function useUpdateTaskFields() {
       const r = await api.patch<Task>(`/tasks/${taskId}`, body);
       return r.data;
     },
+    onMutate: async (vars) => {
+      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
+      patchTaskCaches(qc, vars.taskId, (task) => ({
+        ...task,
+        ...(vars.title !== undefined && { title: vars.title }),
+        ...(vars.description !== undefined && { description: vars.description }),
+        ...(vars.deadline !== undefined && { deadline: vars.deadline }),
+        ...(vars.assigneeIds !== undefined && {
+          assignees: task.assignees.filter((assignee) =>
+            vars.assigneeIds?.includes(assignee.userId),
+          ),
+        }),
+      }));
+      return { snapshot, taskId: vars.taskId };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+    },
     onSettled: (_d, _e, vars) => {
       invalidateTaskQueries(qc, vars.taskId);
     },
@@ -274,8 +314,16 @@ export function useDeleteTask() {
       await api.delete(`/tasks/${taskId}`);
       return taskId;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+    onMutate: async (taskId) => {
+      const snapshot = await snapshotTaskCaches(qc, taskId);
+      patchTaskCaches(qc, taskId, () => null);
+      return { snapshot, taskId };
+    },
+    onError: (_e, _taskId, ctx) => {
+      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+    },
+    onSettled: (_d, _e, taskId) => {
+      invalidateTaskQueries(qc, taskId);
     },
   });
 }

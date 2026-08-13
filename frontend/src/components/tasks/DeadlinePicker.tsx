@@ -1,3 +1,5 @@
+import { utcTodayCalendarDate } from '@/lib/calendarDate';
+
 interface DeadlinePickerProps {
   value: string | null;
   onChange: (date: string | null) => void;
@@ -6,8 +8,13 @@ interface DeadlinePickerProps {
   invalid?: boolean;
 }
 
-export function DeadlinePicker({ value, onChange, disabled, required, invalid }: DeadlinePickerProps) {
-  const today = new Date().toISOString().slice(0, 10);
+export function DeadlinePicker({
+  value,
+  onChange,
+  disabled,
+  required,
+  invalid,
+}: DeadlinePickerProps) {
   return (
     <div>
       <label className="mb-1 block text-xs text-muted-foreground">
@@ -15,10 +22,10 @@ export function DeadlinePicker({ value, onChange, disabled, required, invalid }:
       </label>
       <input
         type="date"
-        value={value ? value.slice(0, 10) : ''}
-        onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : null)}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value || null)}
         disabled={disabled}
-        min={today}
+        min={utcTodayCalendarDate()}
         required={required}
         data-invalid={invalid ? 'true' : undefined}
         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 data-[invalid=true]:border-destructive"

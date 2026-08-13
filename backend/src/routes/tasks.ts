@@ -14,6 +14,7 @@ import {
 import * as tasksService from '../services/tasks.service';
 import { runTenantRequest } from '../http/runTenantRequest';
 import { parseQuery } from '../http/parseQuery';
+import { toTaskDto } from '../http/taskDto';
 
 export const tasksRouter = Router();
 
@@ -29,7 +30,7 @@ tasksRouter.post('/', writeLimiter, validateBody(createTaskSchema), async (req, 
     const task = await runTenantRequest(req, (db, actor) =>
       tasksService.createTask(db, req.body, actor),
     );
-    res.status(201).json(task);
+    res.status(201).json(toTaskDto(task));
   } catch (e) {
     next(e);
   }
@@ -44,7 +45,7 @@ tasksRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
     const result = await runTenantRequest(req, (db, actor) =>
       tasksService.listTasks(db, parsed, actor),
     );
-    res.json(result);
+    res.json({ ...result, tasks: result.tasks.map(toTaskDto) });
   } catch (e) {
     next(e);
   }
@@ -55,7 +56,7 @@ tasksRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
     const task = await runTenantRequest(req, (db, actor) =>
       tasksService.getTask(db, req.params.id, actor),
     );
-    res.json(task);
+    res.json(toTaskDto(task));
   } catch (e) {
     next(e);
   }
@@ -72,7 +73,7 @@ tasksRouter.patch(
         (db, actor) => tasksService.updateTaskStatus(db, req.params.id, req.body, actor),
         statusTransactionOptions,
       );
-      res.json(task);
+      res.json(toTaskDto(task));
     } catch (e) {
       next(e);
     }
@@ -90,7 +91,7 @@ tasksRouter.post(
         (db, actor) => tasksService.proposeTaskStatus(db, req.params.id, req.body, actor),
         statusTransactionOptions,
       );
-      res.json(task);
+      res.json(toTaskDto(task));
     } catch (e) {
       next(e);
     }
@@ -108,7 +109,7 @@ tasksRouter.post(
         (db, actor) => tasksService.ackTaskStatus(db, req.params.id, req.body, actor),
         statusTransactionOptions,
       );
-      res.json(result);
+      res.json({ ...result, task: toTaskDto(result.task) });
     } catch (e) {
       next(e);
     }
@@ -122,7 +123,7 @@ tasksRouter.post('/:id/status/cancel', writeLimiter, async (req, res, next) => {
       (db, actor) => tasksService.cancelTaskStatus(db, req.params.id, actor),
       statusTransactionOptions,
     );
-    res.json(task);
+    res.json(toTaskDto(task));
   } catch (e) {
     next(e);
   }
@@ -137,7 +138,7 @@ tasksRouter.patch(
       const task = await runTenantRequest(req, (db, actor) =>
         tasksService.updateTaskPriority(db, req.params.id, req.body, actor),
       );
-      res.json(task);
+      res.json(toTaskDto(task));
     } catch (e) {
       next(e);
     }
@@ -153,7 +154,7 @@ tasksRouter.patch(
       const task = await runTenantRequest(req, (db, actor) =>
         tasksService.updateTaskFields(db, req.params.id, req.body, actor),
       );
-      res.json(task);
+      res.json(toTaskDto(task));
     } catch (e) {
       next(e);
     }

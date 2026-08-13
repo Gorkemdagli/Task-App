@@ -13,6 +13,10 @@ import { ProfilePage } from './Profile';
 import { PermissionsPage } from './Permissions';
 import { CompanySettingsPage } from './CompanySettings';
 
+const { useTasksMock } = vi.hoisted(() => ({
+  useTasksMock: vi.fn(() => ({ data: { tasks: [], total: 0 }, isLoading: false, isError: false })),
+}));
+
 // FAZ-4: Teams/TeamDetail fetch via React Query. Stub the hooks so this
 // pages-level test focuses on title/render smoke rather than API contract.
 // FAZ-5: tasks/comments hooks da stub'lanır — fixture data.
@@ -30,7 +34,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/tasks')>();
   return {
     ...actual,
-    useTasks: () => ({ data: { tasks: [], total: 0 }, isLoading: false, isError: false }),
+    useTasks: useTasksMock,
     useTask: () => ({
       data: {
         id: 't-99',
@@ -116,6 +120,12 @@ function renderAt(path: string) {
 describe('placeholder pages', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });
+    useTasksMock.mockClear();
+    useTasksMock.mockReturnValue({
+      data: { tasks: [], total: 0 },
+      isLoading: false,
+      isError: false,
+    });
   });
 
   it('Dashboard renders', () => {
@@ -138,6 +148,19 @@ describe('placeholder pages', () => {
   it('Tasks renders title', () => {
     renderAt('/tasks');
     expect(screen.getByRole('heading', { name: 'Görevlerim' })).toBeInTheDocument();
+  });
+
+  it('maps task page two to a twenty-item offset and renders total pages', () => {
+    useTasksMock.mockReturnValue({
+      data: { tasks: [], total: 45 },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/tasks?page=2');
+
+    expect(useTasksMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 20, offset: 20 }));
+    expect(screen.getByRole('button', { name: 'Sayfa 3' })).toBeInTheDocument();
   });
 
   it('TaskDetail renders fixture task title', () => {

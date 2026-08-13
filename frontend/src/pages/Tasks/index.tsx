@@ -1,32 +1,26 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTeams, useTeam } from '@/hooks/queries/useTeams';
 import { useTasks } from '@/hooks/tasks';
 import { useTaskFilters } from '@/hooks/useTaskFilters';
 import { useTeamStore } from '@/stores/teamStore';
 import { FilterBar } from '@/components/tasks/FilterBar';
 import { TaskCardRow } from '@/components/tasks/TaskCardRow';
+import { TaskPagination } from '@/components/tasks/TaskPagination';
+import { addCalendarDays, addCalendarMonths, utcTodayCalendarDate } from '@/lib/calendarDate';
 
 function buildDeadlineRange(filters: ReturnType<typeof useTaskFilters>['filters']) {
-  const now = new Date();
+  const today = utcTodayCalendarDate();
   if (filters.deadline === 'overdue') {
-    return { from: undefined as string | undefined, to: now.toISOString() };
+    return { from: undefined as string | undefined, to: addCalendarDays(today, -1) };
   }
   if (filters.deadline === 'today') {
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    return { from: start.toISOString(), to: end.toISOString() };
+    return { from: today, to: today };
   }
   if (filters.deadline === 'week') {
-    const end = new Date(now);
-    end.setDate(end.getDate() + 7);
-    return { from: now.toISOString(), to: end.toISOString() };
+    return { from: today, to: addCalendarDays(today, 7) };
   }
   if (filters.deadline === 'month') {
-    const end = new Date(now);
-    end.setMonth(end.getMonth() + 1);
-    return { from: now.toISOString(), to: end.toISOString() };
+    return { from: today, to: addCalendarMonths(today, 1) };
   }
   return {
     from: (filters.deadlineFrom ?? undefined) as string | undefined,
@@ -36,7 +30,7 @@ function buildDeadlineRange(filters: ReturnType<typeof useTaskFilters>['filters'
 
 export function TasksPage() {
   const { data: teams } = useTeams();
-  const { filters } = useTaskFilters();
+  const { filters, setPage } = useTaskFilters();
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const membersTeamId = filters.teamId ?? activeTeamId ?? undefined;
   const { data: membersTeam } = useTeam(membersTeamId);
@@ -60,11 +54,17 @@ export function TasksPage() {
       deadlineFrom: from,
       deadlineTo: to,
       includeArchived: filters.includeArchived,
-      limit: 100,
+      limit: 20,
+      offset: (filters.page - 1) * 20,
     };
   }, [filters]);
 
   const { data, isLoading } = useTasks(queryArgs);
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / 20));
+
+  useEffect(() => {
+    if (data && filters.page > totalPages) setPage(totalPages);
+  }, [data, filters.page, setPage, totalPages]);
 
   return (
     <div data-testid="tasks-page" className="p-8">
@@ -74,7 +74,7 @@ export function TasksPage() {
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor…</p>
-      ) : !data || data.tasks.length === 0 ? (
+      ) : !data || data.total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
           Filtrelere uyan görev yok.
         </p>
@@ -83,6 +83,9 @@ export function TasksPage() {
           {data.tasks.map((t) => (
             <TaskCardRow key={t.id} task={t} />
           ))}
+          {data.total > 0 && (
+            <TaskPagination page={filters.page} totalPages={totalPages} onPageChange={setPage} />
+          )}
         </div>
       )}
     </div>

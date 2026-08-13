@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import type { Task } from '@/hooks/tasks';
 import { AssigneeAvatarStack } from './AssigneeAvatarStack';
 import { PendingStatusBadge } from './PendingStatusBadge';
+import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
 
 const PRIORITY_BORDER: Record<Task['priority'], string> = {
   high: 'border-l-priority-high',
@@ -23,20 +24,23 @@ const PRIORITY_BG: Record<Task['priority'], string> = {
   low: 'bg-priority-low text-black',
 };
 
-function formatDeadline(iso: string | null): string {
-  if (!iso) return '—';
-  const target = new Date(iso);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const targetDay = new Date(target);
-  targetDay.setHours(0, 0, 0, 0);
-  const days = Math.round((targetDay.getTime() - today.getTime()) / 86400000);
+function calendarDayDistance(from: string, to: string): number {
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number);
+  const [toYear, toMonth, toDay] = to.split('-').map(Number);
+  return Math.round(
+    (Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86400000,
+  );
+}
+
+function formatDeadline(value: string | null): string {
+  if (!value) return '—';
+  const days = calendarDayDistance(utcTodayCalendarDate(), value);
   if (days === 0) return 'Bugün';
   if (days === 1) return 'Yarın';
   if (days === -1) return 'Dün';
   if (days < -1) return `${Math.abs(days)}g geçti`;
   if (days < 7) return `${days}g`;
-  return target.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return formatCalendarDateDisplay(value);
 }
 
 interface TaskCardProps {
@@ -63,7 +67,8 @@ export function TaskCard({
     disabled: !dragEnabled,
   });
 
-  const overdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
+  const overdue =
+    task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
 
   const handleRef = (node: HTMLElement | null) => {
     setNodeRef(node);

@@ -18,6 +18,7 @@ import {
   type TaskStatus,
 } from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 import { canUpdateTaskStatus, isCompanyAdmin } from '@/lib/permissions';
 import { getDisplayStatus } from '@/lib/taskDisplay';
 import { TaskCard } from '@/components/tasks/TaskCard';
@@ -75,7 +76,8 @@ function StatusColumn({
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const { data: teams } = useTeams();
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const activeTeamId = useTeamStore((state) => state.activeTeamId);
+  const setActiveTeamId = useTeamStore((state) => state.setActiveTeamId);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [proposeIntent, setProposeIntent] = useState<{
@@ -87,7 +89,10 @@ export function DashboardPage() {
     () => [...(teams ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'tr')),
     [teams],
   );
-  const teamId = selectedTeamId ?? sortedTeams[0]?.id ?? null;
+  const teamId =
+    activeTeamId && sortedTeams.some((team) => team.id === activeTeamId)
+      ? activeTeamId
+      : (sortedTeams[0]?.id ?? null);
   const selectedTeam = sortedTeams.find((t) => t.id === teamId);
   const { data: teamDetail } = useTeam(teamId ?? undefined);
   const teamMembers = teamDetail?.members ?? [];
@@ -170,7 +175,7 @@ export function DashboardPage() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setSelectedTeamId(t.id)}
+              onClick={() => setActiveTeamId(t.id)}
               data-testid={`team-tab-${t.id}`}
               className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
                 t.id === teamId
