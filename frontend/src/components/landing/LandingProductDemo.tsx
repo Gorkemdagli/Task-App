@@ -296,7 +296,12 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
           })}
         </div>
 
-        <Button variant="secondary" type="button" onClick={() => dispatch({ type: 'reset' })}>
+        <Button
+          variant="secondary"
+          type="button"
+          data-demo-reset
+          onClick={() => dispatch({ type: 'reset' })}
+        >
           <RotateCcw data-icon="inline-start" aria-hidden />
           Demoyu sıfırla
         </Button>
