@@ -32,7 +32,7 @@ function enterBeat(beat: 0 | 1 | 2) {
           target: element,
           isIntersecting: true,
           intersectionRatio: 0.75,
-        } as IntersectionObserverEntry,
+        } as unknown as IntersectionObserverEntry,
       ],
       {} as IntersectionObserver,
     );

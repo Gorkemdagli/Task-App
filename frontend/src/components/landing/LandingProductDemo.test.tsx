@@ -119,7 +119,7 @@ describe('LandingProductDemo', () => {
     };
     const rectSpy = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function getRect() {
+      .mockImplementation(function getRect(this: HTMLElement) {
         const left = rects[this.getAttribute('aria-label') ?? ''] ?? 16;
 
         return {

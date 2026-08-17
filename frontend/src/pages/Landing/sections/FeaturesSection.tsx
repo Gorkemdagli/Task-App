@@ -1,31 +1,46 @@
-import { FeatureCard } from '@/components/landing/FeatureCard';
-import { features } from '@/pages/Landing/data/mockData';
+import { Kanban, MessageSquareText, ShieldCheck, type LucideIcon } from 'lucide-react';
+
+const capabilities: ReadonlyArray<{
+  title: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  {
+    title: 'Sabit akış, görünür sorumluluk',
+    description:
+      'Yapılacak, Yapılıyor ve Yapıldı sütunları değişmez. Her görevde sorumlu kişi, öncelik ve termin görünür kalır.',
+    icon: Kanban,
+  },
+  {
+    title: 'Konuşma görevde kalır',
+    description:
+      'Görev yorumları ve ilgili bağlam, ekibin yaptığı işin yanında durur; güncelleme ararken konu dağılmaz.',
+    icon: MessageSquareText,
+  },
+  {
+    title: 'Yetki sınırı nettir',
+    description:
+      'Üye kendi görevini ilerletir; Takım Admini kendi takımını, Şirket Admini şirket kapsamını yönetir.',
+    icon: ShieldCheck,
+  },
+];
 
 export function FeaturesSection() {
   return (
-    <section
-      id="features"
-      aria-labelledby="features-title"
-      className="flex min-h-screen flex-col justify-center py-16 md:py-24"
-    >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-4 md:px-6">
-        <header className="mx-auto flex max-w-2xl flex-col items-center gap-3 text-center">
-          <h2
-            id="features-title"
-            className="text-3xl font-bold tracking-tight md:text-4xl lg:text-5xl"
-          >
-            Engineered for Velocity
-          </h2>
-          <p className="text-landing-muted md:text-lg">
-            Everything you need to orchestrate complex workflows without the administrative bloat.
-          </p>
+    <section id="features" aria-labelledby="features-title" className="landing-features">
+      <div className="landing-section-shell">
+        <header className="landing-section-heading">
+          <h2 id="features-title">Özellikler</h2>
+          <p>İşi görünür kılan üç temel davranış; fazladan görünüm ve süreç yükü olmadan.</p>
         </header>
 
-        {/* 2-column grid; items auto-flow. f1 (large) is internally bigger,
-            f2 (small) is the standard cell, f3 (full-width) wraps row 2. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-          {features.map((feature) => (
-            <FeatureCard key={feature.id} feature={feature} />
+        <div className="landing-capability-ledger">
+          {capabilities.map(({ title, description, icon: Icon }) => (
+            <article key={title}>
+              <Icon aria-hidden />
+              <h3>{title}</h3>
+              <p>{description}</p>
+            </article>
           ))}
         </div>
       </div>
