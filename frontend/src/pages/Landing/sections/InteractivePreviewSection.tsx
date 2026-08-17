@@ -29,32 +29,46 @@ export function InteractivePreviewSection() {
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 60rem)');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let observer: IntersectionObserver | null = null;
 
-    if (!desktop.matches || reducedMotion.matches) return undefined;
+    function updateObserver() {
+      observer?.disconnect();
+      observer = null;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!guidedModeRef.current) return;
+      if (!desktop.matches || reducedMotion.matches) return;
 
-        const closestEntry = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        const nextBeat = Number(
-          (closestEntry?.target as HTMLElement | undefined)?.dataset.storyBeat,
-        );
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (!guidedModeRef.current) return;
 
-        if (nextBeat === 0 || nextBeat === 1 || nextBeat === 2) {
-          setActiveBeat(nextBeat);
-        }
-      },
-      { rootMargin: '-35% 0px -35% 0px', threshold: [0.25, 0.5, 0.75] },
-    );
+          const closestEntry = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          const nextBeat = Number(
+            (closestEntry?.target as HTMLElement | undefined)?.dataset.storyBeat,
+          );
 
-    beatRefs.current.forEach((beat) => {
-      if (beat) observer.observe(beat);
-    });
+          if (nextBeat === 0 || nextBeat === 1 || nextBeat === 2) {
+            setActiveBeat(nextBeat);
+          }
+        },
+        { rootMargin: '-35% 0px -35% 0px', threshold: [0.25, 0.5, 0.75] },
+      );
 
-    return () => observer.disconnect();
+      beatRefs.current.forEach((beat) => {
+        if (beat) observer?.observe(beat);
+      });
+    }
+
+    updateObserver();
+    desktop.addEventListener('change', updateObserver);
+    reducedMotion.addEventListener('change', updateObserver);
+
+    return () => {
+      desktop.removeEventListener('change', updateObserver);
+      reducedMotion.removeEventListener('change', updateObserver);
+      observer?.disconnect();
+    };
   }, []);
 
   function pauseGuidedMode() {

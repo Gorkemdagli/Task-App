@@ -2,7 +2,7 @@ import { ArrowRight, UserRound } from 'lucide-react';
 
 export function HeroIllustration() {
   return (
-    <div className="landing-hero-artifact" aria-label="TaskFlow görev durumu örneği">
+    <div role="group" className="landing-hero-artifact" aria-label="TaskFlow görev durumu örneği">
       <div className="landing-hero-artifact__rail" aria-hidden>
         <span>Yapılacak</span>
         <ArrowRight />
