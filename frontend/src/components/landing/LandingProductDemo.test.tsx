@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { LandingProductDemo } from './LandingProductDemo';
@@ -108,5 +108,48 @@ describe('LandingProductDemo', () => {
         name: 'OAuth akışı',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('moves a focused task across fixed columns with the keyboard', async () => {
+    const { user } = renderDemo();
+    const rects: Record<string, number> = {
+      'Yapılacak görevleri': 0,
+      'Yapılıyor görevleri': 320,
+      'Yapıldı görevleri': 640,
+    };
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function getRect() {
+        const left = rects[this.getAttribute('aria-label') ?? ''] ?? 16;
+
+        return {
+          x: left,
+          y: 0,
+          top: 0,
+          left,
+          right: left + 280,
+          bottom: 400,
+          width: 280,
+          height: 400,
+          toJSON: () => undefined,
+        };
+      });
+    const task = screen.getByRole('button', { name: 'OAuth akışı' });
+
+    task.focus();
+    await user.keyboard('[Space]');
+    await user.keyboard('[ArrowRight][ArrowRight]');
+    await user.keyboard('[Space]');
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('OAuth akışı Yapıldı durumuna taşındı.');
+    });
+    expect(
+      within(screen.getByRole('region', { name: 'Yapıldı görevleri' })).getByRole('button', {
+        name: 'OAuth akışı',
+      }),
+    ).toBeInTheDocument();
+
+    rectSpy.mockRestore();
   });
 });
