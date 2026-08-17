@@ -13,7 +13,7 @@ import {
   type DragStartEvent,
   type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
-import { LayoutDashboard, ListTodo, RotateCcw, X } from 'lucide-react';
+import { LayoutDashboard, ListTodo, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -266,6 +266,18 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
     });
   }
 
+  function closeInspector() {
+    if (!selectedTask) return;
+
+    const taskId = selectedTask.id;
+    dispatchManual({ type: 'select-task', taskId: null });
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLButtonElement>(`[data-demo-task-id="${taskId}"]`)
+        ?.focus({ preventScroll: true });
+    });
+  }
+
   return (
     <div className="landing-product-demo" data-demo-mode={state.mode}>
       <div className="landing-product-demo__toolbar">
@@ -317,6 +329,10 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
         <div className="landing-product-demo__workspace">
           <aside aria-label="Demo takımları" className="landing-demo-teams">
             <h3>Takımlar</h3>
+            <p className="landing-demo-persona">
+              <ShieldCheck aria-hidden />
+              Demo rolü: Takım Admini
+            </p>
             <div className="flex flex-col gap-1">
               {demoTeams.map((team) => (
                 <button
@@ -337,30 +353,36 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
           </aside>
 
           <div className="landing-product-demo__content">
-            {state.view === 'board' ? (
-              <section
-                id="landing-demo-panel-board"
-                role="region"
-                aria-label="Kanban panosu"
-                className="landing-demo-board animate-tab-fade"
-              >
-                {statuses.map((status) => (
-                  <DemoColumn
-                    key={status}
-                    status={status}
-                    tasks={teamTasks.filter((task) => task.status === status)}
-                    selectedTaskId={state.selectedTaskId}
-                    onSelectTask={(taskId) => dispatchManual({ type: 'select-task', taskId })}
-                  />
-                ))}
-              </section>
-            ) : (
-              <section
-                id="landing-demo-panel-tasks"
-                role="region"
-                aria-label="Görev listesi"
-                className="animate-tab-fade"
-              >
+            <section
+              id="landing-demo-panel-board"
+              role="tabpanel"
+              aria-label="Kanban panosu"
+              aria-labelledby="landing-demo-tab-board"
+              hidden={state.view !== 'board'}
+              className="landing-demo-board animate-tab-fade"
+            >
+              {state.view === 'board'
+                ? statuses.map((status) => (
+                    <DemoColumn
+                      key={status}
+                      status={status}
+                      tasks={teamTasks.filter((task) => task.status === status)}
+                      selectedTaskId={state.selectedTaskId}
+                      onSelectTask={(taskId) => dispatchManual({ type: 'select-task', taskId })}
+                    />
+                  ))
+                : null}
+            </section>
+
+            <section
+              id="landing-demo-panel-tasks"
+              role="tabpanel"
+              aria-label="Görev listesi"
+              aria-labelledby="landing-demo-tab-tasks"
+              hidden={state.view !== 'tasks'}
+              className="animate-tab-fade"
+            >
+              {state.view === 'tasks' ? (
                 <ul className="landing-demo-list">
                   {teamTasks.map((task) => (
                     <li key={task.id}>
@@ -373,8 +395,8 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
                     </li>
                   ))}
                 </ul>
-              </section>
-            )}
+              ) : null}
+            </section>
           </div>
 
           {selectedTask ? (
@@ -385,7 +407,7 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
                   variant="ghost"
                   type="button"
                   aria-label="Ayrıntıyı kapat"
-                  onClick={() => dispatchManual({ type: 'select-task', taskId: null })}
+                  onClick={closeInspector}
                 >
                   <X aria-hidden />
                 </Button>

@@ -55,10 +55,7 @@ export function NavSection() {
               <Menu aria-hidden />
             </button>
           </SheetTrigger>
-          <SheetContent
-            side="right"
-            className="border-l-landing-border bg-landing-card text-landing-text"
-          >
+          <SheetContent side="right" className="theme-landing landing-mobile-sheet">
             <SheetTitle className="text-landing-text">TaskFlow</SheetTitle>
 
             <button type="button" onClick={toggleMode} className="landing-mobile-theme">

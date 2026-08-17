@@ -183,7 +183,7 @@
   --landing-primary-soft: rgba(255, 153, 51, 0.1);
   --landing-text: #ffffff;
   --landing-text-muted: #8e8e93;
-  --landing-border: rgba(255, 255, 255, 0.08);
+  --landing-border: color-mix(in srgb, var(--landing-text-muted) 70%, transparent);
 
   background-color: var(--landing-bg);
   color: var(--landing-text);
@@ -239,7 +239,7 @@
   --landing-primary-soft: rgba(217, 119, 6, 0.12);
   --landing-text: #171717;
   --landing-text-muted: #525252;
-  --landing-border: rgba(0, 0, 0, 0.08);
+  --landing-border: color-mix(in srgb, var(--landing-text-muted) 70%, transparent);
 }
 
 /* === LANDING WORKBENCH === */
@@ -311,6 +311,12 @@
   font-size: 0.875rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.theme-landing.landing-mobile-sheet {
+  border-color: var(--landing-border);
+  background: var(--landing-card);
+  color: var(--landing-text);
 }
 
 .theme-landing .landing-hero {
@@ -621,9 +627,14 @@
 }
 
 .theme-landing .landing-story-beat h3 {
+  color: var(--landing-text-muted);
   font-size: 1.125rem;
   font-weight: 650;
   line-height: 1.35;
+}
+
+.theme-landing .landing-story-beat.is-active h3 {
+  color: var(--landing-text);
 }
 
 .theme-landing .landing-product-demo {
@@ -698,6 +709,22 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.theme-landing .landing-demo-persona {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--landing-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.theme-landing .landing-demo-persona svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+  color: var(--landing-primary-text);
 }
 
 .theme-landing .landing-demo-teams > div {
@@ -958,11 +985,6 @@
   .theme-landing .landing-story-beat {
     min-height: 80dvh;
     align-content: center;
-    opacity: 0.55;
-  }
-
-  .theme-landing .landing-story-beat.is-active {
-    opacity: 1;
   }
 }
 

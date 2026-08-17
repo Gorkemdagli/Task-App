@@ -17,11 +17,12 @@ describe('LandingProductDemo', () => {
     const { onManualInteraction, user } = renderDemo();
 
     expect(screen.getByRole('tab', { name: 'Pano' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Pano' })).toBeVisible();
 
     await user.click(screen.getByRole('tab', { name: 'Görevler' }));
 
     expect(screen.getByRole('tab', { name: 'Görevler' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('region', { name: 'Görev listesi' })).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel', { name: 'Görevler' })).toBeVisible();
     expect(onManualInteraction).toHaveBeenCalledTimes(1);
   });
 
@@ -61,8 +62,9 @@ describe('LandingProductDemo', () => {
 
   it('opens and closes the inline task inspector', async () => {
     const { onManualInteraction, user } = renderDemo();
+    const task = screen.getByRole('button', { name: 'OAuth akışı' });
 
-    await user.click(screen.getByRole('button', { name: 'OAuth akışı' }));
+    await user.click(task);
 
     const inspector = screen.getByRole('complementary', { name: 'Görev ayrıntısı' });
     expect(within(inspector).getByRole('heading', { name: 'OAuth akışı' })).toBeInTheDocument();
@@ -73,7 +75,14 @@ describe('LandingProductDemo', () => {
     expect(
       screen.queryByRole('complementary', { name: 'Görev ayrıntısı' }),
     ).not.toBeInTheDocument();
+    await waitFor(() => expect(task).toHaveFocus());
     expect(onManualInteraction).toHaveBeenCalledTimes(2);
+  });
+
+  it('identifies the movable fixture as a Team Admin demo', () => {
+    renderDemo();
+
+    expect(screen.getByText('Demo rolü: Takım Admini')).toBeVisible();
   });
 
   it('changes task status from the inspector', async () => {
