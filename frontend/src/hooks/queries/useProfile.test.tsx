@@ -42,7 +42,9 @@ describe('useProfile', () => {
     });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('fetches tenantless-safe profile by user identity', async () => {
     const get = vi.spyOn(profileService, 'getProfile').mockResolvedValue(profile);

@@ -25,6 +25,28 @@ vi.mock('@/hooks/queries/useTeams', () => ({
   useTeam: () => ({ data: null, isLoading: true, isError: false }),
 }));
 
+vi.mock('@/hooks/queries/useProfile', () => ({
+  useProfile: () => ({
+    data: {
+      id: '1',
+      displayId: 'A3X9K',
+      email: 'a@x.com',
+      fullName: 'Ada',
+      role: 'member',
+      tenantId: 't1',
+      tenantName: 'Acme',
+      avatarUrl: null,
+      notifyTaskAssigned: true,
+      notifyTaskCommented: true,
+      notifyMessageReceived: true,
+    },
+    isLoading: false,
+    isError: false,
+  }),
+  useUpdateProfile: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
+  useUploadAvatar: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
+}));
+
 vi.mock('@/hooks/tasks', async (importOriginal) => {
   // vitest: `importOriginal` defaults to `Promise<unknown>`, so `...actual`
   // fails to spread. Provide the module type explicitly. Inline `import()`
@@ -177,7 +199,7 @@ describe('placeholder pages', () => {
   it('Profile renders title and shows current user email', () => {
     renderAt('/profile');
     expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument();
-    expect(screen.getByText('a@x.com')).toBeInTheDocument();
+    expect(screen.getByLabelText('E-posta')).toHaveValue('a@x.com');
   });
 });
 

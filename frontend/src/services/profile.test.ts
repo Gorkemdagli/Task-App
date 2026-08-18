@@ -17,7 +17,9 @@ const profile: CurrentUserProfile = {
 };
 
 describe('profile service', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('gets canonical current profile', async () => {
     const get = vi.spyOn(api, 'get').mockResolvedValue({ data: profile } as never);
