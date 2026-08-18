@@ -8,10 +8,243 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Health-check placeholder modeli (Faz 1'de kaldırılacak)
+enum UserRole {
+  member
+  companyAdmin
+}
+
+enum TeamMemberRole {
+  member
+  teamAdmin
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum ChannelType {
+  team
+  dm
+}
+
+enum NotificationType {
+  task_assigned
+  task_commented
+  message_received
+  task_status_pending
+  task_status_changed
+}
+
+// Health-check placeholder — kaldırılmadı (CLAUDE.md §3, /health route SELECT 1 raw query kullanıyor)
 model HealthCheck {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
   @@map("_health_checks")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  logoUrl   String?  @map("logo_url")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users User[]
+  teams Team[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  // tenantId NULL = henüz bir şirkete dahil olmamış user (register'da
+  // companyName vermediyse). Admin bu user'ı takıma eklerken tenantId
+  // otomatik olarak admin'in tenant'ına transfer olur (services/teams).
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  email        String   @unique
+  fullName     String   @map("full_name")
+  avatarUrl    String?  @map("avatar_url")
+  passwordHash String   @map("password_hash")
+  displayId    String   @unique @map("display_id")
+  role         UserRole
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  teamMembers      TeamMember[]
+  assignedTasks    Task[]          @relation("TaskAssigner")
+  proposedTasks    Task[]          @relation("TaskPendingProposer")
+  taskAssignments  TaskAssignee[]
+  taskStatusAcks   TaskStatusAck[]
+  comments         TaskComment[]
+  sentMessages     Message[]       @relation("MessageSender")
+  receivedMessages Message[]       @relation("MessageReceiver")
+  notifications    Notification[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  tasks    Task[]
+  channels Channel[]
+
+  @@index([tenantId])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId   String         @map("team_id") @db.Uuid
+  userId   String         @map("user_id") @db.Uuid
+  role     TeamMemberRole
+  joinedAt DateTime       @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  teamId      String       @map("team_id") @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(medium)
+  deadline    DateTime?    @db.Timestamptz(6)
+  assignerId  String       @map("assigner_id") @db.Uuid
+  archivedAt  DateTime?    @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assigner        User            @relation("TaskAssigner", fields: [assignerId], references: [id], onDelete: Restrict)
+  pendingProposer User?           @relation("TaskPendingProposer", fields: [pendingProposedBy], references: [id], onDelete: SetNull)
+  assignees       TaskAssignee[]
+  statusAcks      TaskStatusAck[]
+  comments        TaskComment[]
+
+  pendingStatus     TaskStatus? @map("pending_status")
+  pendingVersion    Int         @default(0) @map("pending_version")
+  pendingProposedBy String?     @map("pending_proposed_by") @db.Uuid
+  pendingProposedAt DateTime?   @map("pending_proposed_at") @db.Timestamptz(6)
+
+  @@index([teamId, status])
+  @@index([deadline])
+  @@index([archivedAt])
+  @@index([pendingStatus, deadline])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id         String   @id @default(uuid()) @db.Uuid
+  taskId     String   @map("task_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@map("task_assignees")
+}
+
+model TaskStatusAck {
+  id             String     @id @default(uuid()) @db.Uuid
+  taskId         String     @map("task_id") @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  proposedStatus TaskStatus @map("proposed_status")
+  pendingVersion Int        @map("pending_version")
+  ackedAt        DateTime   @default(now()) @map("acked_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId, pendingVersion])
+  @@index([taskId])
+  @@map("task_status_acks")
+}
+
+model TaskComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt(sort: Desc)])
+  @@map("task_comments")
+}
+
+model Channel {
+  id        String      @id @default(uuid()) @db.Uuid
+  teamId    String      @map("team_id") @db.Uuid
+  name      String
+  type      ChannelType
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  team     Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([teamId])
+  @@map("channels")
+}
+
+model Message {
+  id         String    @id @default(uuid()) @db.Uuid
+  channelId  String?   @map("channel_id") @db.Uuid
+  senderId   String    @map("sender_id") @db.Uuid
+  receiverId String?   @map("receiver_id") @db.Uuid
+  body       String
+  readAt     DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  channel  Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender   User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  receiver User?    @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Restrict)
+
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([receiverId, readAt])
+  @@map("messages")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  payload   Json             @default("{}")
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
 }

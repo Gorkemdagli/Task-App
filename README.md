@@ -8,7 +8,7 @@ Multi-tenant SaaS görev yönetimi uygulaması.
 - Backend: Node.js + Express + TypeScript + Prisma
 - Veritabanı: Supabase (PostgreSQL)
 - Cache: Redis
-- Deploy: Vercel (FE) + Railway (BE + Redis)
+- Deploy: Vercel (FE) + Render (BE + Redis)
 
 ## Geliştirme
 

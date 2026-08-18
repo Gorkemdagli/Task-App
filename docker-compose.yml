@@ -1,20 +1,76 @@
 version: '3.9'
 
 services:
+  # PostgreSQL — Supabase uyumlu RLS mimarisi için local instance.
+  # Volume dışarıdan tanımlı (taskflow-pgdata): mevcut veri korunur.
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskflow-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d taskflow']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # PostgreSQL — TEST DB. Sadece vitest kullanır. cleanDb() burayı siler,
+  # dev DB'ye (postgres) dokunmaz. Farklı host port (5433) → aynı anda
+  # iki DB ayakta kalabilir. Volume ephemeral: container düşünce data sıfırlanır.
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: taskflow-postgres-test
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d taskflow_test']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: taskflow-redis
     restart: unless-stopped
     ports:
       - '6379:6379'
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --save "" --appendonly no
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 5
+
+  # Test için ayrı Redis instance (DB 1). cleanDb() blacklist/session key'leri
+  # burada siler, dev Redis'i (DB 0) etkilemez.
+  redis-test:
+    image: redis:7-alpine
+    container_name: taskflow-redis-test
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
-  redis-data:
+  pgdata:
+    external: true
+    name: taskflow-pgdata

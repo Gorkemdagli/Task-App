@@ -13,6 +13,13 @@ out/
 .env
 .env.local
 .env.*.local
+.env.development
+.env.development.local
+.env.production
+.env.production.local
+.env.staging
+.env.staging.local
+.envrc
 !.env.example
 
 # Logs
@@ -31,22 +38,83 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+# Secrets & credentials — SSL/TLS, SSH keys, service accounts
+*.pem
+*.key
+*.crt
+*.cer
+*.csr
+*.p12
+*.pfx
+*.keystore
+*.jks
+id_rsa*
+id_ed25519*
+*.asc
+.gpg/
+.netrc
+.aws/
+.gcloud/
+service-account*.json
+firebase-adminsdk*.json
+gha-creds-*.json
+
 # Test
 coverage/
 .nyc_output/
+coverage-*/
+.jest-cache/
+.playwright/
+.playwright-report/
+test-results/
+*.lcov
 
 # Prisma
 backend/prisma/migrations/dev.db*
+
+# Database files (SQLite, dumps, backups)
+*.sqlite
+*.sqlite3
+*.db
+*.mdb
+*.dump
+*.sql.gz
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
 
 # Misc
 *.tsbuildinfo
 .cache/
 .turbo/
+.pg-dump-backup.sql
+.taskflow_app_pwd
 
-.husky/
+# Claude Code / IDE tool caches (per-user, per-machine)
+.mcp.json
+.claude/
+.fallow
+
+# Husky internal hooks (real .husky/ hooks tracked via pre-commit)
+.husky/*
+!.husky/pre-commit
+.husky
 
 # Project documentation (kept local, not on remote)
+
 CLAUDE.md
 PROJECT.md
 FRONTEND.md
 ROADMAP.md
+--help/
+docs/
+.claudeignore
+graphify-out
+review.md
+AGENTS.md
+todo.md
+.superdesign
+.vi3ecode
+.tmp-r4
