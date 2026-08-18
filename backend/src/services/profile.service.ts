@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { AppError } from '../lib/appError';
 import { revokeAllUserSessions } from '../lib/sessionStore';
+import { transformAvatar } from '../lib/media';
+import { createMediaStorage, deleteOwnedAvatar, type MediaStorage } from '../lib/mediaStorage';
 import type { UpdateCurrentUserInput } from '../schemas/users.schema';
 
 const profileSelect = {
@@ -120,4 +122,43 @@ export async function updateCurrentProfile(
 
   if (sessionRevoked) return { sessionRevoked: true };
   return { profile: await getCurrentProfile(userId), sessionRevoked: false };
+}
+
+export async function replaceAvatar(
+  userId: string,
+  file: Express.Multer.File,
+  storage?: MediaStorage,
+): Promise<CurrentUserProfile> {
+  if (!file?.buffer || !file.mimetype) {
+    throw new AppError(400, 'Invalid image', 'INVALID_IMAGE');
+  }
+
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { avatarUrl: true },
+  });
+  if (!current) throw new AppError(404, 'User not found', 'NOT_FOUND');
+
+  const transformed = await transformAvatar(file.buffer, file.mimetype);
+  const mediaStorage = storage ?? createMediaStorage();
+  const uploaded = await mediaStorage.uploadAvatar(userId, transformed);
+
+  let updated: ProfileRow;
+  try {
+    updated = await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: uploaded.url },
+      select: profileSelect,
+    });
+  } catch (error) {
+    try {
+      await mediaStorage.deletePath(uploaded.path);
+    } catch {
+      // New object cleanup is best effort after a database failure.
+    }
+    throw error;
+  }
+
+  await deleteOwnedAvatar(mediaStorage, current.avatarUrl, userId);
+  return toProfile(updated);
 }

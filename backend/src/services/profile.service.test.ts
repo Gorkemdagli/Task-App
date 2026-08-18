@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import sharp from 'sharp';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { hasAccessSession } from '../lib/sessionStore';
 import { verifyAccessToken } from '../lib/jwt';
 import { login, register } from './auth.service';
-import { getCurrentProfile, updateCurrentProfile } from './profile.service';
+import { getCurrentProfile, replaceAvatar, updateCurrentProfile } from './profile.service';
+import { createMediaStorage } from '../lib/mediaStorage';
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();
@@ -97,5 +99,66 @@ describe('profile.service', () => {
 
     expect(await hasAccessSession(firstJti)).toBe(false);
     expect(await hasAccessSession(secondJti)).toBe(false);
+  });
+
+  it('uploads transformed avatar and deletes prior owned object after DB success', async () => {
+    const registered = await register({
+      fullName: 'Avatar User',
+      email: 'avatar-service@example.com',
+      password: 'hunter22',
+    });
+    const oldUrl = `https://storage.test/storage/v1/object/public/taskflow-media/avatars/${registered.user.id}/old.webp`;
+    await prisma.user.update({ where: { id: registered.user.id }, data: { avatarUrl: oldUrl } });
+    const adapter = {
+      upload: vi.fn().mockResolvedValue(undefined),
+      getPublicUrl: vi.fn(
+        (path: string) => `https://storage.test/storage/v1/object/public/taskflow-media/${path}`,
+      ),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const image = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: 'blue' },
+    })
+      .png()
+      .toBuffer();
+
+    const profile = await replaceAvatar(
+      registered.user.id,
+      { buffer: image, mimetype: 'image/png' } as Express.Multer.File,
+      createMediaStorage(adapter),
+    );
+
+    expect(profile.avatarUrl).toMatch(/\/avatars\/.*\.webp$/);
+    expect(adapter.upload).toHaveBeenCalledTimes(1);
+    expect(adapter.remove).toHaveBeenCalledWith(`avatars/${registered.user.id}/old.webp`);
+  });
+
+  it('deletes newly uploaded object when profile update fails', async () => {
+    const registered = await register({
+      fullName: 'Avatar Rollback',
+      email: 'avatar-rollback@example.com',
+      password: 'hunter22',
+    });
+    const adapter = {
+      upload: vi.fn().mockImplementation(async () => {
+        await prisma.user.delete({ where: { id: registered.user.id } });
+      }),
+      getPublicUrl: vi.fn((path: string) => `https://storage.test/${path}`),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const image = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: 'green' },
+    })
+      .png()
+      .toBuffer();
+
+    await expect(
+      replaceAvatar(
+        registered.user.id,
+        { buffer: image, mimetype: 'image/png' } as Express.Multer.File,
+        createMediaStorage(adapter),
+      ),
+    ).rejects.toBeDefined();
+    expect(adapter.remove).toHaveBeenCalledTimes(1);
   });
 });

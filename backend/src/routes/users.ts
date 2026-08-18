@@ -2,7 +2,12 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
-import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
+import {
+  authenticatedReadLimiter,
+  uploadLimiter,
+  writeLimiter,
+} from '../middleware/rateLimitProfiles';
+import { uploadAvatar } from '../middleware/imageUpload';
 import { runTenantRequest } from '../http/runTenantRequest';
 import {
   updateCompanyPermissionsSchema,
@@ -37,6 +42,20 @@ usersRouter.patch(
         return;
       }
       res.json(result.profile);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+usersRouter.post(
+  '/users/me/avatar',
+  requireAuth,
+  uploadLimiter,
+  uploadAvatar,
+  async (req, res, next) => {
+    try {
+      res.json(await profileService.replaceAvatar(req.user!.id, req.file!));
     } catch (error) {
       next(error);
     }

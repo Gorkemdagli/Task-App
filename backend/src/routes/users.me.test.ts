@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import sharp from 'sharp';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
@@ -197,5 +198,50 @@ describe('PATCH /api/v1/users/me', () => {
       .send({ displayId: 'ABCDE' });
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('POST /api/v1/users/me/avatar', () => {
+  beforeEach(cleanDb);
+
+  it('rejects a declared MIME mismatch before storage', async () => {
+    const registerResponse = await registerUser({ email: 'avatar-route@example.com' });
+    const image = await sharp({
+      create: { width: 20, height: 20, channels: 3, background: 'red' },
+    })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post('/api/v1/users/me/avatar')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .attach('avatar', image, 'avatar.jpg');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_IMAGE');
+  });
+
+  it('returns sanitized storage failure without changing profile', async () => {
+    const registerResponse = await registerUser({ email: 'avatar-storage@example.com' });
+    const image = await sharp({
+      create: { width: 20, height: 20, channels: 3, background: 'red' },
+    })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post('/api/v1/users/me/avatar')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .attach('avatar', image, 'avatar.png');
+
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({
+      error: 'MEDIA_UPLOAD_FAILED',
+      message: 'Media storage is not configured',
+    });
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: registerResponse.body.user.id } }))
+        .avatarUrl,
+    ).toBeNull();
   });
 });

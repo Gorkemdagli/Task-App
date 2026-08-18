@@ -22,6 +22,8 @@ const envSchema = z
     JWT_REFRESH_SECRET: z.string().min(16),
     CLIENT_URL: z.string().url(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.APP_DATABASE_URL) {
@@ -29,6 +31,20 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['APP_DATABASE_URL'],
         message: 'APP_DATABASE_URL is required in production',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.SUPABASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SUPABASE_URL'],
+        message: 'SUPABASE_URL is required in production',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.SUPABASE_SERVICE_ROLE_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SUPABASE_SERVICE_ROLE_KEY'],
+        message: 'SUPABASE_SERVICE_ROLE_KEY is required in production',
       });
     }
   });
