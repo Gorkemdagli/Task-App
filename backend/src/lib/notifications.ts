@@ -1,6 +1,38 @@
 import type { NotificationType, TaskStatus } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 
+async function allowsNotification(
+  db: TenantDb,
+  userId: string,
+  type: NotificationType,
+): Promise<boolean> {
+  switch (type) {
+    case 'task_assigned': {
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { notifyTaskAssigned: true },
+      });
+      return user?.notifyTaskAssigned ?? false;
+    }
+    case 'task_commented': {
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { notifyTaskCommented: true },
+      });
+      return user?.notifyTaskCommented ?? false;
+    }
+    case 'message_received': {
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { notifyMessageReceived: true },
+      });
+      return user?.notifyMessageReceived ?? false;
+    }
+    default:
+      return true;
+  }
+}
+
 /**
  * Tek bir kullanıcıya notification kaydı ekler. Gösterim UI'ı faz 6'da gelecek.
  * Çağıran, hedef user'ın tenant'ından olduğunu doğrulamalı (kendi route'ında).
@@ -11,6 +43,7 @@ export async function notifyUser(
   type: NotificationType,
   payload: Record<string, unknown>,
 ): Promise<void> {
+  if (!(await allowsNotification(db, userId, type))) return;
   await db.notification.create({
     data: {
       userId,

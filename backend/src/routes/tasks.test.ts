@@ -165,6 +165,19 @@ describe('createTask', () => {
     expect(notifs[0].type).toBe('task_assigned');
   });
 
+  it('suppresses assignment notification when preference is disabled', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    await prisma.user.update({ where: { id: member.id }, data: { notifyTaskAssigned: false } });
+
+    await tasksService.createTask(
+      { title: 'Muted assignment', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    const notifs = await prisma.notification.findMany({ where: { userId: member.id } });
+    expect(notifs).toHaveLength(0);
+  });
+
   it('does not notify assignee when self-assigned', async () => {
     const { admin, team } = await makeTeamWithRegularMember();
     // admin henüz team üyesi değil, ekle

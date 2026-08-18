@@ -118,6 +118,18 @@ describe('createComment', () => {
     expect(selfNotifs).toHaveLength(0);
   });
 
+  it('suppresses comment notification when preference is disabled', async () => {
+    const { admin, assignee, task } = await makeSetup();
+    await prisma.user.update({ where: { id: admin.id }, data: { notifyTaskCommented: false } });
+    await prisma.notification.deleteMany();
+
+    await commentsService.createComment(task.id, { body: 'Muted' }, assignee);
+
+    expect(
+      await prisma.notification.findMany({ where: { userId: admin.id, type: 'task_commented' } }),
+    ).toHaveLength(0);
+  });
+
   it('notifies prior commenters', async () => {
     const admin = await makeAdmin('admin@a.com', 'Acme');
     const m1 = await makeMember('m1@a.com', admin.tenantId!);

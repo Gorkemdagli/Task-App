@@ -116,6 +116,14 @@ describe('proposeTaskStatus (multi-assignee)', () => {
 
   it('assignee propose: pending set, proposer auto-ack row, notify pending', async () => {
     const { b, c, task } = await makeMultiAssigneeTask();
+    await prisma.user.update({
+      where: { id: c.id },
+      data: {
+        notifyTaskAssigned: false,
+        notifyTaskCommented: false,
+        notifyMessageReceived: false,
+      },
+    });
 
     const updated = await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
@@ -229,6 +237,14 @@ describe('ackTaskStatus', () => {
 
   it('tüm assignees ack → apply + notify + acks cleared', async () => {
     const { b, c, task } = await makeMultiAssigneeTask();
+    await prisma.user.update({
+      where: { id: c.id },
+      data: {
+        notifyTaskAssigned: false,
+        notifyTaskCommented: false,
+        notifyMessageReceived: false,
+      },
+    });
     // b propose. ackCount=0.
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
