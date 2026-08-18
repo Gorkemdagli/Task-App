@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as dotenv from 'dotenv';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 function fail(msg: string): never {
   // eslint-disable-next-line no-console
@@ -95,8 +95,21 @@ export default async function setup() {
   // Test DB ephemeral. Her test run'da sıfırdan kur: rol → drop db → recreate db →
   // migrate deploy. Yarıda kalmış migration state'leri bir sonraki run'ı kirletir.
   try {
-    execSync(
-      `docker exec taskflow-postgres-test psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF; END $$;"`,
+    execFileSync(
+      'docker',
+      [
+        'exec',
+        'taskflow-postgres-test',
+        'psql',
+        '-U',
+        'postgres',
+        '-d',
+        'postgres',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF; END $$;",
+      ],
       { stdio: 'inherit' },
     );
     execSync(

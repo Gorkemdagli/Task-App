@@ -29,6 +29,9 @@ jobs:
           CLIENT_URL=http://localhost:5173
           LOG_LEVEL=error
           EOF
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx dotenv -e .env.test -- prisma generate
       - name: Start test services
         run: docker compose up -d postgres-test redis-test
       - run: npm run ci:check
@@ -61,6 +64,9 @@ jobs:
           CLIENT_URL=http://localhost:5173
           LOG_LEVEL=error
           EOF
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx dotenv -e .env.test -- prisma generate
       - name: Start test services
         run: docker compose up -d postgres-test redis-test
       - name: Reset test database and create Lighthouse fixture
