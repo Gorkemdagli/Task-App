@@ -14,8 +14,18 @@ const taskBId = randomUUID();
 async function setup(): Promise<void> {
   await prisma.tenant.createMany({
     data: [
-      { id: tenantAId, name: 'RLS Verify A', slug: `rls-verify-a-${tenantAId}` },
-      { id: tenantBId, name: 'RLS Verify B', slug: `rls-verify-b-${tenantBId}` },
+      {
+        id: tenantAId,
+        name: 'RLS Verify A',
+        slug: `rls-verify-a-${tenantAId}`,
+        nameKey: `rls-verify-a-${tenantAId}`,
+      },
+      {
+        id: tenantBId,
+        name: 'RLS Verify B',
+        slug: `rls-verify-b-${tenantBId}`,
+        nameKey: `rls-verify-b-${tenantBId}`,
+      },
     ],
   });
   await prisma.user.createMany({

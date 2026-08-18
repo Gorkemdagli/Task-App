@@ -22,7 +22,7 @@ export async function createPerformanceFixture(input: {
   }
 
   const tenant = await prisma.tenant.create({
-    data: { name: `Performance ${input.slug}`, slug: input.slug },
+    data: { name: `Performance ${input.slug}`, slug: input.slug, nameKey: input.slug },
   });
   const user = await prisma.user.create({
     data: {

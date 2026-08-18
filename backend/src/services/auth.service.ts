@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { hashPassword, verifyPassword } from '../lib/password';
@@ -8,7 +9,7 @@ import {
   verifyRefreshToken,
   verifyAccessToken,
 } from '../lib/jwt';
-import { slugify } from './tenant.service';
+import { companyNameKey, slugify } from './tenant.service';
 import { AppError } from '../middleware/errorHandler';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
 import {
@@ -63,10 +64,19 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
   let tenantId: string | null = null;
   if (input.companyName) {
     const slug = slugify(input.companyName);
-    if (await prisma.tenant.findUnique({ where: { slug } })) {
+    const nameKey = companyNameKey(input.companyName);
+    if (await prisma.tenant.findUnique({ where: { nameKey } })) {
       throw new AppError(409, 'Bu şirket adı alınmış', 'CONFLICT_SLUG');
     }
-    tenantId = (await prisma.tenant.create({ data: { name: input.companyName, slug } })).id;
+    try {
+      tenantId = (await prisma.tenant.create({ data: { name: input.companyName, slug, nameKey } }))
+        .id;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'Bu şirket adı alınmış', 'CONFLICT_SLUG');
+      }
+      throw error;
+    }
   }
   const displayId = await findUniqueDisplayId();
   const passwordHash = await hashPassword(input.password);

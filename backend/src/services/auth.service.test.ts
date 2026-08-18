@@ -48,6 +48,7 @@ describe('register', () => {
     const tenant = await prisma.tenant.findUnique({ where: { id: r.user.tenantId } });
     expect(tenant?.name).toBe('Acme Corp');
     expect(tenant?.slug).toBe('acme-corp');
+    expect(tenant?.nameKey).toBe('acme-corp');
   });
   it('409 on duplicate email', async () => {
     await register({ fullName: 'A', email: 'dup@x.com', password: 'hunter22' });
@@ -59,6 +60,22 @@ describe('register', () => {
     await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22', companyName: 'Acme' });
     await expect(
       register({ fullName: 'B', email: 'b@x.com', password: 'hunter22', companyName: 'Acme' }),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT_SLUG' });
+  });
+  it('409 on duplicate normalized company name', async () => {
+    await register({
+      fullName: 'A',
+      email: 'normalized-a@x.com',
+      password: 'hunter22',
+      companyName: 'Acme  Corp',
+    });
+    await expect(
+      register({
+        fullName: 'B',
+        email: 'normalized-b@x.com',
+        password: 'hunter22',
+        companyName: ' acme corp ',
+      }),
     ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT_SLUG' });
   });
 });
@@ -73,6 +90,7 @@ describe('login', () => {
       data: {
         name: 'Acme Corp',
         slug: 'acme-corp',
+        nameKey: 'acme-corp',
         users: { connect: { email: 'a@x.com' } },
       },
     });

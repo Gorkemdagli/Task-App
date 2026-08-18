@@ -30,11 +30,13 @@ const TENANT_A = {
   id: '00000000-0000-0000-0000-00000000000a',
   name: 'Acme Corp',
   slug: 'acme',
+  nameKey: 'acme',
 };
 const TENANT_B = {
   id: '00000000-0000-0000-0000-00000000000b',
   name: 'Globex Inc',
   slug: 'globex',
+  nameKey: 'globex',
 };
 
 async function truncate() {
@@ -51,7 +53,7 @@ async function truncate() {
 }
 
 async function seedTenant(
-  tenant: { id: string; name: string; slug: string },
+  tenant: { id: string; name: string; slug: string; nameKey: string },
   companyAdminEmail: string,
   seedIndex: number,
 ) {

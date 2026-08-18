@@ -10,7 +10,12 @@ const taskId = randomUUID();
 describe('R2 role and pending-version migration', () => {
   beforeAll(async () => {
     await prisma.tenant.create({
-      data: { id: tenantId, name: 'R2 Migration Tenant', slug: `r2-${tenantId}` },
+      data: {
+        id: tenantId,
+        name: 'R2 Migration Tenant',
+        slug: `r2-${tenantId}`,
+        nameKey: `r2-${tenantId}`,
+      },
     });
     await prisma.user.create({
       data: {

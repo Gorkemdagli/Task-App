@@ -53,9 +53,11 @@ model HealthCheck {
 
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  logoUrl   String?  @map("logo_url")
+  name        String
+  slug        String   @unique
+  logoUrl     String?  @map("logo_url")
+  description String?
+  nameKey     String   @unique @map("name_key")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

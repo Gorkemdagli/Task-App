@@ -42,7 +42,9 @@ async function cleanDb() {
 }
 
 async function seedTwoUsers() {
-  const tenant = await prisma.tenant.create({ data: { name: 'Acme', slug: 'acme' } });
+  const tenant = await prisma.tenant.create({
+    data: { name: 'Acme', slug: 'acme', nameKey: 'acme' },
+  });
   const alice = await prisma.user.create({
     data: {
       email: 'alice@x.com',

@@ -25,8 +25,18 @@ describe('RLS tenant isolation for task relations', () => {
   beforeAll(async () => {
     await prisma.tenant.createMany({
       data: [
-        { id: tenantAId, name: 'Tenant A', slug: `r1-a-${tenantAId}` },
-        { id: tenantBId, name: 'Tenant B', slug: `r1-b-${tenantBId}` },
+        {
+          id: tenantAId,
+          name: 'Tenant A',
+          slug: `r1-a-${tenantAId}`,
+          nameKey: `r1-a-${tenantAId}`,
+        },
+        {
+          id: tenantBId,
+          name: 'Tenant B',
+          slug: `r1-b-${tenantBId}`,
+          nameKey: `r1-b-${tenantBId}`,
+        },
       ],
     });
     await prisma.user.createMany({

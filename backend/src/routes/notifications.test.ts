@@ -19,7 +19,9 @@ async function cleanDb() {
 }
 
 async function seedUser(opts: { name?: string; withNotifications?: number } = {}) {
-  const tenant = await prisma.tenant.create({ data: { name: 'Acme', slug: 'acme' } });
+  const tenant = await prisma.tenant.create({
+    data: { name: 'Acme', slug: 'acme', nameKey: 'acme' },
+  });
   const user = await prisma.user.create({
     data: {
       email: 'a@x.com',
@@ -190,7 +192,7 @@ describe('PATCH /api/v1/notifications/:id/read', () => {
   it('404 for another tenant notification', async () => {
     const { token } = await seedUser({ withNotifications: 0 });
     const otherTenant = await prisma.tenant.create({
-      data: { name: 'Other Tenant', slug: 'other-tenant' },
+      data: { name: 'Other Tenant', slug: 'other-tenant', nameKey: 'other-tenant' },
     });
     const other = await prisma.user.create({
       data: {

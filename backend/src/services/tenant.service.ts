@@ -25,3 +25,7 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 }
+
+export function companyNameKey(name: string): string {
+  return slugify(name.normalize('NFKC').trim().replace(/\s+/g, ' '));
+}
