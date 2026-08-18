@@ -47,6 +47,29 @@ vi.mock('@/hooks/queries/useProfile', () => ({
   useUploadAvatar: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
 }));
 
+vi.mock('@/hooks/queries/useCompanySettings', () => ({
+  useCompanySettings: () => ({
+    data: {
+      id: 't1',
+      name: 'Acme',
+      slug: 'acme',
+      description: null,
+      logoUrl: null,
+    },
+    isLoading: false,
+    isError: false,
+  }),
+  useUpdateCompanySettings: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadCompanyLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock('@/hooks/queries/useCompanyUsers', () => ({
+  useCompanyUsers: () => ({ data: [], isLoading: false, isError: false }),
+  useUpdateCompanyRole: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateCompanyPermissions: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAddCompanyUser: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 vi.mock('@/hooks/tasks', async (importOriginal) => {
   // vitest: `importOriginal` defaults to `Promise<unknown>`, so `...actual`
   // fails to spread. Provide the module type explicitly. Inline `import()`
