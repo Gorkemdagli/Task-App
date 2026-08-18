@@ -46,6 +46,20 @@ describe('GET /api/v1/users/me', () => {
     });
   });
 
+  it('creates users with all notification preferences enabled', async () => {
+    const registerResponse = await registerUser({ email: 'defaults@example.com' });
+
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: registerResponse.body.user.id },
+    });
+
+    expect(user).toMatchObject({
+      notifyTaskAssigned: true,
+      notifyTaskCommented: true,
+      notifyMessageReceived: true,
+    });
+  });
+
   it('returns current database values instead of stale token-time values', async () => {
     const registerResponse = await registerUser({
       email: 'canonical@example.com',

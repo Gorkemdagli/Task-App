@@ -77,6 +77,9 @@ model User {
   passwordHash String   @map("password_hash")
   displayId    String   @unique @map("display_id")
   role         UserRole
+  notifyTaskAssigned    Boolean @default(true) @map("notify_task_assigned")
+  notifyTaskCommented   Boolean @default(true) @map("notify_task_commented")
+  notifyMessageReceived Boolean @default(true) @map("notify_message_received")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
