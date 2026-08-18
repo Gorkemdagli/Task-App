@@ -63,7 +63,7 @@ function toCompanyUser(user: {
   };
 }
 
-function assertCompanyAdmin(actor: Actor): string {
+export function assertCompanyAdmin(actor: Actor): string {
   if (!isCompanyAdmin(actor)) {
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }

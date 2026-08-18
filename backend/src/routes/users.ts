@@ -13,8 +13,10 @@ import {
   updateCompanyPermissionsSchema,
   updateCompanyRoleSchema,
   updateCurrentUserSchema,
+  updateCompanySettingsSchema,
 } from '../schemas/users.schema';
 import * as companyUsersService from '../services/company-users.service';
+import * as companySettingsService from '../services/company-settings.service';
 import * as profileService from '../services/profile.service';
 import { clearRefreshCookie } from '../lib/cookie';
 
@@ -63,6 +65,33 @@ usersRouter.post(
 );
 
 usersRouter.use(requireAuth, requireRole(['companyAdmin']));
+
+usersRouter.get('/company/settings', authenticatedReadLimiter, async (req, res, next) => {
+  try {
+    const settings = await runTenantRequest(req, (db, actor) =>
+      companySettingsService.getCompanySettings(db, actor),
+    );
+    res.json(settings);
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.patch(
+  '/company/settings',
+  writeLimiter,
+  validateBody(updateCompanySettingsSchema),
+  async (req, res, next) => {
+    try {
+      const settings = await runTenantRequest(req, (db, actor) =>
+        companySettingsService.updateCompanySettings(db, actor, req.body),
+      );
+      res.json(settings);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 usersRouter.get('/company/users', authenticatedReadLimiter, async (req, res, next) => {
   try {

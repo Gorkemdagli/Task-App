@@ -68,3 +68,13 @@ export const updateCompanyPermissionsSchema = z
   });
 
 export type UpdateCompanyPermissionsInput = z.infer<typeof updateCompanyPermissionsSchema>;
+
+export const updateCompanySettingsSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
+
+export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
