@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { isTokenBlacklisted } from '../services/auth.service';
+import { hasAccessSession } from '../lib/sessionStore';
 import { AppError } from './errorHandler';
 
 declare global {
@@ -36,6 +37,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     }
     if (await isTokenBlacklisted(p.jti))
       throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
+    if (!(await hasAccessSession(p.jti)))
+      throw new AppError(401, 'Session revoked', 'TOKEN_REVOKED');
     const user = await prisma.user.findUnique({
       where: { id: p.sub },
       select: {

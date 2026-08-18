@@ -6,7 +6,6 @@ import { redis } from '../lib/redis';
 import { requireAuth } from './auth';
 import { errorHandler } from './errorHandler';
 import { register } from '../services/auth.service';
-import { signAccessToken } from '../lib/jwt';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -20,6 +19,12 @@ async function cleanDb() {
   await prisma.tenant.deleteMany();
   const k = await redis.keys('blacklist:jti:*');
   if (k.length) await redis.del(...k);
+  const ak = await redis.keys('access-session:*');
+  if (ak.length) await redis.del(...ak);
+  const sk = await redis.keys('session:*');
+  if (sk.length) await redis.del(...sk);
+  const uk = await redis.keys('user-sessions:*');
+  if (uk.length) await redis.del(...uk);
 }
 
 function buildApp(handler: express.RequestHandler) {
@@ -46,16 +51,17 @@ describe('requireAuth', () => {
     );
   });
   it('populates req.user for valid token', async () => {
-    await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
-    const u = await prisma.user.findUnique({ where: { email: 'a@x.com' } });
-    const tok = signAccessToken(u!.id, u!.tenantId);
+    const registered = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
     const app = express();
     let captured: { email?: string } | null = null;
     app.get('/p', requireAuth, (req, r) => {
       captured = req.user;
       r.json({});
     });
-    expect((await request(app).get('/p').set('Authorization', `Bearer ${tok}`)).status).toBe(200);
+    expect(
+      (await request(app).get('/p').set('Authorization', `Bearer ${registered.accessToken}`))
+        .status,
+    ).toBe(200);
     expect(captured.email).toBe('a@x.com');
   });
   it('401 blacklisted jti', async () => {
@@ -66,5 +72,23 @@ describe('requireAuth', () => {
     const r = await request(app).get('/p').set('Authorization', `Bearer ${reg.accessToken}`);
     expect(r.status).toBe(401);
     expect(r.body.message).toMatch(/sonlandırılmış/i);
+  });
+
+  it('401 access token whose indexed session is missing', async () => {
+    const registered = await register({
+      fullName: 'A',
+      email: 'missing-access@x.com',
+      password: 'hunter22',
+    });
+    const payload = JSON.parse(
+      Buffer.from(registered.accessToken.split('.')[1], 'base64').toString(),
+    );
+    await redis.del(`access-session:${payload.jti}`);
+
+    const app = buildApp(requireAuth);
+    expect(
+      (await request(app).get('/p').set('Authorization', `Bearer ${registered.accessToken}`))
+        .status,
+    ).toBe(401);
   });
 });

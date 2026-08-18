@@ -11,21 +11,15 @@ import {
 import { slugify } from './tenant.service';
 import { AppError } from '../middleware/errorHandler';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
-import { randomUUID } from 'crypto';
+import {
+  accessSessionKey,
+  refreshSessionKey,
+  registerIssuedTokens,
+  removeSessionKeys,
+} from '../lib/sessionStore';
 
 const DISPLAY_ID_RETRIES = 5;
 const BLACKLIST_KEY = (jti: string) => `blacklist:jti:${jti}`;
-const SESSION_KEY = (jti: string) => `session:${jti}`;
-const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-async function createSession(
-  refreshToken: string,
-  userId: string,
-  familyId: string = randomUUID(),
-): Promise<void> {
-  const p = verifyRefreshToken(refreshToken);
-  await redis.setex(SESSION_KEY(p.jti), REFRESH_TTL_SECONDS, JSON.stringify({ userId, familyId }));
-}
 
 export interface AuthUser {
   id: string;
@@ -94,7 +88,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     role: user.role,
     tenantId: user.tenantId,
   });
-  await createSession(r.refreshToken, user.id);
+  await registerIssuedTokens(r.accessToken, r.refreshToken, user.id);
   return r;
 }
 
@@ -117,7 +111,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     tenantId: user.tenantId,
     tenantName: user.tenant?.name ?? null,
   });
-  await createSession(r.refreshToken, user.id);
+  await registerIssuedTokens(r.accessToken, r.refreshToken, user.id);
   return r;
 }
 
@@ -130,7 +124,7 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   }
   if (await isTokenBlacklisted(p.jti))
     throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const sessionJson = await redis.get(SESSION_KEY(p.jti));
+  const sessionJson = await redis.get(refreshSessionKey(p.jti));
   if (!sessionJson) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
   const { userId, familyId } = JSON.parse(sessionJson) as { userId: string; familyId: string };
   // tenant join → response'da tenantName döner; Sidebar/MobileSidebar tenant adını gösterir.
@@ -141,10 +135,10 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
   const ttl = p.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
-  await redis.del(SESSION_KEY(p.jti));
+  await removeSessionKeys(userId, [refreshSessionKey(p.jti)]);
   const accessToken = signAccessToken(user.id, user.tenantId);
   const newRefreshToken = signRefreshToken(user.id, user.tenantId);
-  await createSession(newRefreshToken, user.id, familyId);
+  await registerIssuedTokens(accessToken, newRefreshToken, user.id, familyId);
   return {
     user: {
       id: user.id,
@@ -164,14 +158,16 @@ export async function logout(accessToken: string, refreshToken?: string): Promis
   const p = verifyAccessToken(accessToken);
   const ttl = p.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
+  const keys = [accessSessionKey(p.jti)];
   if (refreshToken) {
     try {
       const rp = verifyRefreshToken(refreshToken);
-      await redis.del(SESSION_KEY(rp.jti));
+      if (rp.sub === p.sub) keys.push(refreshSessionKey(rp.jti));
     } catch {
       // refresh token invalid/expired — ignore
     }
   }
+  await removeSessionKeys(p.sub, keys);
 }
 
 export async function isTokenBlacklisted(jti: string): Promise<boolean> {

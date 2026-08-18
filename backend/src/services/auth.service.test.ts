@@ -18,6 +18,10 @@ async function cleanDb() {
   if (bk.length) await redis.del(...bk);
   const sk = await redis.keys('session:*');
   if (sk.length) await redis.del(...sk);
+  const ak = await redis.keys('access-session:*');
+  if (ak.length) await redis.del(...ak);
+  const uk = await redis.keys('user-sessions:*');
+  if (uk.length) await redis.del(...uk);
 }
 
 describe('register', () => {
@@ -29,6 +33,10 @@ describe('register', () => {
     expect(r.user.role).toBe('member');
     expect(r.user.displayId).toMatch(/^[A-Z2-9]{5}$/);
     expect(r.accessToken).toBeDefined();
+    const accessJti = verifyAccessToken(r.accessToken).jti;
+    const refreshJti = verifyRefreshToken(r.refreshToken).jti;
+    expect(await redis.exists(`access-session:${accessJti}`)).toBe(1);
+    expect(await redis.sismember(`user-sessions:${r.user.id}`, `session:${refreshJti}`)).toBe(1);
   });
   it('creates tenant with company', async () => {
     const r = await register({
@@ -112,8 +120,14 @@ describe('refresh', () => {
 
     expect(newPayload.jti).not.toBe(oldPayload.jti);
     expect(await redis.exists(`session:${oldPayload.jti}`)).toBe(0);
+    expect(
+      await redis.sismember(`user-sessions:${registered.user.id}`, `session:${oldPayload.jti}`),
+    ).toBe(0);
     expect(await redis.exists(`blacklist:jti:${oldPayload.jti}`)).toBe(1);
     expect(await redis.exists(`session:${newPayload.jti}`)).toBe(1);
+    expect(
+      await redis.sismember(`user-sessions:${registered.user.id}`, `session:${newPayload.jti}`),
+    ).toBe(1);
     await expect(refresh(registered.refreshToken)).rejects.toMatchObject({
       statusCode: 401,
       code: 'TOKEN_REVOKED',
@@ -157,6 +171,10 @@ describe('logout', () => {
     await logout(registered.accessToken, registered.refreshToken);
 
     expect(await redis.exists(`blacklist:jti:${accessPayload.jti}`)).toBe(1);
+    expect(await redis.exists(`access-session:${accessPayload.jti}`)).toBe(0);
     expect(await redis.exists(`session:${refreshPayload.jti}`)).toBe(0);
+    expect(
+      await redis.sismember(`user-sessions:${registered.user.id}`, `session:${refreshPayload.jti}`),
+    ).toBe(0);
   });
 });
