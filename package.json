@@ -13,6 +13,9 @@
     "docker:up": "docker compose up -d --wait postgres redis",
     "docker:down": "docker compose down",
     "build:frontend": "npm run build --workspace=frontend",
+    "perf:bundle": "npm run build:frontend && node scripts/check-bundle-budget.mjs",
+    "perf:lighthouse": "lhci autorun --config=./lighthouserc.cjs",
+    "perf:api": "npm run perf:api --workspace=backend",
     "build:backend": "npm run build --workspace=backend",
     "build": "concurrently --kill-others-on-fail --names \"docker,backend,frontend\" --prefix-colors \"blue,green,cyan\" \"npm:docker:up\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "down": "npm run docker:down",
@@ -27,6 +30,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "@lhci/cli": "0.15.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "concurrently": "^10.0.3",
@@ -35,6 +39,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "prettier": "^3.9.6",
+    "puppeteer": "25.7.0",
     "typescript": "^5.9.3"
   }
 }

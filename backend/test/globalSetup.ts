@@ -40,7 +40,7 @@ export default async function setup() {
 
   // Guard geçti → .env.test'i sürece yükle (override: outer shell DATABASE_URL
   // set etmiş olsa bile test DB kazanır).
-  dotenv.config({ path: '.env.test', override: true });
+  dotenv.config({ path: '.env.test', override: true, quiet: true });
 
   // eslint-disable-next-line no-console
   console.log(
@@ -69,7 +69,10 @@ export default async function setup() {
         `docker inspect --format='{{.State.Health.Status}}' taskflow-postgres-test taskflow-redis-test`,
         { cwd: composeRoot, encoding: 'utf8' },
       );
-      const statuses = out.trim().split('\n').map((s) => s.replace(/['\s]/g, ''));
+      const statuses = out
+        .trim()
+        .split('\n')
+        .map((s) => s.replace(/['\s]/g, ''));
       if (statuses.every((s) => s === 'healthy' || s === 'running')) {
         // eslint-disable-next-line no-console
         console.log('✓ test containers healthy');
@@ -109,9 +112,7 @@ export default async function setup() {
       { stdio: 'inherit' },
     );
   } catch (err) {
-    fail(
-      '\n❌ Could not reset test DB / bootstrap Supabase roles. Is taskflow-postgres-test up?',
-    );
+    fail('\n❌ Could not reset test DB / bootstrap Supabase roles. Is taskflow-postgres-test up?');
   }
 
   try {

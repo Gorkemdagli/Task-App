@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import {
   listNotifications as listNotificationsService,
   markAllRead as markAllReadService,
+  markNotificationRead as markNotificationReadService,
 } from './notifications.service';
 import { withTenantContext } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
@@ -26,6 +27,8 @@ const listNotifications = (userId: string, opts: { limit: number; cursor?: strin
   forUser(userId, (db, actor) => listNotificationsService(db, actor, opts));
 const markAllRead = (userId: string) =>
   forUser(userId, (db, actor) => markAllReadService(db, actor));
+const markNotificationRead = (userId: string, notificationId: string) =>
+  forUser(userId, (db, actor) => markNotificationReadService(db, actor, notificationId));
 
 async function cleanDb() {
   // Notification.userId FK → User.id with onDelete: Cascade; tenants/users must die last.
@@ -202,5 +205,63 @@ describe('markAllRead', () => {
 
     const second = await markAllRead(alice.id);
     expect(second).toBe(0);
+  });
+});
+
+describe('markNotificationRead', () => {
+  beforeEach(cleanDb);
+
+  it('sets readAt only for requested own notification', async () => {
+    const { alice } = await seedTwoUsers();
+    const target = await prisma.notification.create({
+      data: { userId: alice.id, type: 'task_assigned', payload: {} },
+    });
+    const untouched = await prisma.notification.create({
+      data: { userId: alice.id, type: 'task_commented', payload: {} },
+    });
+
+    await markNotificationRead(alice.id, target.id);
+
+    const rows = await prisma.notification.findMany({
+      where: { id: { in: [target.id, untouched.id] } },
+    });
+    expect(rows.find((row) => row.id === target.id)?.readAt).not.toBeNull();
+    expect(rows.find((row) => row.id === untouched.id)?.readAt).toBeNull();
+  });
+
+  it('is idempotent and preserves first readAt timestamp', async () => {
+    const { alice } = await seedTwoUsers();
+    const target = await prisma.notification.create({
+      data: { userId: alice.id, type: 'task_assigned', payload: {} },
+    });
+
+    await markNotificationRead(alice.id, target.id);
+    const first = await prisma.notification.findUniqueOrThrow({ where: { id: target.id } });
+    await markNotificationRead(alice.id, target.id);
+    const second = await prisma.notification.findUniqueOrThrow({ where: { id: target.id } });
+
+    expect(second.readAt?.toISOString()).toBe(first.readAt?.toISOString());
+  });
+
+  it('returns 404 for another user notification without modifying it', async () => {
+    const { alice, bob } = await seedTwoUsers();
+    const target = await prisma.notification.create({
+      data: { userId: bob.id, type: 'task_assigned', payload: {} },
+    });
+
+    await expect(markNotificationRead(alice.id, target.id)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'NOTIFICATION_NOT_FOUND',
+    });
+
+    const stored = await prisma.notification.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.readAt).toBeNull();
+  });
+
+  it('returns 404 for unknown notification id', async () => {
+    const { alice } = await seedTwoUsers();
+    await expect(
+      markNotificationRead(alice.id, '00000000-0000-0000-0000-000000000000'),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'NOTIFICATION_NOT_FOUND' });
   });
 });

@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LandingProductDemo } from './LandingProductDemo';
 
 function renderDemo() {
@@ -13,23 +13,50 @@ function renderDemo() {
 }
 
 describe('LandingProductDemo', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('switches between board and task views manually', async () => {
     const { onManualInteraction, user } = renderDemo();
 
     expect(screen.getByRole('tab', { name: 'Pano' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Pano' })).toBeVisible();
 
-    await user.click(screen.getByRole('tab', { name: 'Görevler' }));
+    await user.click(screen.getByRole('tab', { name: 'Liste' }));
 
-    expect(screen.getByRole('tab', { name: 'Görevler' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel', { name: 'Görevler' })).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Liste' })).toBeVisible();
     expect(onManualInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps task buttons operable when dragging is disabled in list view', async () => {
+    const { user } = renderDemo();
+
+    await user.click(screen.getByRole('tab', { name: 'Liste' }));
+    const task = screen.getByRole('button', { name: 'OAuth akışı' });
+
+    expect(task).not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(task);
+    expect(screen.getByRole('complementary', { name: 'Görev ayrıntısı' })).toBeInTheDocument();
+  });
+
+  it('explains the touch-friendly way to move a card', () => {
+    renderDemo();
+
+    expect(
+      screen.getByText('Mobilde karta dokunun; açılan görev detayından yeni durumu seçin.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'OAuth akışı' })).toHaveAttribute(
+      'data-demo-draggable',
+      'true',
+    );
   });
 
   it('supports roving keyboard focus for view tabs', async () => {
     const { onManualInteraction, user } = renderDemo();
     const boardTab = screen.getByRole('tab', { name: 'Pano' });
-    const tasksTab = screen.getByRole('tab', { name: 'Görevler' });
+    const tasksTab = screen.getByRole('tab', { name: 'Liste' });
 
     boardTab.focus();
     await user.keyboard('{ArrowRight}');
@@ -117,6 +144,62 @@ describe('LandingProductDemo', () => {
         name: 'OAuth akışı',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('automatically resets the demo every 20 seconds', () => {
+    vi.useFakeTimers();
+    const onManualInteraction = vi.fn();
+    render(<LandingProductDemo guidedBeat={0} onManualInteraction={onManualInteraction} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Liste' }));
+    expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => vi.advanceTimersByTime(19_999));
+    expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole('tab', { name: 'Pano' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Liste' }));
+    act(() => vi.advanceTimersByTime(20_000));
+
+    expect(
+      onManualInteraction.mock.calls.filter(([interaction]) => interaction === 'reset'),
+    ).toHaveLength(2);
+  });
+
+  it('stops automatic reset after unmount', () => {
+    vi.useFakeTimers();
+    const onManualInteraction = vi.fn();
+    const { unmount } = render(
+      <LandingProductDemo guidedBeat={0} onManualInteraction={onManualInteraction} />,
+    );
+
+    unmount();
+    act(() => vi.advanceTimersByTime(20_000));
+
+    expect(onManualInteraction).not.toHaveBeenCalledWith('reset');
+  });
+
+  it('shows the reset countdown and restarts it after a manual reset', () => {
+    vi.useFakeTimers();
+    const onManualInteraction = vi.fn();
+    render(<LandingProductDemo guidedBeat={0} onManualInteraction={onManualInteraction} />);
+
+    expect(screen.getByText('· 20 sn')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(screen.getByText('· 19 sn')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Demoyu sıfırla' }));
+    expect(screen.getByText('· 20 sn')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(19_999));
+    expect(screen.getByText('· 1 sn')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText('· 20 sn')).toBeInTheDocument();
+    expect(onManualInteraction).toHaveBeenCalledWith('reset');
   });
 
   it('moves a focused task across fixed columns with the keyboard', async () => {

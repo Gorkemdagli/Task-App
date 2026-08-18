@@ -14,7 +14,9 @@
     "prisma:generate": "prisma generate --allow-no-models",
     "prisma:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force --skip-seed && npm run seed"
+    "db:reset": "prisma migrate reset --force --skip-seed && npm run seed",
+    "perf:api": "dotenv -e .env.test -- tsx scripts/performance-benchmark.ts",
+    "perf:fixture": "dotenv -e .env.test -- tsx scripts/performance-fixture.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

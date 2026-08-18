@@ -1,0 +1,88 @@
+import { randomUUID } from 'node:crypto';
+import { prisma } from '../src/lib/prisma';
+import { hashPassword } from '../src/lib/password';
+import { signAccessToken } from '../src/lib/jwt';
+
+export interface PerformanceFixture {
+  tenantId: string;
+  teamId: string;
+  taskId: string;
+  userId: string;
+  accessToken: string;
+}
+
+export async function createPerformanceFixture(input: {
+  slug: string;
+  email: string;
+  password: string;
+  replaceExisting?: boolean;
+}): Promise<PerformanceFixture> {
+  if (input.replaceExisting) {
+    await prisma.tenant.deleteMany({ where: { slug: input.slug } });
+  }
+
+  const tenant = await prisma.tenant.create({
+    data: { name: `Performance ${input.slug}`, slug: input.slug },
+  });
+  const user = await prisma.user.create({
+    data: {
+      email: input.email,
+      fullName: 'Performance Admin',
+      passwordHash: await hashPassword(input.password),
+      displayId: `PERF${randomUUID().replaceAll('-', '').slice(0, 5).toUpperCase()}`,
+      role: 'companyAdmin',
+      tenantId: tenant.id,
+    },
+  });
+  const team = await prisma.team.create({
+    data: { tenantId: tenant.id, name: 'Performance Team' },
+  });
+  await prisma.teamMember.create({ data: { teamId: team.id, userId: user.id, role: 'member' } });
+  const task = await prisma.task.create({
+    data: {
+      teamId: team.id,
+      title: 'Performance Task',
+      priority: 'medium',
+      assignerId: user.id,
+      assignees: { create: { userId: user.id } },
+    },
+  });
+
+  return {
+    tenantId: tenant.id,
+    teamId: team.id,
+    taskId: task.id,
+    userId: user.id,
+    accessToken: signAccessToken(user.id, tenant.id),
+  };
+}
+
+export async function deletePerformanceFixture(tenantId: string): Promise<void> {
+  await prisma.tenant.delete({ where: { id: tenantId } });
+}
+
+if (process.argv[1]?.endsWith('performance-fixture.ts')) {
+  const run = async () => {
+    const email = process.env.PERF_EMAIL;
+    const password = process.env.PERF_PASSWORD;
+    if (!email || !password) throw new Error('PERF_EMAIL and PERF_PASSWORD are required');
+    const fixture = await createPerformanceFixture({
+      slug: 'perf-lighthouse',
+      email,
+      password,
+      replaceExisting: true,
+    });
+    console.log(
+      JSON.stringify({
+        tenantId: fixture.tenantId,
+        teamId: fixture.teamId,
+        taskId: fixture.taskId,
+      }),
+    );
+    await prisma.$disconnect();
+  };
+  void run().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

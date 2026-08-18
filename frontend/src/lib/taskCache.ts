@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { Task } from '@/hooks/tasks';
+import { queryKeys } from './queryKeys';
 
 export interface TaskListData {
   tasks: Task[];
@@ -45,40 +46,45 @@ function matchesFilters(task: Task, filters: unknown): boolean {
 
 function cachedLists(
   queryClient: QueryClient,
+  tenantId: string,
 ): Array<[readonly unknown[], TaskListData | undefined]> {
-  return queryClient.getQueriesData<TaskListData>({ queryKey: ['tasks'] });
+  return queryClient.getQueriesData<TaskListData>({ queryKey: queryKeys.tenant(tenantId) });
 }
 
 export async function snapshotTaskCaches(
   queryClient: QueryClient,
+  tenantId: string,
   taskId: string,
 ): Promise<TaskCacheSnapshot> {
-  await queryClient.cancelQueries({ queryKey: ['task', taskId] });
-  await queryClient.cancelQueries({ queryKey: ['tasks'] });
+  await queryClient.cancelQueries({ queryKey: queryKeys.task.detail(tenantId, taskId) });
+  await queryClient.cancelQueries({ queryKey: queryKeys.tenant(tenantId) });
   return {
-    detail: queryClient.getQueryData<Task>(['task', taskId]),
-    lists: cachedLists(queryClient),
+    detail: queryClient.getQueryData<Task>(queryKeys.task.detail(tenantId, taskId)),
+    lists: cachedLists(queryClient, tenantId),
   };
 }
 
 export function patchTaskCaches(
   queryClient: QueryClient,
+  tenantId: string,
   taskId: string,
   updater: (task: Task) => Task | null,
 ): void {
-  const detail = queryClient.getQueryData<Task>(['task', taskId]);
+  const detail = queryClient.getQueryData<Task>(queryKeys.task.detail(tenantId, taskId));
   if (detail) {
     const next = updater(detail);
-    if (next) queryClient.setQueryData(['task', taskId], next);
-    else queryClient.removeQueries({ queryKey: ['task', taskId], exact: true });
+    if (next) queryClient.setQueryData(queryKeys.task.detail(tenantId, taskId), next);
+    else
+      queryClient.removeQueries({ queryKey: queryKeys.task.detail(tenantId, taskId), exact: true });
   }
 
-  for (const [queryKey, data] of cachedLists(queryClient)) {
-    if (!data) continue;
+  for (const [queryKey, data] of cachedLists(queryClient, tenantId)) {
+    if (!data || !Array.isArray(data.tasks)) continue;
     const index = data.tasks.findIndex((task) => task.id === taskId);
     if (index < 0) continue;
     const nextTask = updater(data.tasks[index]);
-    const filters = queryKey[1];
+    const filters = queryKey[queryKey.length - 1];
+    if (!filters || typeof filters !== 'object') continue;
     const shouldKeep = nextTask !== null && matchesFilters(nextTask, filters);
     if (!shouldKeep) {
       queryClient.setQueryData(queryKey, {
@@ -96,11 +102,14 @@ export function patchTaskCaches(
 
 export function restoreTaskCaches(
   queryClient: QueryClient,
+  tenantId: string,
   taskId: string,
   snapshot: TaskCacheSnapshot,
 ): void {
-  if (snapshot.detail) queryClient.setQueryData(['task', taskId], snapshot.detail);
-  else queryClient.removeQueries({ queryKey: ['task', taskId], exact: true });
+  if (snapshot.detail)
+    queryClient.setQueryData(queryKeys.task.detail(tenantId, taskId), snapshot.detail);
+  else
+    queryClient.removeQueries({ queryKey: queryKeys.task.detail(tenantId, taskId), exact: true });
   for (const [queryKey, data] of snapshot.lists) {
     if (data) queryClient.setQueryData(queryKey, data);
     else queryClient.removeQueries({ queryKey, exact: true });

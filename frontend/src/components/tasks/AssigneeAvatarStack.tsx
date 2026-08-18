@@ -16,6 +16,11 @@ const SIZE_CLASS: Record<NonNullable<AssigneeAvatarStackProps['size']>, string> 
   sm: 'h-6 w-6 text-[11px]',
   md: 'h-7 w-7 text-xs',
 };
+const SIZE_PX: Record<NonNullable<AssigneeAvatarStackProps['size']>, number> = {
+  xs: 20,
+  sm: 24,
+  md: 28,
+};
 
 function avatarInitial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?';
@@ -35,6 +40,10 @@ function Avatar({
         src={user.avatarUrl}
         alt={user.fullName}
         title={user.fullName}
+        loading="lazy"
+        decoding="async"
+        width={SIZE_PX[size]}
+        height={SIZE_PX[size]}
         className={cn(SIZE_CLASS[size], 'rounded-full object-cover')}
       />
     );

@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Bell, ChevronDown, LogOut, Menu, Moon, Settings, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -18,9 +18,10 @@ import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
 import {
   useNotifications,
+  useMarkNotificationRead,
   useMarkAllRead,
-  useLoadMoreNotifications,
 } from '@/hooks/useNotifications';
+import type { NotificationItem } from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
@@ -35,9 +36,9 @@ import { cn } from '@/lib/utils';
  * - Mobile (<768px): hamburger replaces nav; nav lives inside MobileSidebar (Sheet)
  */
 export function Topbar() {
-  const userId = useAuthStore((s) => s.user?.id);
+  const identity = useAuthStore((s) => `${s.user?.tenantId ?? 'none'}:${s.user?.id ?? 'none'}`);
 
-  return <TopbarContent key={userId} />;
+  return <TopbarContent key={identity} />;
 }
 
 function TopbarContent() {
@@ -48,39 +49,19 @@ function TopbarContent() {
   const openMobileSheet = useUiStore((s) => s.openMobileSheet);
   const navigate = useNavigate();
 
-  const { data } = useNotifications();
-  const unreadCount = data?.unreadCount ?? 0;
-  const items = data?.items ?? [];
+  const notifications = useNotifications();
+  const items = notifications.data?.pages.flatMap((page) => page.items) ?? [];
+  const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
+  const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
 
-  const [accumulatedItems, setAccumulatedItems] = useState<typeof items>([]);
-  const [currentCursor, setCurrentCursor] = useState<string | null>(null);
-
-  useEffect(() => {
-    // İlk fetch → state'e kopyala (sadece boşken, polling update'lerini ezme)
-    if (data && accumulatedItems.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- RQ data is reactive, not event-driven; pagination state must sync from cache, not user action
-      setAccumulatedItems(data.items);
-      setCurrentCursor(data.nextCursor);
-    }
-  }, [data, accumulatedItems.length]);
-
-  const loadMore = useLoadMoreNotifications(currentCursor);
-  useEffect(() => {
-    if (loadMore.data) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- RQ data is reactive, not event-driven; pagination state must sync from cache, not user action
-      setAccumulatedItems((prev) => [...prev, ...loadMore.data!.items]);
-      setCurrentCursor(loadMore.data!.nextCursor);
-    }
-  }, [loadMore.data]);
-
-  // 500ms debounced mark-read: rapid open/close'ta tek PATCH gider
-  useEffect(() => {
-    if (!bellOpen || items.length === 0) return;
-    const t = setTimeout(() => markAllRead.mutate(), 500);
-    return () => clearTimeout(t);
-  }, [bellOpen, items.length, markAllRead]);
+  function handleNotificationSelect(item: NotificationItem) {
+    if (item.type === 'message_received') return;
+    if (item.readAt === null) markRead.mutate(item.id);
+    setBellOpen(false);
+    navigate(`/tasks/${item.payload.taskId}`);
+  }
 
   function handleLogout() {
     queryClient.clear();
@@ -165,16 +146,12 @@ function TopbarContent() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="bg-card p-0 text-foreground">
             <NotificationPanel
-              items={accumulatedItems}
+              items={items}
               unreadCount={unreadCount}
-              nextCursor={currentCursor}
-              onLoadMore={() => {
-                if (currentCursor) loadMore.refetch();
-              }}
-              onItemNavigate={(taskId) => {
-                setBellOpen(false);
-                navigate(`/tasks/${taskId}`);
-              }}
+              hasNextPage={Boolean(notifications.hasNextPage)}
+              isFetchingNextPage={notifications.isFetchingNextPage}
+              onLoadMore={() => notifications.fetchNextPage()}
+              onSelect={handleNotificationSelect}
               onMarkAllRead={() => markAllRead.mutate()}
               onViewAll={() => {
                 setBellOpen(false);

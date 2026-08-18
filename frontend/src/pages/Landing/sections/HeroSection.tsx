@@ -10,7 +10,11 @@ export function HeroSection() {
   const primaryLabel = isAuthenticated ? 'Panoya git' : 'Ücretsiz başla';
 
   return (
-    <section aria-labelledby="hero-title" className="landing-hero">
+    <section
+      id="hero"
+      aria-labelledby="hero-title"
+      className="landing-hero landing-viewport-section"
+    >
       <div className="landing-section-shell landing-hero__grid">
         <div className="landing-hero__copy">
           <h1 id="hero-title">İşin nerede kaldığını herkes görsün.</h1>

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import type { Task } from '@/hooks/tasks';
 import { patchTaskCaches, restoreTaskCaches, snapshotTaskCaches } from './taskCache';
+import { queryKeys } from './queryKeys';
+
+const TENANT_ID = 'tenant-1';
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
@@ -40,37 +43,54 @@ describe('task cache helpers', () => {
     const client = new QueryClient();
     const current = task();
     const other = task({ id: 'task-2', title: 'Other' });
-    client.setQueryData(['task', current.id], current);
-    client.setQueryData(['tasks', { teamId: 'team-1' }], { tasks: [current, other], total: 2 });
-    client.setQueryData(['tasks', { status: ['done'] }], { tasks: [other], total: 1 });
+    client.setQueryData(queryKeys.task.detail(TENANT_ID, current.id), current);
+    client.setQueryData(queryKeys.tasks.list(TENANT_ID, { teamId: 'team-1' }), {
+      tasks: [current, other],
+      total: 2,
+    });
+    client.setQueryData(queryKeys.tasks.list(TENANT_ID, { status: ['done'] }), {
+      tasks: [other],
+      total: 1,
+    });
 
-    patchTaskCaches(client, current.id, (value) => ({ ...value, status: 'done' }));
+    patchTaskCaches(client, TENANT_ID, current.id, (value) => ({ ...value, status: 'done' }));
 
-    expect(client.getQueryData<Task>(['task', current.id])?.status).toBe('done');
+    expect(client.getQueryData<Task>(queryKeys.task.detail(TENANT_ID, current.id))?.status).toBe(
+      'done',
+    );
     expect(
-      client.getQueryData<{ tasks: Task[] }>(['tasks', { teamId: 'team-1' }])?.tasks[0].status,
+      client.getQueryData<{ tasks: Task[] }>(queryKeys.tasks.list(TENANT_ID, { teamId: 'team-1' }))
+        ?.tasks[0].status,
     ).toBe('done');
     expect(
-      client.getQueryData<{ tasks: Task[] }>(['tasks', { status: ['done'] }])?.tasks,
+      client.getQueryData<{ tasks: Task[] }>(queryKeys.tasks.list(TENANT_ID, { status: ['done'] }))
+        ?.tasks,
     ).toHaveLength(1);
   });
 
   it('removes filter-mismatched task and restores full snapshot on rollback', async () => {
     const client = new QueryClient();
     const current = task();
-    client.setQueryData(['task', current.id], current);
-    client.setQueryData(['tasks', { status: ['todo'] }], { tasks: [current], total: 1 });
-    const snapshot = await snapshotTaskCaches(client, current.id);
+    client.setQueryData(queryKeys.task.detail(TENANT_ID, current.id), current);
+    client.setQueryData(queryKeys.tasks.list(TENANT_ID, { status: ['todo'] }), {
+      tasks: [current],
+      total: 1,
+    });
+    const snapshot = await snapshotTaskCaches(client, TENANT_ID, current.id);
 
-    patchTaskCaches(client, current.id, (value) => ({ ...value, status: 'done' }));
-    expect(client.getQueryData<{ tasks: Task[] }>(['tasks', { status: ['todo'] }])).toEqual({
+    patchTaskCaches(client, TENANT_ID, current.id, (value) => ({ ...value, status: 'done' }));
+    expect(
+      client.getQueryData<{ tasks: Task[] }>(queryKeys.tasks.list(TENANT_ID, { status: ['todo'] })),
+    ).toEqual({
       tasks: [],
       total: 0,
     });
 
-    restoreTaskCaches(client, current.id, snapshot);
-    expect(client.getQueryData<Task>(['task', current.id])).toEqual(current);
-    expect(client.getQueryData(['tasks', { status: ['todo'] }])).toEqual({
+    restoreTaskCaches(client, TENANT_ID, current.id, snapshot);
+    expect(client.getQueryData<Task>(queryKeys.task.detail(TENANT_ID, current.id))).toEqual(
+      current,
+    );
+    expect(client.getQueryData(queryKeys.tasks.list(TENANT_ID, { status: ['todo'] }))).toEqual({
       tasks: [current],
       total: 1,
     });
@@ -80,14 +100,26 @@ describe('task cache helpers', () => {
     const client = new QueryClient();
     const current = task();
     const other = task({ id: 'task-2' });
-    client.setQueryData(['task', current.id], current);
-    client.setQueryData(['tasks', { page: 1 }], { tasks: [current], total: 1 });
-    client.setQueryData(['tasks', { page: 2 }], { tasks: [other], total: 1 });
+    client.setQueryData(queryKeys.task.detail(TENANT_ID, current.id), current);
+    client.setQueryData(queryKeys.tasks.list(TENANT_ID, { offset: 0 }), {
+      tasks: [current],
+      total: 1,
+    });
+    client.setQueryData(queryKeys.tasks.list(TENANT_ID, { offset: 20 }), {
+      tasks: [other],
+      total: 1,
+    });
 
-    patchTaskCaches(client, current.id, () => null);
+    patchTaskCaches(client, TENANT_ID, current.id, () => null);
 
-    expect(client.getQueryData(['task', current.id])).toBeUndefined();
-    expect(client.getQueryData(['tasks', { page: 1 }])).toEqual({ tasks: [], total: 0 });
-    expect(client.getQueryData(['tasks', { page: 2 }])).toEqual({ tasks: [other], total: 1 });
+    expect(client.getQueryData(queryKeys.task.detail(TENANT_ID, current.id))).toBeUndefined();
+    expect(client.getQueryData(queryKeys.tasks.list(TENANT_ID, { offset: 0 }))).toEqual({
+      tasks: [],
+      total: 0,
+    });
+    expect(client.getQueryData(queryKeys.tasks.list(TENANT_ID, { offset: 20 }))).toEqual({
+      tasks: [other],
+      total: 1,
+    });
   });
 });

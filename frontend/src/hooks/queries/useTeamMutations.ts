@@ -1,16 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as teamsService from '../../services/teams';
-import { teamKeys } from './useTeams';
+import { queryKeys } from '@/lib/queryKeys';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * POST /teams. Başarıda listeyi invalidate et.
  */
 export function useCreateTeam() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: (input: teamsService.CreateTeamInput) => teamsService.createTeam(input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: teamKeys.all });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.teams.list(tenantId) });
     },
   });
 }
@@ -20,10 +22,11 @@ export function useCreateTeam() {
  */
 export function useAddMember(teamId: string) {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: (input: teamsService.AddMemberInput) => teamsService.addMember(teamId, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: teamKeys.detail(teamId) });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.team.detail(tenantId, teamId) });
     },
   });
 }
@@ -33,21 +36,23 @@ export function useAddMember(teamId: string) {
  */
 export function useRemoveMember(teamId: string) {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: (userId: string) => teamsService.removeMember(teamId, userId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: teamKeys.detail(teamId) });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.team.detail(tenantId, teamId) });
     },
   });
 }
 
 export function useUpdateMemberRole(teamId: string) {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: teamsService.TeamMemberRole }) =>
       teamsService.updateMemberRole(teamId, userId, role),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: teamKeys.detail(teamId) });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.team.detail(tenantId, teamId) });
     },
   });
 }

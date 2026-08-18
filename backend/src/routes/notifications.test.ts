@@ -116,3 +116,111 @@ describe('PATCH /api/v1/notifications/read-all', () => {
     expect(allReadAt.every((n) => n.readAt !== null)).toBe(true);
   });
 });
+
+describe('PATCH /api/v1/notifications/:id/read', () => {
+  beforeEach(cleanDb);
+
+  it('401 without auth', async () => {
+    const r = await request(createApp()).patch(
+      '/api/v1/notifications/00000000-0000-0000-0000-000000000000/read',
+    );
+    expect(r.status).toBe(401);
+  });
+
+  it('204 marks calling user notification as read', async () => {
+    const { user, token } = await seedUser({ withNotifications: 1 });
+    const target = await prisma.notification.findFirstOrThrow({ where: { userId: user.id } });
+
+    const r = await request(createApp())
+      .patch(`/api/v1/notifications/${target.id}/read`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(r.status).toBe(204);
+    const stored = await prisma.notification.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.readAt).not.toBeNull();
+  });
+
+  it('is idempotent and preserves existing readAt', async () => {
+    const { user, token } = await seedUser({ withNotifications: 1 });
+    const target = await prisma.notification.findFirstOrThrow({ where: { userId: user.id } });
+    const first = await request(createApp())
+      .patch(`/api/v1/notifications/${target.id}/read`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(first.status).toBe(204);
+    const firstReadAt = (await prisma.notification.findUniqueOrThrow({ where: { id: target.id } }))
+      .readAt;
+
+    const second = await request(createApp())
+      .patch(`/api/v1/notifications/${target.id}/read`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(second.status).toBe(204);
+    const secondReadAt = (await prisma.notification.findUniqueOrThrow({ where: { id: target.id } }))
+      .readAt;
+    expect(secondReadAt?.toISOString()).toBe(firstReadAt?.toISOString());
+  });
+
+  it('404 for another user notification in same tenant', async () => {
+    const { tenant, token } = await seedUser({ withNotifications: 0 });
+    const other = await prisma.user.create({
+      data: {
+        email: 'other@x.com',
+        passwordHash: 'h',
+        fullName: 'Other',
+        displayId: 'OTHER1',
+        role: 'member',
+        tenantId: tenant.id,
+      },
+    });
+    const target = await prisma.notification.create({
+      data: { userId: other.id, type: 'task_assigned', payload: {} },
+    });
+
+    const r = await request(createApp())
+      .patch(`/api/v1/notifications/${target.id}/read`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(r.status).toBe(404);
+    expect(
+      (await prisma.notification.findUniqueOrThrow({ where: { id: target.id } })).readAt,
+    ).toBeNull();
+  });
+
+  it('404 for another tenant notification', async () => {
+    const { token } = await seedUser({ withNotifications: 0 });
+    const otherTenant = await prisma.tenant.create({
+      data: { name: 'Other Tenant', slug: 'other-tenant' },
+    });
+    const other = await prisma.user.create({
+      data: {
+        email: 'other@other.com',
+        passwordHash: 'h',
+        fullName: 'Other Tenant User',
+        displayId: 'OTHER2',
+        role: 'member',
+        tenantId: otherTenant.id,
+      },
+    });
+    const target = await prisma.notification.create({
+      data: { userId: other.id, type: 'task_assigned', payload: {} },
+    });
+
+    const r = await request(createApp())
+      .patch(`/api/v1/notifications/${target.id}/read`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(r.status).toBe(404);
+    expect(
+      (await prisma.notification.findUniqueOrThrow({ where: { id: target.id } })).readAt,
+    ).toBeNull();
+  });
+
+  it('404 for unknown notification', async () => {
+    const { token } = await seedUser({ withNotifications: 0 });
+    const r = await request(createApp())
+      .patch('/api/v1/notifications/00000000-0000-0000-0000-000000000000/read')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(r.status).toBe(404);
+    expect(r.body.error).toBe('NOTIFICATION_NOT_FOUND');
+  });
+});

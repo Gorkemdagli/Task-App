@@ -25,6 +25,7 @@ import { useCompanyUsers, useUpdateCompanyPermissions } from '@/hooks/queries/us
 import { useTeams } from '@/hooks/queries/useTeams';
 import type { CompanyUser, UpdateCompanyPermissionsInput } from '@/services/companyUsers';
 import { getApiErrorMessage } from '@/lib/apiError';
+import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 
 type DraftPermissions = Pick<UpdateCompanyPermissionsInput, 'role' | 'teamRoles'>;
 
@@ -56,7 +57,7 @@ export function PermissionsPage() {
   const updatePermissions = useUpdateCompanyPermissions();
 
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR');
-  const users = useMemo(
+  const filteredUsers = useMemo(
     () =>
       (usersQuery.data ?? []).filter((candidate) =>
         [candidate.fullName, candidate.email, candidate.displayId].some((value) =>
@@ -65,7 +66,8 @@ export function PermissionsPage() {
       ),
     [normalizedSearch, usersQuery.data],
   );
-  const teams = teamsQuery.data ?? [];
+  const users = filteredUsers.slice(0, MAX_RENDERED_RECORDS);
+  const teams = (teamsQuery.data ?? []).slice(0, MAX_RENDERED_RECORDS);
 
   if (!isCompanyAdmin) return <Navigate to="/dashboard" replace />;
 
@@ -277,6 +279,10 @@ export function PermissionsPage() {
           );
         })}
       </div>
+
+      {filteredUsers.length > MAX_RENDERED_RECORDS && (
+        <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+      )}
 
       <Dialog open={Boolean(confirming)} onOpenChange={(open) => !open && setConfirming(null)}>
         <DialogContent>

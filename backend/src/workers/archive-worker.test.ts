@@ -27,6 +27,7 @@ describe('archive worker isolation', () => {
   });
 
   it('continues with the next tenant after a batch failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     state.findTenants.mockResolvedValue([{ id: 'tenant-a' }, { id: 'tenant-b' }]);
     state.transaction.mockImplementation((work: (db: unknown) => Promise<unknown>) => work({}));
     state.archive.mockImplementation(async (_db: unknown, tenantId: string) => {
@@ -39,6 +40,7 @@ describe('archive worker isolation', () => {
 
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-a');
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-b');
+    errorSpy.mockRestore();
   });
 
   it('keeps the web entrypoint free of worker-only dependencies', () => {

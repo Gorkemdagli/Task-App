@@ -62,6 +62,28 @@ describe('TaskCard', () => {
     expect(screen.getByText('Selin Demir')).toBeInTheDocument();
   });
 
+  it('dimension lazy-loaded assignee avatar', () => {
+    render(
+      <Wrap>
+        <TaskCard
+          task={{
+            ...baseTask,
+            assignees: [
+              {
+                ...baseTask.assignees[0],
+                user: { ...baseTask.assignees[0].user, avatarUrl: '/avatar.png' },
+              },
+            ],
+          }}
+        />
+      </Wrap>,
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('loading', 'lazy');
+    expect(screen.getByRole('img')).toHaveAttribute('decoding', 'async');
+    expect(screen.getByRole('img')).toHaveAttribute('width', '24');
+    expect(screen.getByRole('img')).toHaveAttribute('height', '24');
+  });
+
   it('uses priority border class for high', () => {
     const { container } = render(
       <Wrap>

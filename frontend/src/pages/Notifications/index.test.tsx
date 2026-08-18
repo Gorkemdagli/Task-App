@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { NotificationsPage, getPaginationItems } from './index';
+import { NotificationsPage } from './index';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
@@ -22,11 +22,15 @@ function makeItem(id: string, overrides: Partial<NotificationItemType> = {}): No
   return {
     id,
     type: 'task_assigned',
-    payload: { taskId: 'task-1', taskTitle: `Task ${id}`, actorName: 'Ayşe' },
+    payload: { taskId: `task-${id}`, taskTitle: `Task ${id}`, actorName: 'Ayşe' },
     readAt: null,
     createdAt: new Date().toISOString(),
     ...overrides,
-  };
+  } as NotificationItemType;
+}
+
+function LocationProbe() {
+  return <output data-testid="location">{useLocation().pathname}</output>;
 }
 
 function renderPage() {
@@ -35,6 +39,7 @@ function renderPage() {
     <QueryClientProvider client={qc}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationsPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -46,347 +51,105 @@ describe('NotificationsPage', () => {
 
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });
-    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: {} } as never);
+    getSpy = vi.spyOn(api, 'get');
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
   });
 
   afterEach(() => {
-    getSpy?.mockRestore();
+    getSpy.mockRestore();
     patchSpy.mockRestore();
   });
 
-  it('uses ellipsis for long pagination ranges', () => {
-    expect(getPaginationItems(15, 1)).toEqual([
-      1,
-      2,
-      3,
-      'ellipsis',
-      5,
-      'ellipsis',
-      10,
-      'ellipsis',
-      15,
-    ]);
-  });
-
-  it('renders header "Bildirimler"', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [], unreadCount: 0, nextCursor: null },
+  it('fetches only first page on mount', async () => {
+    getSpy.mockResolvedValue({
+      data: { items: [makeItem('n1')], unreadCount: 1, nextCursor: 'C2' },
     } as never);
-
     renderPage();
 
-    await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith(
-        '/notifications?limit=10',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-    });
-
-    expect(screen.getByRole('heading', { name: 'Bildirimler' })).toBeInTheDocument();
+    await screen.findByTestId('notification-item-n1');
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(getSpy).toHaveBeenCalledWith('/notifications?limit=10');
   });
 
-  it('renders EmptyNotifications when items list is empty', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [], unreadCount: 0, nextCursor: null },
-    } as never);
-
+  it('loads next page only after Daha fazla click', async () => {
+    getSpy
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('n1')], unreadCount: 2, nextCursor: 'C2' },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { items: [makeItem('n2')], unreadCount: 2, nextCursor: null },
+      } as never);
     renderPage();
 
-    expect(await screen.findByTestId('empty-notifications')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Daha fazla' }));
+    expect(await screen.findByTestId('notification-item-n2')).toBeInTheDocument();
+    expect(getSpy).toHaveBeenLastCalledWith('/notifications?limit=10&cursor=C2');
   });
 
-  it('renders notification items when present', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: {
-        items: [makeItem('n1'), makeItem('n2', { type: 'task_commented' })],
-        unreadCount: 2,
-        nextCursor: null,
-      },
-    } as never);
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('notifications-page-list')).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId('notification-item-n1')).toBeInTheDocument();
-    expect(screen.getByTestId('notification-item-n2')).toBeInTheDocument();
-  });
-
-  it('renders "Tümünü okundu işaretle" button when unreadCount > 0', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+  it('marks unread task read then navigates', async () => {
+    getSpy.mockResolvedValue({
       data: { items: [makeItem('n1')], unreadCount: 1, nextCursor: null },
     } as never);
-
     renderPage();
 
-    expect(await screen.findByTestId('page-mark-all-read')).toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
+    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1');
   });
 
-  it('does NOT render "Tümünü okundu işaretle" button when unreadCount === 0', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [], unreadCount: 0, nextCursor: null },
-    } as never);
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(getSpy).toHaveBeenCalled();
-    });
-
-    expect(screen.queryByTestId('page-mark-all-read')).not.toBeInTheDocument();
-  });
-
-  it('renders date group headers Bugün / Dün / dd.MM.yyyy', async () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const fiveDaysAgo = new Date(today);
-    fiveDaysAgo.setDate(today.getDate() - 5);
-
-    const fmt = (d: Date) => {
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      return `${day}.${month}.${d.getFullYear()}`;
-    };
-
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
+  it('keeps read task navigation without single-read PATCH', async () => {
+    getSpy.mockResolvedValue({
       data: {
-        items: [
-          makeItem('today', { createdAt: today.toISOString() }),
-          makeItem('yest', { createdAt: yesterday.toISOString() }),
-          makeItem('old', { createdAt: fiveDaysAgo.toISOString() }),
-        ],
+        items: [makeItem('n1', { readAt: new Date().toISOString() })],
         unreadCount: 0,
         nextCursor: null,
       },
     } as never);
-
     renderPage();
 
-    expect(await screen.findByText('Bugün')).toBeInTheDocument();
-    expect(screen.getByText('Dün')).toBeInTheDocument();
-    expect(screen.getByText(fmt(fiveDaysAgo))).toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    expect(patchSpy).not.toHaveBeenCalledWith('/notifications/n1/read');
+    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1');
   });
 
-  it('disables Prev on first page', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: 'C2' },
+  it('keeps message_received passive', async () => {
+    const item: NotificationItemType = {
+      id: 'm1',
+      type: 'message_received',
+      payload: { actorName: 'Mert' },
+      readAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    getSpy.mockResolvedValue({
+      data: { items: [item], unreadCount: 1, nextCursor: null },
     } as never);
-
     renderPage();
 
-    const prev = await screen.findByTestId('page-prev');
-    expect(prev).toBeDisabled();
+    const row = await screen.findByTestId('notification-item-m1');
+    expect(row.tagName).toBe('DIV');
+    expect(patchSpy).not.toHaveBeenCalled();
   });
 
-  it('disables Next when nextCursor is null', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: null },
+  it('marks all from page action', async () => {
+    getSpy.mockResolvedValue({
+      data: { items: [makeItem('n1')], unreadCount: 1, nextCursor: null },
     } as never);
-
     renderPage();
 
-    const next = await screen.findByTestId('page-next');
-    expect(next).toBeDisabled();
+    await userEvent.click(await screen.findByTestId('page-mark-all-read'));
+    expect(patchSpy).toHaveBeenCalledWith('/notifications/read-all');
   });
 
-  it('fetches next page with cursor when Next is clicked', async () => {
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 1: no more pages
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: null },
-      } as never);
-
-    const user = userEvent.setup();
+  it('renders empty state', async () => {
+    getSpy.mockResolvedValue({ data: { items: [], unreadCount: 0, nextCursor: null } } as never);
     renderPage();
-
-    const next = await screen.findByTestId('page-next');
-    await user.click(next);
-
-    await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith(
-        '/notifications?limit=10&cursor=C2',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-    });
-    expect(await screen.findByTestId('notification-item-p2-n1')).toBeInTheDocument();
+    expect(await screen.findByTestId('empty-notifications')).toBeInTheDocument();
   });
 
-  it('returns to previous page when Prev is clicked after Next', async () => {
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 1 → null (no further pages discovered before click)
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 2 → null
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1-again')], unreadCount: 0, nextCursor: 'C2' },
-      } as never);
-
-    const user = userEvent.setup();
+  it('renders request error', async () => {
+    getSpy.mockRejectedValue(new Error('fail'));
     renderPage();
-
-    await user.click(await screen.findByTestId('page-next'));
-    await screen.findByTestId('notification-item-p2-n1');
-
-    await user.click(screen.getByTestId('page-prev'));
-    expect(await screen.findByTestId('notification-item-p1-n1-again')).toBeInTheDocument();
-  });
-
-  it('renders one page-number button per page discovered, active page highlighted', async () => {
-    getSpy = vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [makeItem('n1')], unreadCount: 0, nextCursor: null },
-    } as never);
-
-    renderPage();
-
-    const btn1 = await screen.findByTestId('page-num-1');
-    expect(btn1).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByTestId('page-num-1')).toBeInTheDocument();
-    expect(screen.queryByTestId('page-num-2')).not.toBeInTheDocument();
-  });
-
-  it('walks forward on mount to discover all pages', async () => {
-    // Mount → page 1 (C2) → walk C2 → walk C3 → walk null.
-    // User never clicks anything; walk must populate cursors=[C2,C3] and render 3 buttons.
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from C2 → discover C3
-        data: { items: [], unreadCount: 0, nextCursor: 'C3' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from C3 → null (end)
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never);
-
-    renderPage();
-
-    expect(await screen.findByTestId('page-num-1')).toBeInTheDocument();
-    expect(await screen.findByTestId('page-num-2')).toBeInTheDocument();
-    expect(await screen.findByTestId('page-num-3')).toBeInTheDocument();
-    expect(screen.queryByTestId('page-num-4')).not.toBeInTheDocument();
-  });
-
-  it('discovers pages using the same page size as the list', async () => {
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('initial')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p2')], unreadCount: 0, nextCursor: null },
-      } as never);
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith(
-        '/notifications?limit=10&cursor=C2',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-    });
-    expect(getSpy).not.toHaveBeenCalledWith('/notifications?limit=1&cursor=C2', expect.anything());
-  });
-
-  it('renders second page button after Next is clicked', async () => {
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 1 → discover C3
-        data: { items: [], unreadCount: 0, nextCursor: 'C3' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 2 → null
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
-      } as never);
-
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByTestId('page-next'));
-    await screen.findByTestId('notification-item-p2-n1');
-
-    expect(screen.getByTestId('page-num-1')).toBeInTheDocument();
-    expect(screen.getByTestId('page-num-2')).toBeInTheDocument();
-    expect(screen.getByTestId('page-num-2')).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByTestId('page-num-1')).not.toHaveAttribute('aria-current');
-  });
-
-  it('navigates to a specific page when its number button is clicked', async () => {
-    getSpy = vi
-      .spyOn(api, 'get')
-      .mockResolvedValueOnce({
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1')], unreadCount: 0, nextCursor: 'C2' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 1 → null
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p2-n1')], unreadCount: 0, nextCursor: 'C3' },
-      } as never)
-      .mockResolvedValueOnce({
-        // walk from page 2 → null
-        data: { items: [], unreadCount: 0, nextCursor: null },
-      } as never)
-      .mockResolvedValueOnce({
-        data: { items: [makeItem('p1-n1-back')], unreadCount: 0, nextCursor: 'C2' },
-      } as never);
-
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByTestId('page-next'));
-    await screen.findByTestId('notification-item-p2-n1');
-
-    await user.click(screen.getByTestId('page-num-1'));
-    expect(await screen.findByTestId('notification-item-p1-n1-back')).toBeInTheDocument();
-  });
+    await screen.findByRole('alert', {}, { timeout: 15000 });
+    expect(screen.getByRole('alert')).toHaveTextContent('Bildirimler yüklenemedi.');
+  }, 15000);
 });

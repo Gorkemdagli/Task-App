@@ -19,7 +19,11 @@ const workflowSteps = [
 
 export function WorkflowSection() {
   return (
-    <section id="workflow" aria-labelledby="workflow-title" className="landing-workflow">
+    <section
+      id="workflow"
+      aria-labelledby="workflow-title"
+      className="landing-workflow landing-viewport-section"
+    >
       <div className="landing-section-shell">
         <header className="landing-section-heading">
           <h2 id="workflow-title">İş akışı</h2>

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { appendTaskFilterParams } from '../lib/taskFilterParams';
 import { useAuthStore } from '../stores/authStore';
+import { queryKeys } from '../lib/queryKeys';
 import { invalidateTaskQueries } from './taskQueryInvalidation';
 import { patchTaskCaches, restoreTaskCaches, snapshotTaskCaches } from '../lib/taskCache';
 
@@ -84,34 +85,38 @@ function toQuery(filters: ListTasksFilters | undefined): string {
 // ─── Hooks ────────────────────────────────────────────────────────────
 
 export function useTasks(filters?: ListTasksFilters) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery({
-    queryKey: ['tasks', filters],
+    queryKey: queryKeys.tasks.list(tenantId ?? 'tenantless', filters),
     queryFn: async () => {
       const r = await api.get<{ tasks: Task[]; total: number }>(`/tasks${toQuery(filters)}`);
       return r.data;
     },
+    enabled: Boolean(tenantId),
   });
 }
 
 export function useTask(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery<Task>({
-    queryKey: ['task', id],
+    queryKey: queryKeys.task.detail(tenantId ?? 'tenantless', id ?? 'none'),
     queryFn: async () => {
       const r = await api.get<Task>(`/tasks/${id}`);
       return r.data;
     },
-    enabled: !!id,
+    enabled: Boolean(tenantId && id),
   });
 }
 
 export function useTaskComments(taskId: string | undefined, options?: { enabled?: boolean }) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery<{ comments: Comment[] }>({
-    queryKey: ['task-comments', taskId],
+    queryKey: queryKeys.task.comments(tenantId ?? 'tenantless', taskId ?? 'none'),
     queryFn: async () => {
       const r = await api.get<{ comments: Comment[] }>(`/tasks/${taskId}/comments`);
       return r.data;
     },
-    enabled: !!taskId && (options?.enabled ?? true),
+    enabled: Boolean(tenantId && taskId) && (options?.enabled ?? true),
     refetchInterval: () => {
       // Sadece sayfa görünürken poll
       if (typeof document !== 'undefined' && document.hidden) return false;
@@ -122,6 +127,7 @@ export function useTaskComments(taskId: string | undefined, options?: { enabled?
 
 export function useCreateTask() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (input: {
       title: string;
@@ -135,7 +141,7 @@ export function useCreateTask() {
       return r.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.tenant(tenantId) });
     },
   });
 }
@@ -144,21 +150,26 @@ export function useCreateTask() {
  *  geçici state'ten çağrılan yerlerde hook re-mount riskini önler. */
 export function useUpdateTaskStatus() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
       const r = await api.patch<Task>(`/tasks/${vars.taskId}/status`, { status: vars.status });
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
-      patchTaskCaches(qc, vars.taskId, (task) => ({ ...task, status: vars.status }));
+      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
+      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
+        ...task,
+        status: vars.status,
+      }));
       return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+      if (ctx?.snapshot && ctx.taskId)
+        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
-      invalidateTaskQueries(qc, vars.taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });
 }
@@ -166,6 +177,7 @@ export function useUpdateTaskStatus() {
 /** Multi-assignee task için status teklifi. Backend admin ise direkt apply, değilse pending oluşturur. */
 export function useProposeTaskStatus() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
       const r = await api.post<Task>(`/tasks/${vars.taskId}/status/propose`, {
@@ -174,10 +186,10 @@ export function useProposeTaskStatus() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
+      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
       const actorId = useAuthStore.getState().user?.id ?? null;
       const actor = useAuthStore.getState().user;
-      patchTaskCaches(qc, vars.taskId, (task) => {
+      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => {
         if (task.assignees.length === 1) {
           return {
             ...task,
@@ -207,10 +219,11 @@ export function useProposeTaskStatus() {
       return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+      if (ctx?.snapshot && ctx.taskId)
+        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
-      invalidateTaskQueries(qc, vars.taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });
 }
@@ -218,6 +231,7 @@ export function useProposeTaskStatus() {
 /** Pending status teklifini ack'le. Tüm assignees ack edince DB status güncellenir. */
 export function useAckTaskStatus() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; pendingVersion: number }) => {
       const r = await api.post<{ task: Task; applied: boolean }>(
@@ -227,7 +241,7 @@ export function useAckTaskStatus() {
       return r.data;
     },
     onSettled: (_d, _e, vars) => {
-      invalidateTaskQueries(qc, vars.taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });
 }
@@ -235,19 +249,21 @@ export function useAckTaskStatus() {
 /** Pending status teklifini iptal et. Proposer veya admin. */
 export function useCancelTaskStatus() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (taskId: string) => {
       const r = await api.post<Task>(`/tasks/${taskId}/status/cancel`);
       return r.data;
     },
     onSettled: (_d, _e, taskId) => {
-      invalidateTaskQueries(qc, taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, taskId);
     },
   });
 }
 
 export function useUpdateTaskPriority() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; priority: TaskPriority }) => {
       const r = await api.patch<Task>(`/tasks/${vars.taskId}/priority`, {
@@ -256,21 +272,26 @@ export function useUpdateTaskPriority() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
-      patchTaskCaches(qc, vars.taskId, (task) => ({ ...task, priority: vars.priority }));
+      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
+      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
+        ...task,
+        priority: vars.priority,
+      }));
       return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+      if (ctx?.snapshot && ctx.taskId)
+        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
-      invalidateTaskQueries(qc, vars.taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });
 }
 
 export function useUpdateTaskFields() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: {
       taskId: string;
@@ -284,8 +305,8 @@ export function useUpdateTaskFields() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, vars.taskId);
-      patchTaskCaches(qc, vars.taskId, (task) => ({
+      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
+      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
         ...task,
         ...(vars.title !== undefined && { title: vars.title }),
         ...(vars.description !== undefined && { description: vars.description }),
@@ -299,57 +320,62 @@ export function useUpdateTaskFields() {
       return { snapshot, taskId: vars.taskId };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+      if (ctx?.snapshot && ctx.taskId)
+        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
-      invalidateTaskQueries(qc, vars.taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });
 }
 
 export function useDeleteTask() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (taskId: string) => {
       await api.delete(`/tasks/${taskId}`);
       return taskId;
     },
     onMutate: async (taskId) => {
-      const snapshot = await snapshotTaskCaches(qc, taskId);
-      patchTaskCaches(qc, taskId, () => null);
+      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', taskId);
+      patchTaskCaches(qc, tenantId ?? 'tenantless', taskId, () => null);
       return { snapshot, taskId };
     },
     onError: (_e, _taskId, ctx) => {
-      if (ctx?.snapshot && ctx.taskId) restoreTaskCaches(qc, ctx.taskId, ctx.snapshot);
+      if (ctx?.snapshot && ctx.taskId)
+        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, taskId) => {
-      invalidateTaskQueries(qc, taskId);
+      if (tenantId) invalidateTaskQueries(qc, tenantId, taskId);
     },
   });
 }
 
 export function useCreateComment(taskId: string) {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { body: string }) => {
       const r = await api.post<Comment>(`/tasks/${taskId}/comments`, vars);
       return r.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.task.comments(tenantId, taskId) });
     },
   });
 }
 
 export function useTriggerArchive() {
   const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async () => {
       const r = await api.post<{ archivedCount: number }>('/admin/tasks/archive-expired');
       return r.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
+      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.tenant(tenantId) });
     },
   });
 }

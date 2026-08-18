@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 import type { Actor } from '../lib/permissions';
 import { logger } from '../lib/logger';
+import { AppError } from '../lib/appError';
 
 export type NotificationDTO = {
   id: string;
@@ -92,4 +93,25 @@ export async function markAllRead(db: TenantDb, actor: Actor): Promise<number> {
     'notifications.markAllRead',
   );
   return result.count;
+}
+
+/** Tek bildirimi kullanÄ±cÄ± kapsamÄ±nda idempotent olarak okundu iÅŸaretler. */
+export async function markNotificationRead(
+  db: TenantDb,
+  actor: Actor,
+  notificationId: string,
+): Promise<void> {
+  const result = await db.notification.updateMany({
+    where: { id: notificationId, userId: actor.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+
+  if (result.count === 1) return;
+
+  const exists = await db.notification.count({
+    where: { id: notificationId, userId: actor.id },
+  });
+  if (exists === 0) {
+    throw new AppError(404, 'Bildirim bulunamad\u0131', 'NOTIFICATION_NOT_FOUND');
+  }
 }

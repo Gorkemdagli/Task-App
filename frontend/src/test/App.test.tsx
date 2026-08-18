@@ -4,6 +4,7 @@ import App from '../App';
 import { getMe } from '../lib/api';
 import { queryClient } from '../lib/react-query';
 import { useAuthStore } from '../stores/authStore';
+import { RouteFallback } from '../components/layout/RouteFallback';
 
 vi.mock('../lib/api', async () => {
   const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
@@ -122,5 +123,11 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/giriş yap/i).length).toBeGreaterThan(0);
     });
+  });
+
+  it('renders the shared route fallback', () => {
+    render(<RouteFallback />);
+
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
   });
 });

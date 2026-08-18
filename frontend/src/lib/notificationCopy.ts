@@ -5,13 +5,18 @@ export type NotificationType =
   | 'task_status_pending'
   | 'task_status_changed';
 
+export type TaskNotificationType = Exclude<NotificationType, 'message_received'>;
+
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 
-export interface NotificationPayload {
-  taskId: string;
-  taskTitle: string;
+export interface BaseNotificationPayload {
   actorId?: string;
   actorName?: string;
+}
+
+export interface TaskNotificationPayload extends BaseNotificationPayload {
+  taskId: string;
+  taskTitle: string;
   proposedStatus?: TaskStatus;
   proposedBy?: string;
   proposedByName?: string;
@@ -19,10 +24,13 @@ export interface NotificationPayload {
   newStatus?: TaskStatus;
 }
 
-export interface NotificationLike {
-  type: NotificationType;
-  payload: NotificationPayload;
-}
+export type MessageNotificationPayload = BaseNotificationPayload;
+
+export type NotificationPayload = TaskNotificationPayload | MessageNotificationPayload;
+
+export type NotificationLike =
+  | { type: TaskNotificationType; payload: TaskNotificationPayload }
+  | { type: 'message_received'; payload: MessageNotificationPayload };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: 'Yapılacak',
@@ -31,10 +39,9 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 export function notificationCopy(n: NotificationLike): string {
-  const title = n.payload.taskTitle;
-
   switch (n.type) {
     case 'task_assigned': {
+      const title = n.payload.taskTitle;
       const actor = (n.payload.actorName ?? '').trim();
       return actor
         ? `${actor} sana yeni bir görev atadı: ${title}`
@@ -49,6 +56,7 @@ export function notificationCopy(n: NotificationLike): string {
       return actor ? `${actor} sana mesaj gönderdi` : 'Yeni mesaj';
     }
     case 'task_status_pending': {
+      const title = n.payload.taskTitle;
       const proposer = (n.payload.proposedByName ?? '').trim();
       const status = n.payload.proposedStatus ? STATUS_LABEL[n.payload.proposedStatus] : '';
       return proposer
@@ -56,6 +64,7 @@ export function notificationCopy(n: NotificationLike): string {
         : `"${title}" görevi için status değişikliği teklif edildi.`;
     }
     case 'task_status_changed': {
+      const title = n.payload.taskTitle;
       const newStatus = n.payload.newStatus ? STATUS_LABEL[n.payload.newStatus] : '';
       return `"${title}" görevinin durumu ${newStatus} olarak güncellendi`;
     }

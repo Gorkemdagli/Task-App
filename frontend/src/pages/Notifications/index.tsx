@@ -1,44 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useNotifications,
   useMarkAllRead,
+  useMarkNotificationRead,
+  useNotifications,
   type NotificationItem as NotificationItemType,
 } from '@/hooks/useNotifications';
 import { NotificationItem } from '@/components/notifications/NotificationItem';
 import { EmptyNotifications } from '@/components/notifications/EmptyNotifications';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Bell, ChevronLeft, ChevronRight } from 'lucide-react';
-
-const PAGE_SIZE = 10;
-
-interface PageData {
-  items: NotificationItemType[];
-  nextCursor: string | null;
-}
-
-export type PaginationItem = number | 'ellipsis';
-
-export function getPaginationItems(totalPages: number, currentPage: number): PaginationItem[] {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([1, 2, 3, 5, 10, totalPages]);
-  for (const page of [currentPage - 1, currentPage, currentPage + 1]) {
-    if (page > 0 && page <= totalPages) pages.add(page);
-  }
-
-  const sortedPages = [...pages].sort((a, b) => a - b);
-  const items: PaginationItem[] = [];
-  sortedPages.forEach((page, index) => {
-    if (index > 0 && page - sortedPages[index - 1] > 1) items.push('ellipsis');
-    items.push(page);
-  });
-  return items;
-}
+import { Bell } from 'lucide-react';
+import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -67,107 +40,33 @@ function groupByDay(items: NotificationItemType[], now: Date): DayGroup[] {
     const d = new Date(item.createdAt);
     const key = dayKey(d);
     const last = groups[groups.length - 1];
-    if (last && last.key === key) {
-      last.items.push(item);
-    } else {
-      groups.push({ key, label: labelForDay(d, now), items: [item] });
-    }
+    if (last && last.key === key) last.items.push(item);
+    else groups.push({ key, label: labelForDay(d, now), items: [item] });
   }
   return groups;
 }
 
-/**
- * Tüm bildirimleri listeleyen sayfa.
- * 10'ar adet sayfalanır; her sayfa tarihe göre (Bugün / Dün / gg.aa.yyyy) gruplanır.
- * Cursor stack sayesinde Önceki mümkün; cursor ileri-yönlü olduğundan Prev
- * eski sayfanın nextCursor değerini yeniden sorgular.
- */
 export function NotificationsPage() {
   const navigate = useNavigate();
-  const { data } = useNotifications();
+  const notifications = useNotifications();
+  const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
-
-  const [cursors, setCursors] = useState<string[]>([]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageData, setPageData] = useState<PageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- imperative fetch on pageIndex change; cancelling prior request is correct
-    const controller = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- imperative fetch on pageIndex change
-    setLoading(true);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- imperative fetch on pageIndex change
-    setError(null);
-
-    const cursor = pageIndex === 0 ? null : (cursors[pageIndex - 1] ?? null);
-    const url = cursor
-      ? `/notifications?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
-      : `/notifications?limit=${PAGE_SIZE}`;
-
-    api
-      .get<{ items: NotificationItemType[]; nextCursor: string | null }>(url, {
-        signal: controller.signal,
-      })
-      .then((res) => {
-        setPageData({ items: res.data.items, nextCursor: res.data.nextCursor });
-        const newNextCursor = res.data.nextCursor;
-        if (newNextCursor) {
-          setCursors((prev) => (prev.includes(newNextCursor) ? prev : [...prev, newNextCursor]));
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (err?.name === 'CanceledError') return;
-        setError('Bildirimler yüklenemedi.');
-        setLoading(false);
-      });
-
-    return () => controller.abort();
-    // cursors read at call time only — re-running on cursor change would re-trigger infinite loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageIndex]);
-
-  // Sayfa sayısını önceden keşfetmek için aynı sayfa boyutuyla ileri yürüyüş.
-  // Sadece nextCursor'a bakılır — kullanıcı sayfaya tıklayana kadar gerçek veri çekilmez.
-  useEffect(() => {
-    const lastCursor = cursors[cursors.length - 1];
-    if (!lastCursor) return;
-    const controller = new AbortController();
-    api
-      .get<{ items: NotificationItemType[]; nextCursor: string | null }>(
-        `/notifications?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(lastCursor)}`,
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        const newNextCursor = res.data.nextCursor;
-        if (newNextCursor) {
-          setCursors((prev) => (prev.includes(newNextCursor) ? prev : [...prev, newNextCursor]));
-        }
-      })
-      .catch(() => {
-        /* walk silent fail — UI navigasyonu bozmaz */
-      });
-    return () => controller.abort();
-  }, [cursors]);
-
-  const groups = useMemo(
-    () => (pageData ? groupByDay(pageData.items, new Date()) : []),
-    [pageData],
+  const items = useMemo(
+    () =>
+      (notifications.data?.pages.flatMap((page) => page.items) ?? []).slice(
+        0,
+        MAX_RENDERED_RECORDS,
+      ),
+    [notifications.data],
   );
+  const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
+  const groups = useMemo(() => groupByDay(items, new Date()), [items]);
 
-  const hasItems = (pageData?.items.length ?? 0) > 0;
-  const hasNext = Boolean(pageData?.nextCursor);
-  const hasPrev = pageIndex > 0;
-
-  const handlePrev = () => {
-    if (hasPrev) setPageIndex(pageIndex - 1);
-  };
-
-  const handleNext = () => {
-    if (hasNext) setPageIndex(pageIndex + 1);
-  };
+  function handleSelect(item: NotificationItemType) {
+    if (item.type === 'message_received') return;
+    if (item.readAt === null) markRead.mutate(item.id);
+    navigate(`/tasks/${item.payload.taskId}`);
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
@@ -176,7 +75,7 @@ export function NotificationsPage() {
           <Bell className="h-5 w-5 text-primary" aria-hidden />
           Bildirimler
         </h1>
-        {data && data.unreadCount > 0 && (
+        {unreadCount > 0 && (
           <button
             type="button"
             onClick={() => markAllRead.mutate()}
@@ -188,22 +87,22 @@ export function NotificationsPage() {
         )}
       </header>
 
-      {error && (
+      {notifications.isError && (
         <div
           role="alert"
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          {error}
+          Bildirimler yüklenemedi.
         </div>
       )}
 
-      {loading && !pageData ? (
+      {notifications.isPending ? (
         <ul data-testid="notifications-page-skeleton" className="flex flex-col gap-2" aria-hidden>
           {[0, 1, 2].map((i) => (
             <li key={i} className="h-14 animate-pulse rounded-md bg-secondary" />
           ))}
         </ul>
-      ) : hasItems ? (
+      ) : items.length > 0 ? (
         <>
           <ul data-testid="notifications-page-list" className="flex flex-col" role="list">
             {groups.map((group) => (
@@ -219,78 +118,29 @@ export function NotificationsPage() {
                 >
                   {group.items.map((item) => (
                     <li key={item.id}>
-                      <NotificationItem
-                        item={item}
-                        onNavigate={(taskId) => navigate(`/tasks/${taskId}`)}
-                      />
+                      <NotificationItem item={item} onSelect={handleSelect} />
                     </li>
                   ))}
                 </ul>
               </li>
             ))}
           </ul>
+          {(notifications.data?.pages.flatMap((page) => page.items).length ?? 0) >
+            MAX_RENDERED_RECORDS && (
+            <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+          )}
 
-          <nav
-            className="flex items-center justify-center gap-1 pt-2"
-            aria-label="Bildirim sayfaları"
-          >
+          {notifications.hasNextPage && items.length < MAX_RENDERED_RECORDS && (
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={handlePrev}
-              disabled={!hasPrev}
-              data-testid="page-prev"
-              aria-label="Önceki sayfa"
+              onClick={() => notifications.fetchNextPage()}
+              disabled={notifications.isFetchingNextPage}
             >
-              <ChevronLeft className="mr-1 h-4 w-4" aria-hidden />
-              Önceki
+              Daha fazla
             </Button>
-
-            {getPaginationItems(cursors.length + 1, pageIndex + 1).map((item, index) => {
-              if (item === 'ellipsis') {
-                return (
-                  <span
-                    key={`ellipsis-${index}`}
-                    aria-hidden
-                    className="px-1 text-sm text-muted-foreground"
-                  >
-                    …
-                  </span>
-                );
-              }
-              const isActive = item === pageIndex + 1;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setPageIndex(item - 1)}
-                  aria-current={isActive ? 'page' : undefined}
-                  aria-label={`Sayfa ${item}`}
-                  data-testid={`page-num-${item}`}
-                  className={cn(
-                    'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium transition-colors',
-                    isActive ? 'bg-primary text-white' : 'text-foreground hover:bg-secondary',
-                  )}
-                >
-                  {item}
-                </button>
-              );
-            })}
-
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleNext}
-              disabled={!hasNext}
-              data-testid="page-next"
-              aria-label="Sonraki sayfa"
-            >
-              Sonraki
-              <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
-            </Button>
-          </nav>
+          )}
         </>
       ) : (
         <EmptyNotifications />

@@ -1,20 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as companyUsersService from '../../services/companyUsers';
-
-export const companyUserKeys = {
-  all: ['company-users'] as const,
-};
+import { queryKeys } from '@/lib/queryKeys';
+import { useAuthStore } from '@/stores/authStore';
 
 export function useCompanyUsers(enabled = true) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery({
-    queryKey: companyUserKeys.all,
+    queryKey: queryKeys.companyUsers(tenantId ?? 'tenantless'),
     queryFn: companyUsersService.listCompanyUsers,
-    enabled,
+    enabled: enabled && Boolean(tenantId),
   });
 }
 
 export function useUpdateCompanyRole() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: ({
       userId,
@@ -24,18 +24,20 @@ export function useUpdateCompanyRole() {
       role: companyUsersService.CompanyUser['role'];
     }) => companyUsersService.updateCompanyRole(userId, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: companyUserKeys.all });
+      if (tenantId) queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(tenantId) });
     },
   });
 }
 
 export function useUpdateCompanyPermissions() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: companyUsersService.updateCompanyPermissions,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: companyUserKeys.all });
-      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(tenantId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.teams.list(tenantId) });
     },
   });
 }

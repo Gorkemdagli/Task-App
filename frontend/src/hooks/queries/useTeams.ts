@@ -1,27 +1,27 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import * as teamsService from '../../services/teams';
+import { queryKeys } from '@/lib/queryKeys';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Query keys:
  *  - ['teams'] — kullanıcının erişebildiği takım listesi
  *  - ['team', id] — tek takım detayı (üyeler + taskCount)
  */
-export const teamKeys = {
-  all: ['teams'] as const,
-  detail: (id: string) => ['team', id] as const,
-};
-
 export function useTeams(): UseQueryResult<teamsService.Team[]> {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery({
-    queryKey: teamKeys.all,
+    queryKey: queryKeys.teams.list(tenantId ?? 'tenantless'),
     queryFn: teamsService.listTeams,
+    enabled: Boolean(tenantId),
   });
 }
 
 export function useTeam(id: string | undefined): UseQueryResult<teamsService.TeamDetail> {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery({
-    queryKey: id ? teamKeys.detail(id) : ['team', '__none__'],
+    queryKey: queryKeys.team.detail(tenantId ?? 'tenantless', id ?? 'none'),
     queryFn: () => teamsService.getTeam(id!),
-    enabled: Boolean(id),
+    enabled: Boolean(tenantId && id),
   });
 }

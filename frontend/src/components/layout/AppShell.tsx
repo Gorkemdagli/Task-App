@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { MobileSidebar } from './MobileSidebar';
+import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
 
 /**
  * AppShell: authenticated app chrome.
@@ -16,8 +17,12 @@ import { MobileSidebar } from './MobileSidebar';
  * inside page-level components, not on the shell itself.
  */
 export function AppShell() {
+  useQueryScopeCleanup();
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
+    <div
+      data-testid="app-shell"
+      className="flex min-h-screen flex-col bg-background text-foreground"
+    >
       <Topbar />
       <div className="flex flex-1">
         <Sidebar />

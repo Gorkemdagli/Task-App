@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { useTeams } from '@/hooks/queries/useTeams';
+import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeamStore } from '@/stores/teamStore';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,8 @@ export function TeamsPage() {
   const { isCompanyAdmin } = useAuth();
   const setActiveTeamId = useTeamStore((s) => s.setActiveTeamId);
   const navigate = useNavigate();
-  const teams = data ?? [];
+  const allTeams = data ?? [];
+  const teams = allTeams.slice(0, MAX_RENDERED_RECORDS);
 
   function handleOpen(teamId: string) {
     setActiveTeamId(teamId);
@@ -81,6 +83,9 @@ export function TeamsPage() {
             </button>
           ))}
         </div>
+      )}
+      {allTeams.length > MAX_RENDERED_RECORDS && (
+        <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
       )}
 
       <div className="pt-2">

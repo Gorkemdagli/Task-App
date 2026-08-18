@@ -6,7 +6,7 @@ import * as dotenv from 'dotenv';
 // dokunmasın. Dev/prod'da override YOK → k8s secrets, direnv vb. kazansın.
 const isTest = process.env.NODE_ENV === 'test';
 const envFile = isTest ? '.env.test' : '.env';
-dotenv.config({ path: envFile, override: isTest });
+dotenv.config({ path: envFile, override: isTest, quiet: true });
 
 const envSchema = z
   .object({

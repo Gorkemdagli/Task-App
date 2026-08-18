@@ -27,7 +27,11 @@ const capabilities: ReadonlyArray<{
 
 export function FeaturesSection() {
   return (
-    <section id="features" aria-labelledby="features-title" className="landing-features">
+    <section
+      id="features"
+      aria-labelledby="features-title"
+      className="landing-features landing-viewport-section"
+    >
       <div className="landing-section-shell">
         <header className="landing-section-heading">
           <h2 id="features-title">Özellikler</h2>

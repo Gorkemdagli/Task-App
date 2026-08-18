@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react';
 import { NavSection } from './sections/NavSection';
 import { HeroSection } from './sections/HeroSection';
 import { InteractivePreviewSection } from './sections/InteractivePreviewSection';
@@ -13,6 +14,12 @@ import { FooterSection } from './sections/FooterSection';
  * - Logged-in users hit landing with CTAs pointing to /dashboard.
  */
 export function LandingPage() {
+  useLayoutEffect(() => {
+    document.documentElement.classList.add('landing-scroll-snap');
+
+    return () => document.documentElement.classList.remove('landing-scroll-snap');
+  }, []);
+
   return (
     <div className="theme-landing min-h-screen">
       <NavSection />

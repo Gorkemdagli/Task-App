@@ -6,6 +6,12 @@ import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/com
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 
+const sectionLinks = [
+  { href: '#interactive-app-preview', label: 'Demo' },
+  { href: '#features', label: 'Özellikler' },
+  { href: '#workflow', label: 'İş akışı' },
+] as const;
+
 export function NavSection() {
   const { isAuthenticated } = useAuth();
   const { mode, toggleMode } = useTheme();
@@ -15,9 +21,17 @@ export function NavSection() {
   return (
     <header className="landing-nav">
       <div className="landing-nav__inner">
-        <Link to="/" className="landing-wordmark" aria-label="TaskFlow anasayfa">
+        <a href="#hero" className="landing-wordmark" aria-label="TaskFlow anasayfa">
           TaskFlow
-        </Link>
+        </a>
+
+        <nav className="landing-nav__links" aria-label="Sayfa bölümleri">
+          {sectionLinks.map((link) => (
+            <a key={link.href} href={link.href}>
+              {link.label}
+            </a>
+          ))}
+        </nav>
 
         <div className="landing-nav__actions">
           <button
@@ -57,6 +71,14 @@ export function NavSection() {
           </SheetTrigger>
           <SheetContent side="right" className="theme-landing landing-mobile-sheet">
             <SheetTitle className="text-landing-text">TaskFlow</SheetTitle>
+
+            <nav className="landing-mobile-links" aria-label="Mobil sayfa bölümleri">
+              {sectionLinks.map((link) => (
+                <SheetClose key={link.href} asChild>
+                  <a href={link.href}>{link.label}</a>
+                </SheetClose>
+              ))}
+            </nav>
 
             <button type="button" onClick={toggleMode} className="landing-mobile-theme">
               {mode === 'dark' ? <Sun aria-hidden /> : <Moon aria-hidden />}

@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronDown } from 'lucide-react';
 import { TeamMemberList } from '@/components/teams/TeamMemberList';
 import { cn } from '@/lib/utils';
+import { MAX_RENDERED_RECORDS } from '@/lib/listLimits';
 
 const roleLabel: Record<AuthUser['role'], string> = {
   companyAdmin: 'Şirket Admini',
@@ -77,7 +78,7 @@ export function TeamSidebarSection({
             {teamsLoading ? (
               <div className="px-2 py-1 text-xs text-secondary-foreground">Yükleniyor…</div>
             ) : teams.length > 0 ? (
-              teams.map((team) => (
+              teams.slice(0, MAX_RENDERED_RECORDS).map((team) => (
                 <DropdownMenuItem
                   key={team.id}
                   onSelect={() => onSelectTeam(team.id)}
@@ -88,6 +89,9 @@ export function TeamSidebarSection({
               ))
             ) : (
               <div className="px-2 py-1 text-xs text-secondary-foreground">Takım yok</div>
+            )}
+            {teams.length > MAX_RENDERED_RECORDS && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">İlk 100 kayıt gösteriliyor.</p>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

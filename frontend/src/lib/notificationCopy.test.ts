@@ -33,6 +33,26 @@ describe('notificationCopy', () => {
     });
     expect(text).toBe('Göreve yeni bir yorum eklendi');
   });
+  it('formats message_received without task payload', () => {
+    expect(
+      notificationCopy({ type: 'message_received', payload: { actorName: 'Mert Kaya' } }),
+    ).toBe('Mert Kaya sana mesaj g\u00f6nderdi');
+  });
+
+  it('formats task status notifications', () => {
+    expect(
+      notificationCopy({
+        type: 'task_status_pending',
+        payload: { taskId: 't1', taskTitle: 'Login fix', proposedStatus: 'done' },
+      }),
+    ).toContain('Login fix');
+    expect(
+      notificationCopy({
+        type: 'task_status_changed',
+        payload: { taskId: 't1', taskTitle: 'Login fix', newStatus: 'done' },
+      }),
+    ).toContain('Yap\u0131ld\u0131');
+  });
 });
 
 describe('notificationActorInitials', () => {

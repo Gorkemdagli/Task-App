@@ -17,6 +17,12 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
     Medium: 'bg-priority-medium text-black',
     Low: 'bg-priority-low text-black',
   };
+  const label: Record<Priority, string> = {
+    Critical: 'Kritik',
+    High: 'Yüksek',
+    Medium: 'Orta',
+    Low: 'Düşük',
+  };
 
   return (
     <span
@@ -26,7 +32,7 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
         className,
       )}
     >
-      {priority}
+      {label[priority]}
     </span>
   );
 }

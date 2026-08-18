@@ -19,20 +19,24 @@ function avatarInitial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?';
 }
 
-function Avatar({
-  member,
-  size = 'sm',
-}: {
-  member: AssigneeOption;
-  size?: 'xs' | 'sm' | 'md';
-}) {
+const SIZE_PX = { xs: 20, sm: 24, md: 28 } as const;
+
+function Avatar({ member, size = 'sm' }: { member: AssigneeOption; size?: 'xs' | 'sm' | 'md' }) {
   const sizeClass =
-    size === 'xs' ? 'h-5 w-5 text-[10px]' : size === 'md' ? 'h-7 w-7 text-xs' : 'h-6 w-6 text-[11px]';
+    size === 'xs'
+      ? 'h-5 w-5 text-[10px]'
+      : size === 'md'
+        ? 'h-7 w-7 text-xs'
+        : 'h-6 w-6 text-[11px]';
   if (member.avatarUrl) {
     return (
       <img
         src={member.avatarUrl}
         alt={member.fullName}
+        loading="lazy"
+        decoding="async"
+        width={SIZE_PX[size]}
+        height={SIZE_PX[size]}
         className={cn(sizeClass, 'rounded-full object-cover')}
       />
     );
@@ -50,7 +54,13 @@ function Avatar({
   );
 }
 
-export function AssigneePicker({ members, value, onChange, disabled, invalid }: AssigneePickerProps) {
+export function AssigneePicker({
+  members,
+  value,
+  onChange,
+  disabled,
+  invalid,
+}: AssigneePickerProps) {
   const selectedSet = new Set(value);
   const selectedMembers = value
     .map((id) => members.find((m) => m.id === id))
@@ -125,7 +135,9 @@ export function AssigneePicker({ members, value, onChange, disabled, invalid }: 
                     <Avatar member={m} size="sm" />
                     <span className="flex-1 truncate">{m.fullName}</span>
                     <DropdownMenu.ItemIndicator>
-                      <span aria-hidden className="text-primary">✓</span>
+                      <span aria-hidden className="text-primary">
+                        ✓
+                      </span>
                     </DropdownMenu.ItemIndicator>
                   </DropdownMenu.CheckboxItem>
                 );

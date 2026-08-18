@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MemberList } from './MemberList';
 import { AddMemberModal } from './AddMemberModal';
 import { TaskCardRow } from '@/components/tasks/TaskCardRow';
+import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,7 +21,8 @@ export function TeamDetailPage() {
   const { data: tasksData, isLoading: tasksLoading } = useTasks(
     id ? { teamId: id, includeArchived: false, limit: 100 } : undefined,
   );
-  const tasks = tasksData?.tasks ?? [];
+  const allTasks = tasksData?.tasks ?? [];
+  const tasks = allTasks.slice(0, MAX_RENDERED_RECORDS);
 
   // Per-team admin: companyAdmin her zaman; aksi halde viewer'ın bu takımdaki
   // TeamMember.role === 'teamAdmin' olmalı (JWT'ye güvenemeyiz — per-team rol
@@ -82,11 +84,14 @@ export function TeamDetailPage() {
           {canManageMembers && <AddMemberModal teamId={team.id} />}
         </div>
         <MemberList
-          members={team.members}
+          members={team.members.slice(0, MAX_RENDERED_RECORDS)}
           teamId={team.id}
           canManageMembers={canManageMembers}
           canManageRoles={canManageRoles}
         />
+        {team.members.length > MAX_RENDERED_RECORDS && (
+          <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -110,6 +115,9 @@ export function TeamDetailPage() {
               <TaskCardRow key={t.id} task={t} />
             ))}
           </div>
+        )}
+        {allTasks.length > MAX_RENDERED_RECORDS && (
+          <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
         )}
       </div>
     </section>

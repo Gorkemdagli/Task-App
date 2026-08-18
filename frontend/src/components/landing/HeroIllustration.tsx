@@ -1,37 +1,53 @@
-import { ArrowRight, UserRound } from 'lucide-react';
-
 export function HeroIllustration() {
   return (
-    <div role="group" className="landing-hero-artifact" aria-label="TaskFlow görev durumu örneği">
-      <div className="landing-hero-artifact__rail" aria-hidden>
-        <span>Yapılacak</span>
-        <ArrowRight />
-        <strong>Yapılıyor</strong>
-        <ArrowRight />
-        <span>Yapıldı</span>
+    <a
+      href="#interactive-app-preview"
+      className="landing-hero-board"
+      aria-label="Etkileşimli TaskFlow demosuna git"
+    >
+      <span className="landing-hero-board__progress" aria-hidden>
+        <span className="landing-hero-board__progress-edge landing-hero-board__progress-edge--top" />
+        <span className="landing-hero-board__progress-edge landing-hero-board__progress-edge--right" />
+        <span className="landing-hero-board__progress-edge landing-hero-board__progress-edge--bottom" />
+        <span className="landing-hero-board__progress-edge landing-hero-board__progress-edge--left" />
+      </span>
+
+      <div className="landing-hero-board__toolbar" aria-hidden>
+        <strong>Platform Takımı</strong>
+        <span>Canlı pano</span>
       </div>
 
-      <article>
-        <div>
-          <span className="landing-hero-artifact__priority">Yüksek öncelik</span>
-          <span className="landing-hero-artifact__status">Yapılıyor</span>
+      <div className="landing-hero-board__columns" aria-hidden>
+        <div className="landing-hero-board__column">
+          <header>
+            <span>Yapılacak</span>
+            <span>2</span>
+          </header>
+          <div className="landing-hero-board__task landing-hero-board__task--quiet">
+            <strong>WebSocket bağlantısını izle</strong>
+            <span>SD</span>
+          </div>
+          <div className="landing-hero-board__task landing-hero-board__task--moving">
+            <strong>API sınırlarını doğrula</strong>
+            <span>GK</span>
+          </div>
         </div>
-        <h2>OAuth akışı</h2>
-        <dl>
-          <div>
-            <dt>
-              <UserRound aria-hidden /> Sorumlu
-            </dt>
-            <dd>Görkem Kaya</dd>
+
+        <div className="landing-hero-board__column">
+          <header>
+            <span>Yapılıyor</span>
+            <span>1</span>
+          </header>
+          <div className="landing-hero-board__task landing-hero-board__task--quiet">
+            <strong>Bildirim akışını sadeleştir</strong>
+            <span>DA</span>
           </div>
-          <div>
-            <dt>Termin</dt>
-            <dd>
-              <time dateTime="2026-08-22">22 Ağu 2026</time>
-            </dd>
-          </div>
-        </dl>
-      </article>
-    </div>
+        </div>
+      </div>
+
+      <span className="landing-hero-board__link" aria-hidden>
+        Canlı demoyu aç <span>↘</span>
+      </span>
+    </a>
   );
 }

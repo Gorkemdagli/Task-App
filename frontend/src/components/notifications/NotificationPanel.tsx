@@ -1,15 +1,16 @@
 import { Button } from '@/components/ui/button';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
 import { EmptyNotifications } from './EmptyNotifications';
 import { NotificationItem } from './NotificationItem';
-import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
 
 interface NotificationPanelProps {
   items: NotificationItemType[];
   unreadCount: number;
-  nextCursor: string | null;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
   onLoadMore: () => void;
-  onItemNavigate: (taskId: string) => void;
+  onSelect: (item: NotificationItemType) => void;
   onMarkAllRead: () => void;
   onViewAll: () => void;
 }
@@ -17,9 +18,10 @@ interface NotificationPanelProps {
 export function NotificationPanel({
   items,
   unreadCount,
-  nextCursor,
+  hasNextPage,
+  isFetchingNextPage,
   onLoadMore,
-  onItemNavigate,
+  onSelect,
   onMarkAllRead,
   onViewAll,
 }: NotificationPanelProps) {
@@ -51,18 +53,19 @@ export function NotificationPanel({
           >
             {items.map((item) => (
               <li key={item.id}>
-                <NotificationItem item={item} onNavigate={onItemNavigate} />
+                <NotificationItem item={item} onSelect={onSelect} />
               </li>
             ))}
           </ul>
 
-          {nextCursor && (
+          {hasNextPage && (
             <div className="border-t border-border px-2 py-2">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={onLoadMore}
+                disabled={isFetchingNextPage}
                 className="w-full"
               >
                 Daha fazla

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Topbar } from './Topbar';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
@@ -32,9 +32,15 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
     <QueryClientProvider client={client}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Topbar />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
 }
 
 describe('Topbar', () => {
@@ -106,6 +112,7 @@ describe('Topbar', () => {
 
 describe('Topbar notification bell', () => {
   let getSpy: MockInstance;
+  let patchSpy: MockInstance;
 
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });
@@ -114,6 +121,7 @@ describe('Topbar notification bell', () => {
 
   afterEach(() => {
     getSpy.mockRestore();
+    patchSpy?.mockRestore();
   });
 
   it('renders notification badge when unreadCount > 0', async () => {
@@ -138,9 +146,106 @@ describe('Topbar notification bell', () => {
     renderTopbar(member, qc);
 
     await waitFor(() => {
-      expect(getSpy).toHaveBeenCalledWith('/notifications');
+      expect(getSpy).toHaveBeenCalledWith('/notifications?limit=10');
     });
     expect(screen.queryByTestId('notification-badge')).not.toBeInTheDocument();
+  });
+
+  it('does not mark all notifications read when bell opens', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'n1',
+            type: 'task_assigned',
+            payload: { taskId: 'task-1', taskTitle: 'GÃ¶rev' },
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        unreadCount: 1,
+        nextCursor: null,
+      },
+    } as never);
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    expect(patchSpy).not.toHaveBeenCalledWith('/notifications/read-all');
+  });
+
+  it('marks unread task notification read then navigates to task', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'n1',
+            type: 'task_assigned',
+            payload: { taskId: 'task-1', taskTitle: 'GÃ¶rev' },
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        unreadCount: 1,
+        nextCursor: null,
+      },
+    } as never);
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
+    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1');
+  });
+
+  it('navigates read task notification without single-read PATCH', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'n1',
+            type: 'task_assigned',
+            payload: { taskId: 'task-1', taskTitle: 'GÃ¶rev' },
+            readAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        unreadCount: 0,
+        nextCursor: null,
+      },
+    } as never);
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    expect(patchSpy).not.toHaveBeenCalledWith('/notifications/n1/read');
+    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1');
+  });
+
+  it('marks all notifications read from panel action', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'n1',
+            type: 'task_assigned',
+            payload: { taskId: 'task-1', taskTitle: 'GÃ¶rev' },
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        unreadCount: 1,
+        nextCursor: null,
+      },
+    } as never);
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    await userEvent.click(screen.getByTestId('mark-all-read'));
+    expect(patchSpy).toHaveBeenCalledWith('/notifications/read-all');
   });
 
   it('drops previous user notifications when auth user changes', async () => {

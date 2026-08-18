@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import {
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useDraggable,
   useDroppable,
@@ -10,7 +19,6 @@ import {
   useSensors,
   type Announcements,
   type DragEndEvent,
-  type DragStartEvent,
   type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import { LayoutDashboard, ListTodo, RotateCcw, ShieldCheck, X } from 'lucide-react';
@@ -30,11 +38,15 @@ import {
 
 export interface LandingProductDemoProps {
   guidedBeat: DemoBeat;
-  onManualInteraction(): void;
+  onManualInteraction(interaction?: DemoInteraction): void;
 }
+
+export type DemoInteraction = 'move-task' | 'switch-view' | 'switch-team' | 'open-task' | 'reset';
 
 const views: readonly DemoView[] = ['board', 'tasks'];
 const statuses: readonly DemoStatus[] = ['todo', 'in-progress', 'done'];
+const AUTO_RESET_INTERVAL_MS = 20_000;
+const AUTO_RESET_INTERVAL_SECONDS = AUTO_RESET_INTERVAL_MS / 1_000;
 
 const columnId = (status: DemoStatus) => `landing-demo-column-${status}`;
 
@@ -65,7 +77,7 @@ const demoKeyboardCoordinates: KeyboardCoordinateGetter = (event, { context }) =
 
 const viewLabel: Record<DemoView, string> = {
   board: 'Pano',
-  tasks: 'Görevler',
+  tasks: 'Liste',
 };
 
 const statusLabel: Record<DemoStatus, string> = {
@@ -103,10 +115,11 @@ function TaskButton({
     <button
       ref={setNodeRef}
       type="button"
-      {...attributes}
-      {...listeners}
+      {...(draggable ? attributes : {})}
+      {...(draggable ? listeners : {})}
       aria-label={task.title}
       aria-pressed={selected}
+      data-demo-draggable={draggable || undefined}
       data-demo-task-id={task.id}
       data-dragging={isDragging || undefined}
       onClick={onSelect}
@@ -172,8 +185,12 @@ function DemoColumn({
 
 export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingProductDemoProps) {
   const [state, dispatch] = useReducer(demoReducer, undefined, createInitialDemoState);
+  const [secondsUntilReset, setSecondsUntilReset] = useState(AUTO_RESET_INTERVAL_SECONDS);
+  const onManualInteractionRef = useRef(onManualInteraction);
+  const nextResetAtRef = useRef(0);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: demoKeyboardCoordinates }),
   );
   const tabRefs = useRef<Record<DemoView, HTMLButtonElement | null>>({
@@ -181,9 +198,37 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
     tasks: null,
   });
 
+  const resetDemo = useCallback(() => {
+    dispatch({ type: 'reset' });
+    onManualInteractionRef.current('reset');
+    nextResetAtRef.current = Date.now() + AUTO_RESET_INTERVAL_MS;
+    setSecondsUntilReset(AUTO_RESET_INTERVAL_SECONDS);
+  }, []);
+
+  useEffect(() => {
+    onManualInteractionRef.current = onManualInteraction;
+  }, [onManualInteraction]);
+
   useEffect(() => {
     dispatch({ type: 'apply-guided-beat', beat: guidedBeat });
   }, [guidedBeat]);
+
+  useEffect(() => {
+    nextResetAtRef.current = Date.now() + AUTO_RESET_INTERVAL_MS;
+
+    const intervalId = window.setInterval(() => {
+      const secondsRemaining = Math.ceil((nextResetAtRef.current - Date.now()) / 1_000);
+
+      if (secondsRemaining <= 0) {
+        resetDemo();
+        return;
+      }
+
+      setSecondsUntilReset(secondsRemaining);
+    }, 1_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [resetDemo]);
 
   const teamTasks = useMemo(
     () => state.tasks.filter((task) => task.teamId === state.activeTeamId),
@@ -219,7 +264,17 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
     action: Exclude<DemoAction, { type: 'apply-guided-beat' } | { type: 'reset' }>,
   ) {
     dispatch(action);
-    onManualInteraction();
+    if (action.type === 'set-view') {
+      onManualInteraction('switch-view');
+    } else if (action.type === 'select-team') {
+      onManualInteraction('switch-team');
+    } else if (action.type === 'select-task' && action.taskId) {
+      onManualInteraction('open-task');
+    } else if (action.type === 'move-task') {
+      onManualInteraction('move-task');
+    } else {
+      onManualInteraction();
+    }
   }
 
   function selectView(view: DemoView) {
@@ -247,16 +302,13 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
     tabRefs.current[nextView]?.focus({ preventScroll: true });
   }
 
-  function handleDragStart(_event: DragStartEvent) {
-    onManualInteraction();
-  }
-
   function handleDragEnd(event: DragEndEvent) {
     const taskId = String(event.active.id);
     const status = event.over?.data.current?.status;
 
     if (isDemoStatus(status)) {
       dispatch({ type: 'move-task', taskId, status });
+      onManualInteraction('move-task');
     }
 
     window.setTimeout(() => {
@@ -312,18 +364,30 @@ export function LandingProductDemo({ guidedBeat, onManualInteraction }: LandingP
           variant="secondary"
           type="button"
           data-demo-reset
-          onClick={() => dispatch({ type: 'reset' })}
+          aria-describedby="landing-demo-reset-status"
+          onClick={resetDemo}
         >
           <RotateCcw data-icon="inline-start" aria-hidden />
           Demoyu sıfırla
+          <span aria-hidden className="tabular-nums">
+            · {secondsUntilReset} sn
+          </span>
         </Button>
       </div>
+
+      <p className="landing-demo-mobile-hint">
+        Mobilde karta dokunun; açılan görev detayından yeni durumu seçin.
+      </p>
+
+      <p id="landing-demo-reset-status" className="sr-only">
+        Demo otomatik olarak 20 saniyede bir sıfırlanır. Sonraki sıfırlamaya {secondsUntilReset}{' '}
+        saniye kaldı.
+      </p>
 
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         accessibility={{ announcements }}
-        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <div className="landing-product-demo__workspace">

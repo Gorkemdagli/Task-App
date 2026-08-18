@@ -24,6 +24,7 @@ import { getDisplayStatus } from '@/lib/taskDisplay';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog';
 import { ProposeConfirmDialog } from '@/components/tasks/ProposeConfirmDialog';
+import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 
 const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'todo', label: 'Yapılacak', color: 'border-status-todo' },
@@ -85,10 +86,11 @@ export function DashboardPage() {
     newStatus: TaskStatus;
   } | null>(null);
 
-  const sortedTeams = useMemo(
+  const allSortedTeams = useMemo(
     () => [...(teams ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'tr')),
     [teams],
   );
+  const sortedTeams = allSortedTeams.slice(0, MAX_RENDERED_RECORDS);
   const teamId =
     activeTeamId && sortedTeams.some((team) => team.id === activeTeamId)
       ? activeTeamId
@@ -97,7 +99,9 @@ export function DashboardPage() {
   const { data: teamDetail } = useTeam(teamId ?? undefined);
   const teamMembers = teamDetail?.members ?? [];
 
-  const { data: tasksData, isLoading } = useTasks(teamId ? { teamId } : undefined);
+  const { data: tasksData, isLoading } = useTasks(
+    teamId ? { teamId, limit: MAX_RENDERED_RECORDS } : undefined,
+  );
   const tasks = tasksData?.tasks ?? EMPTY_TASKS;
 
   const updateStatusDirect = useUpdateTaskStatus();
@@ -169,6 +173,9 @@ export function DashboardPage() {
         )}
       </div>
 
+      {allSortedTeams.length > MAX_RENDERED_RECORDS && (
+        <p className="mb-2 text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+      )}
       {sortedTeams.length > 1 && (
         <div className="mb-6 flex flex-wrap gap-2">
           {sortedTeams.map((t) => (
