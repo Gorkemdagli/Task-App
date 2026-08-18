@@ -27,7 +27,7 @@
     "prepare": "husky install"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
     "@lhci/cli": "0.15.1",
@@ -39,7 +39,6 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "prettier": "^3.9.6",
-    "puppeteer": "25.7.0",
     "typescript": "^5.9.3"
   }
 }
