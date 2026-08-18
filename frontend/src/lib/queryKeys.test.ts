@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { queryKeys } from './queryKeys';
 
 describe('queryKeys', () => {
+  it('identifies tenantless-safe profile cache by user ID', () => {
+    expect(queryKeys.profile('user-1')).toEqual(['profile', 'user-1']);
+  });
+
   it('scopes team and task keys by tenant and team', () => {
     expect(queryKeys.teams.list('tenant-a')).toEqual(['tenant', 'tenant-a', 'teams']);
     expect(queryKeys.team.detail('tenant-a', 'team-1')).toEqual([

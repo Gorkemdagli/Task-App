@@ -21,8 +21,9 @@ describe('authStore', () => {
       fullName: 'A',
       role: 'companyAdmin',
       tenantId: 't1',
+      avatarUrl: 'https://cdn.test/avatar.webp',
     });
-    expect(useAuthStore.getState().user?.email).toBe('a@x.com');
+    expect(useAuthStore.getState().user?.avatarUrl).toBe('https://cdn.test/avatar.webp');
   });
 
   it('clearAuth resets both', () => {

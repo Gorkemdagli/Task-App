@@ -1,6 +1,7 @@
 import type { ListTasksFilters } from '@/hooks/tasks';
 
 export const queryKeys = {
+  profile: (userId: string) => ['profile', userId] as const,
   tenant: (tenantId: string) => ['tenant', tenantId] as const,
   teams: {
     list: (tenantId: string) => ['tenant', tenantId, 'teams'] as const,
