@@ -8,6 +8,7 @@ module.exports = {
         'http://127.0.0.1:4173/dashboard',
       ],
       puppeteerScript: './scripts/lighthouse-auth.cjs',
+      puppeteerLaunchOptions: { args: ['--no-sandbox'] },
       settings: { disableStorageReset: true },
     },
     assert: {
