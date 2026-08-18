@@ -48,6 +48,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
       - run: npm ci
       - name: Write backend performance environment
         working-directory: backend
@@ -94,6 +95,8 @@ jobs:
           PERF_EMAIL: perf-api-admin@taskflow.test
         run: npm run perf:api
       - run: npm run perf:lighthouse
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
