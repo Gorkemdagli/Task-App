@@ -25,4 +25,5 @@ export const queryKeys = {
   },
   notifications: (tenantId: string) => ['tenant', tenantId, 'notifications'] as const,
   companyUsers: (tenantId: string) => ['tenant', tenantId, 'company-users'] as const,
+  companySettings: (tenantId: string) => ['tenant', tenantId, 'company-settings'] as const,
 };

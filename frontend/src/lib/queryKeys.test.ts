@@ -30,4 +30,12 @@ describe('queryKeys', () => {
       { limit: 20 },
     ]);
   });
+
+  it('scopes company settings by tenant', () => {
+    expect(queryKeys.companySettings('tenant-a')).toEqual([
+      'tenant',
+      'tenant-a',
+      'company-settings',
+    ]);
+  });
 });

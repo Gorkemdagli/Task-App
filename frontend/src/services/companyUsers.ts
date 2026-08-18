@@ -16,6 +16,11 @@ export type UpdateCompanyPermissionsInput = {
   teamRoles: Array<{ teamId: string; role: 'member' | 'teamAdmin' }>;
 };
 
+export async function addCompanyUser(displayId: string): Promise<CompanyUser> {
+  const response = await api.post<CompanyUser>('/company/users', { displayId });
+  return response.data;
+}
+
 export async function listCompanyUsers(): Promise<CompanyUser[]> {
   const response = await api.get<CompanyUser[]>('/company/users');
   return response.data;

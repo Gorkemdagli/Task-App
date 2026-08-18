@@ -41,3 +41,14 @@ export function useUpdateCompanyPermissions() {
     },
   });
 }
+
+export function useAddCompanyUser() {
+  const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: (displayId: string) => companyUsersService.addCompanyUser(displayId),
+    onSuccess: () => {
+      if (tenantId) queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(tenantId) });
+    },
+  });
+}
