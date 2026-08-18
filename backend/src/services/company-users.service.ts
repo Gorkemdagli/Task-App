@@ -2,6 +2,7 @@ import type { TenantDb } from '../db/types';
 import { AppError } from '../middleware/errorHandler';
 import { isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import type {
+  AddCompanyUserInput,
   UpdateCompanyPermissionsInput,
   UpdateCompanyRoleInput,
 } from '../schemas/users.schema';
@@ -78,6 +79,43 @@ export async function listCompanyUsers(db: TenantDb, actor: Actor): Promise<Comp
     orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
   });
   return users.map(toCompanyUser);
+}
+
+export async function addCompanyUser(
+  db: TenantDb,
+  actor: Actor,
+  input: AddCompanyUserInput,
+): Promise<CompanyUser> {
+  const tenantId = assertCompanyAdmin(actor);
+  const claimed = await db.user.updateMany({
+    where: { displayId: input.displayId, tenantId: null },
+    data: { tenantId, role: 'member' },
+  });
+
+  if (claimed.count === 1) {
+    const user = await db.user.findFirst({
+      where: { displayId: input.displayId, tenantId },
+      select: {
+        id: true,
+        displayId: true,
+        email: true,
+        fullName: true,
+        avatarUrl: true,
+        role: true,
+      },
+    });
+    if (!user) throw new AppError(404, 'Kullanıcı bulunamadı', 'USER_NOT_FOUND');
+    return toCompanyUser({ ...user, teamMembers: [] });
+  }
+
+  const existing = await db.user.findFirst({
+    where: { displayId: input.displayId, tenantId },
+    select: { id: true },
+  });
+  if (existing) {
+    throw new AppError(409, 'Kullanıcı zaten bu şirkette', 'USER_ALREADY_IN_COMPANY');
+  }
+  throw new AppError(404, 'Kullanıcı bulunamadı', 'USER_NOT_FOUND');
 }
 
 export async function updateCompanyRole(
