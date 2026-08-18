@@ -18,6 +18,7 @@ export type MediaStorageAdapter = {
 
 export type MediaStorage = {
   uploadAvatar(userId: string, data: Buffer): Promise<{ path: string; url: string }>;
+  uploadLogo(tenantId: string, data: Buffer): Promise<{ path: string; url: string }>;
   deletePath(path: string): Promise<void>;
 };
 
@@ -50,16 +51,22 @@ function createSupabaseAdapter(): MediaStorageAdapter {
 export function createMediaStorage(
   adapter: MediaStorageAdapter = createSupabaseAdapter(),
 ): MediaStorage {
+  async function uploadWebp(path: string, data: Buffer): Promise<{ path: string; url: string }> {
+    try {
+      await adapter.upload(path, data, { contentType: 'image/webp', upsert: false });
+      return { path, url: adapter.getPublicUrl(path) };
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'MEDIA_UPLOAD_FAILED') throw error;
+      throw new AppError(502, 'Media upload failed', 'MEDIA_UPLOAD_FAILED');
+    }
+  }
+
   return {
     async uploadAvatar(userId, data) {
-      const path = `avatars/${userId}/${randomUUID()}.webp`;
-      try {
-        await adapter.upload(path, data, { contentType: 'image/webp', upsert: false });
-        return { path, url: adapter.getPublicUrl(path) };
-      } catch (error) {
-        if (error instanceof AppError && error.code === 'MEDIA_UPLOAD_FAILED') throw error;
-        throw new AppError(502, 'Media upload failed', 'MEDIA_UPLOAD_FAILED');
-      }
+      return uploadWebp(`avatars/${userId}/${randomUUID()}.webp`, data);
+    },
+    async uploadLogo(tenantId, data) {
+      return uploadWebp(`logos/${tenantId}/${randomUUID()}.webp`, data);
     },
     deletePath(path) {
       return adapter.remove(path);
@@ -83,6 +90,22 @@ export function parseOwnedAvatarPath(url: string | null, userId: string): string
   return path;
 }
 
+export function parseOwnedLogoPath(url: string | null, tenantId: string): string | null {
+  if (!url) return null;
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    return null;
+  }
+  const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
+  if (!pathname.startsWith(marker)) return null;
+  const path = pathname.slice(marker.length);
+  if (!path.startsWith(`logos/${tenantId}/`) || !path.endsWith('.webp')) return null;
+  if (path.split('/').length !== 3) return null;
+  return path;
+}
+
 export async function deleteOwnedAvatar(
   storage: MediaStorage,
   url: string | null,
@@ -96,6 +119,23 @@ export async function deleteOwnedAvatar(
     logger.warn(
       { error: error instanceof Error ? error.message : 'unknown' },
       'avatar cleanup failed',
+    );
+  }
+}
+
+export async function deleteOwnedLogo(
+  storage: MediaStorage,
+  url: string | null,
+  tenantId: string,
+): Promise<void> {
+  const path = parseOwnedLogoPath(url, tenantId);
+  if (!path) return;
+  try {
+    await storage.deletePath(path);
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : 'unknown' },
+      'logo cleanup failed',
     );
   }
 }

@@ -7,7 +7,11 @@ import {
   uploadLimiter,
   writeLimiter,
 } from '../middleware/rateLimitProfiles';
-import { uploadAvatar } from '../middleware/imageUpload';
+import { uploadAvatar, uploadCompanyLogo } from '../middleware/imageUpload';
+import { transformCompanyLogo } from '../lib/media';
+import { createMediaStorage, deleteOwnedLogo } from '../lib/mediaStorage';
+import { requireTenant } from '../lib/permissions';
+import { AppError } from '../lib/appError';
 import { runTenantRequest } from '../http/runTenantRequest';
 import {
   updateCompanyPermissionsSchema,
@@ -66,6 +70,39 @@ usersRouter.post(
 );
 
 usersRouter.use(requireAuth, requireRole(['companyAdmin']));
+
+usersRouter.post(
+  '/company/settings/logo',
+  uploadLimiter,
+  uploadCompanyLogo,
+  async (req, res, next) => {
+    let uploaded: { path: string; url: string } | undefined;
+    let storage: ReturnType<typeof createMediaStorage> | undefined;
+    try {
+      const tenantId = requireTenant(req.user!);
+      if (!req.file?.buffer || !req.file.mimetype) {
+        throw new AppError(400, 'Invalid image', 'INVALID_IMAGE');
+      }
+      storage = createMediaStorage();
+      const transformed = await transformCompanyLogo(req.file.buffer, req.file.mimetype);
+      uploaded = await storage.uploadLogo(tenantId, transformed);
+      const replacement = await runTenantRequest(req, (db, actor) =>
+        companySettingsService.replaceCompanyLogo(db, actor, uploaded!.url),
+      );
+      await deleteOwnedLogo(storage, replacement.previousLogoUrl, tenantId);
+      res.json(replacement.settings);
+    } catch (error) {
+      if (uploaded) {
+        try {
+          await storage?.deletePath(uploaded.path);
+        } catch {
+          // New object cleanup is best effort after a database failure.
+        }
+      }
+      next(error);
+    }
+  },
+);
 
 usersRouter.get('/company/settings', authenticatedReadLimiter, async (req, res, next) => {
   try {

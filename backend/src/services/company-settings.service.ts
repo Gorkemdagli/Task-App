@@ -60,3 +60,34 @@ export async function updateCompanySettings(
     throw error;
   }
 }
+
+export async function updateCompanyLogoUrl(
+  db: TenantDb,
+  actor: Actor,
+  logoUrl: string,
+): Promise<CompanySettings> {
+  const tenantId = assertCompanyAdmin(actor);
+  return db.tenant.update({
+    where: { id: tenantId },
+    data: { logoUrl },
+    select: companySettingsSelect,
+  });
+}
+
+export async function replaceCompanyLogo(
+  db: TenantDb,
+  actor: Actor,
+  logoUrl: string,
+): Promise<{ settings: CompanySettings; previousLogoUrl: string | null }> {
+  const tenantId = assertCompanyAdmin(actor);
+  const current = await db.tenant.findFirst({
+    where: { id: tenantId },
+    select: { logoUrl: true },
+  });
+  if (!current) throw new AppError(404, 'Şirket bulunamadı', 'NOT_FOUND');
+
+  return {
+    settings: await updateCompanyLogoUrl(db, actor, logoUrl),
+    previousLogoUrl: current.logoUrl,
+  };
+}

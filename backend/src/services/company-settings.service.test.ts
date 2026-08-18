@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
-import { getCompanySettings, updateCompanySettings } from './company-settings.service';
+import {
+  getCompanySettings,
+  replaceCompanyLogo,
+  updateCompanyLogoUrl,
+  updateCompanySettings,
+} from './company-settings.service';
 
 function mockDb() {
   return {
@@ -74,6 +79,34 @@ describe('company settings service', () => {
     await expect(updateCompanySettings(db, admin, { name: 'New Company' })).rejects.toMatchObject({
       statusCode: 409,
       code: 'COMPANY_NAME_ALREADY_IN_USE',
+    });
+  });
+
+  it('updates only tenant logo URL', async () => {
+    const db = mockDb();
+    vi.mocked(db.tenant.update).mockResolvedValue({
+      ...settings,
+      logoUrl: 'https://storage.test/new.webp',
+    } as never);
+
+    await expect(updateCompanyLogoUrl(db, admin, 'https://storage.test/new.webp')).resolves.toEqual(
+      { ...settings, logoUrl: 'https://storage.test/new.webp' },
+    );
+    expect(db.tenant.update).toHaveBeenCalledWith({
+      where: { id: 'tenant-a' },
+      data: { logoUrl: 'https://storage.test/new.webp' },
+      select: { id: true, name: true, slug: true, description: true, logoUrl: true },
+    });
+  });
+
+  it('returns previous tenant-owned logo for post-commit cleanup', async () => {
+    const db = mockDb();
+    vi.mocked(db.tenant.findFirst).mockResolvedValue({ logoUrl: 'old-logo' } as never);
+    vi.mocked(db.tenant.update).mockResolvedValue({ ...settings, logoUrl: 'new-logo' } as never);
+
+    await expect(replaceCompanyLogo(db, admin, 'new-logo')).resolves.toEqual({
+      settings: { ...settings, logoUrl: 'new-logo' },
+      previousLogoUrl: 'old-logo',
     });
   });
 });

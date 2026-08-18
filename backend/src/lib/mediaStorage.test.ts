@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMediaStorage, deleteOwnedAvatar, parseOwnedAvatarPath } from './mediaStorage';
+import {
+  createMediaStorage,
+  deleteOwnedAvatar,
+  deleteOwnedLogo,
+  parseOwnedAvatarPath,
+  parseOwnedLogoPath,
+} from './mediaStorage';
 
 describe('mediaStorage', () => {
   it('uploads user-scoped WebP and returns public URL', async () => {
@@ -54,5 +60,39 @@ describe('mediaStorage', () => {
       code: 'MEDIA_UPLOAD_FAILED',
       message: 'Media upload failed',
     });
+  });
+
+  it('uploads company logos under tenant-owned paths', async () => {
+    const adapter = {
+      upload: vi.fn().mockResolvedValue(undefined),
+      getPublicUrl: vi.fn((path: string) => `https://storage.test/${path}`),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = createMediaStorage(adapter);
+
+    const result = await storage.uploadLogo('tenant-a', Buffer.from('webp'));
+
+    expect(result.path).toMatch(/^logos\/tenant-a\/.+\.webp$/);
+    expect(adapter.upload).toHaveBeenCalledWith(result.path, Buffer.from('webp'), {
+      contentType: 'image/webp',
+      upsert: false,
+    });
+  });
+
+  it('parses and removes only tenant-owned logo paths', async () => {
+    const adapter = {
+      upload: vi.fn(),
+      getPublicUrl: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = createMediaStorage(adapter);
+    const url =
+      'https://storage.test/storage/v1/object/public/taskflow-media/logos/tenant-a/logo.webp';
+
+    expect(parseOwnedLogoPath(url, 'tenant-a')).toBe('logos/tenant-a/logo.webp');
+    expect(parseOwnedLogoPath(url, 'tenant-b')).toBeNull();
+
+    await deleteOwnedLogo(storage, url, 'tenant-a');
+    expect(adapter.remove).toHaveBeenCalledWith('logos/tenant-a/logo.webp');
   });
 });

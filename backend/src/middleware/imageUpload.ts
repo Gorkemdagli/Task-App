@@ -5,19 +5,29 @@ import { AVATAR_MAX_INPUT_BYTES } from '../lib/media';
 
 const acceptedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-const parser = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: AVATAR_MAX_INPUT_BYTES, files: 1 },
-  fileFilter: (_req, file, callback) => {
-    if (!acceptedMimeTypes.has(file.mimetype)) {
-      callback(new AppError(400, 'Invalid image', 'INVALID_IMAGE'));
-      return;
-    }
-    callback(null, true);
-  },
-}).single('avatar');
+function createParser(field: string) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: AVATAR_MAX_INPUT_BYTES, files: 1 },
+    fileFilter: (_req, file, callback) => {
+      if (!acceptedMimeTypes.has(file.mimetype)) {
+        callback(new AppError(400, 'Invalid image', 'INVALID_IMAGE'));
+        return;
+      }
+      callback(null, true);
+    },
+  }).single(field);
+}
 
-export function uploadAvatar(req: Request, res: Response, next: NextFunction): void {
+const avatarParser = createParser('avatar');
+const logoParser = createParser('logo');
+
+function handleUpload(
+  parser: ReturnType<typeof createParser>,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   parser(req, res, (error) => {
     if (!error) {
       next();
@@ -33,4 +43,12 @@ export function uploadAvatar(req: Request, res: Response, next: NextFunction): v
     }
     next(new AppError(400, 'Invalid image', 'INVALID_IMAGE'));
   });
+}
+
+export function uploadAvatar(req: Request, res: Response, next: NextFunction): void {
+  handleUpload(avatarParser, req, res, next);
+}
+
+export function uploadCompanyLogo(req: Request, res: Response, next: NextFunction): void {
+  handleUpload(logoParser, req, res, next);
 }

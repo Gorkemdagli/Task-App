@@ -41,3 +41,32 @@ export async function transformAvatar(buffer: Buffer, declaredMime: string): Pro
     throw invalidImage();
   }
 }
+
+export async function transformCompanyLogo(buffer: Buffer, declaredMime: string): Promise<Buffer> {
+  if (buffer.byteLength > AVATAR_MAX_INPUT_BYTES) {
+    throw new AppError(413, 'File too large', 'FILE_TOO_LARGE');
+  }
+
+  const expectedFormat = declaredFormats[declaredMime as keyof typeof declaredFormats];
+  if (!expectedFormat) throw invalidImage();
+
+  const image = sharp(buffer);
+  let metadata: Metadata;
+  try {
+    metadata = await image.metadata();
+  } catch {
+    throw invalidImage();
+  }
+
+  if (metadata.format !== expectedFormat) throw invalidImage();
+
+  try {
+    return await image
+      .rotate()
+      .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+      .webp()
+      .toBuffer();
+  } catch {
+    throw invalidImage();
+  }
+}

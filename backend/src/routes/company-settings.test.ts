@@ -1,9 +1,24 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { vi } from 'vitest';
+import sharp from 'sharp';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
+
+const media = vi.hoisted(() => ({
+  storage: {
+    uploadLogo: vi.fn(),
+    deletePath: vi.fn().mockResolvedValue(undefined),
+  },
+  deleteOwnedLogo: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../lib/mediaStorage', () => ({
+  createMediaStorage: () => media.storage,
+  deleteOwnedLogo: media.deleteOwnedLogo,
+}));
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();
@@ -23,7 +38,12 @@ function auth(token: string) {
 }
 
 describe('company settings routes', () => {
-  beforeEach(cleanDb);
+  beforeEach(async () => {
+    await cleanDb();
+    media.storage.uploadLogo.mockReset();
+    media.storage.deletePath.mockReset().mockResolvedValue(undefined);
+    media.deleteOwnedLogo.mockReset().mockResolvedValue(undefined);
+  });
 
   it('requires authentication', async () => {
     const response = await request(createApp()).get('/api/v1/company/settings');
@@ -248,5 +268,73 @@ describe('company settings routes', () => {
     expect([adminA.user.tenantId, adminB.user.tenantId]).toContain(updated?.tenantId);
     expect(updated?.role).toBe('member');
     expect(await prisma.teamMember.count({ where: { userId: target.user.id } })).toBe(0);
+  });
+
+  it('uploads logo before tenant update and cleans previous owned logo', async () => {
+    const admin = await register({
+      fullName: 'Logo Admin',
+      email: 'logo-admin@company.test',
+      password: 'hunter22',
+      companyName: 'Logo Company',
+    });
+    const previousUrl = `https://storage.test/storage/v1/object/public/taskflow-media/logos/${admin.user.tenantId}/old.webp`;
+    await prisma.tenant.update({
+      where: { id: admin.user.tenantId! },
+      data: { logoUrl: previousUrl },
+    });
+    media.storage.uploadLogo.mockResolvedValue({
+      path: `logos/${admin.user.tenantId}/new.webp`,
+      url: `https://storage.test/storage/v1/object/public/taskflow-media/logos/${admin.user.tenantId}/new.webp`,
+    });
+    const image = await sharp({
+      create: { width: 80, height: 40, channels: 3, background: 'blue' },
+    })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post('/api/v1/company/settings/logo')
+      .set(auth(admin.accessToken))
+      .attach('logo', image, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.logoUrl).toContain('/logos/');
+    expect(media.storage.uploadLogo).toHaveBeenCalledWith(admin.user.tenantId, expect.any(Buffer));
+    expect(media.deleteOwnedLogo).toHaveBeenCalledWith(
+      media.storage,
+      previousUrl,
+      admin.user.tenantId,
+    );
+  });
+
+  it('removes uploaded logo when tenant update fails', async () => {
+    const admin = await register({
+      fullName: 'Logo Rollback',
+      email: 'logo-rollback@company.test',
+      password: 'hunter22',
+      companyName: 'Logo Rollback Company',
+    });
+    media.storage.uploadLogo.mockImplementation(async () => {
+      await prisma.tenant.delete({ where: { id: admin.user.tenantId! } });
+      return {
+        path: `logos/${admin.user.tenantId}/orphan.webp`,
+        url: `https://storage.test/logos/${admin.user.tenantId}/orphan.webp`,
+      };
+    });
+    const image = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: 'green' },
+    })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post('/api/v1/company/settings/logo')
+      .set(auth(admin.accessToken))
+      .attach('logo', image, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(404);
+    expect(media.storage.deletePath).toHaveBeenCalledWith(
+      `logos/${admin.user.tenantId}/orphan.webp`,
+    );
   });
 });
