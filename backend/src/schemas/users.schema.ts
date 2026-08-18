@@ -1,5 +1,45 @@
 import { z } from 'zod';
 
+export const updateCurrentUserSchema = z
+  .object({
+    fullName: z.string().trim().min(2).max(100).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    currentPassword: z.string().min(1).max(72).optional(),
+    newPassword: z.string().min(8).max(72).optional(),
+    notifyTaskAssigned: z.boolean().optional(),
+    notifyTaskCommented: z.boolean().optional(),
+    notifyMessageReceived: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const hasMutation = [
+      input.fullName,
+      input.email,
+      input.newPassword,
+      input.notifyTaskAssigned,
+      input.notifyTaskCommented,
+      input.notifyMessageReceived,
+    ].some((value) => value !== undefined);
+
+    if (!hasMutation) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [],
+        message: 'At least one profile field is required',
+      });
+    }
+
+    if ((input.email !== undefined || input.newPassword !== undefined) && !input.currentPassword) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['currentPassword'],
+        message: 'Current password is required for credential changes',
+      });
+    }
+  });
+
+export type UpdateCurrentUserInput = z.infer<typeof updateCurrentUserSchema>;
+
 export const updateCompanyRoleSchema = z.object({
   role: z.enum(['member', 'companyAdmin']),
 });

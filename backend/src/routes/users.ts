@@ -4,14 +4,44 @@ import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
 import { runTenantRequest } from '../http/runTenantRequest';
-import { updateCompanyPermissionsSchema, updateCompanyRoleSchema } from '../schemas/users.schema';
+import {
+  updateCompanyPermissionsSchema,
+  updateCompanyRoleSchema,
+  updateCurrentUserSchema,
+} from '../schemas/users.schema';
 import * as companyUsersService from '../services/company-users.service';
+import * as profileService from '../services/profile.service';
+import { clearRefreshCookie } from '../lib/cookie';
 
 export const usersRouter = Router();
 
-usersRouter.get('/users/me', requireAuth, authenticatedReadLimiter, (req, res) => {
-  res.json(req.user!);
+usersRouter.get('/users/me', requireAuth, authenticatedReadLimiter, async (req, res, next) => {
+  try {
+    res.json(await profileService.getCurrentProfile(req.user!.id));
+  } catch (error) {
+    next(error);
+  }
 });
+
+usersRouter.patch(
+  '/users/me',
+  requireAuth,
+  writeLimiter,
+  validateBody(updateCurrentUserSchema),
+  async (req, res, next) => {
+    try {
+      const result = await profileService.updateCurrentProfile(req.user!.id, req.body);
+      if (result.sessionRevoked) {
+        clearRefreshCookie(res);
+        res.json({ sessionRevoked: true });
+        return;
+      }
+      res.json(result.profile);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 usersRouter.use(requireAuth, requireRole(['companyAdmin']));
 

@@ -43,6 +43,10 @@ describe('GET /api/v1/users/me', () => {
       role: 'companyAdmin',
       tenantId: registerResponse.body.user.tenantId,
       tenantName: 'Acme Me',
+      avatarUrl: null,
+      notifyTaskAssigned: true,
+      notifyTaskCommented: true,
+      notifyMessageReceived: true,
     });
   });
 
@@ -119,5 +123,79 @@ describe('GET /api/v1/users/me', () => {
           .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
       ).status,
     ).toBe(401);
+  });
+});
+
+describe('PATCH /api/v1/users/me', () => {
+  beforeEach(cleanDb);
+
+  it('updates profile fields and returns canonical data', async () => {
+    const registerResponse = await registerUser({ email: 'update-me@example.com' });
+
+    const response = await request(createApp())
+      .patch('/api/v1/users/me')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .send({
+        fullName: '  Updated Name  ',
+        notifyTaskAssigned: false,
+        notifyMessageReceived: false,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: registerResponse.body.user.id,
+      fullName: 'Updated Name',
+      email: 'update-me@example.com',
+      notifyTaskAssigned: false,
+      notifyTaskCommented: true,
+      notifyMessageReceived: false,
+    });
+    expect(response.body.sessionRevoked).toBeUndefined();
+  });
+
+  it('rejects credential changes with a wrong current password', async () => {
+    const registerResponse = await registerUser({ email: 'wrong-password@example.com' });
+
+    const response = await request(createApp())
+      .patch('/api/v1/users/me')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .send({ email: 'changed@example.com', currentPassword: 'wrong-password' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_CURRENT_PASSWORD');
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: registerResponse.body.user.id } })).email,
+    ).toBe('wrong-password@example.com');
+  });
+
+  it('revokes the current access session after an email change', async () => {
+    const registerResponse = await registerUser({ email: 'revoke-me@example.com' });
+
+    const response = await request(createApp())
+      .patch('/api/v1/users/me')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .send({ email: 'revoked@example.com', currentPassword: 'hunter22' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ sessionRevoked: true });
+    expect(response.headers['set-cookie']?.[0]).toMatch(/refreshToken=;/);
+    expect(
+      (
+        await request(createApp())
+          .get('/api/v1/users/me')
+          .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      ).status,
+    ).toBe(401);
+  });
+
+  it('rejects immutable profile fields', async () => {
+    const registerResponse = await registerUser({ email: 'immutable-me@example.com' });
+
+    const response = await request(createApp())
+      .patch('/api/v1/users/me')
+      .set('Authorization', `Bearer ${registerResponse.body.accessToken}`)
+      .send({ displayId: 'ABCDE' });
+
+    expect(response.status).toBe(400);
   });
 });
