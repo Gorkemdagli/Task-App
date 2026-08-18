@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Write backend test environment
+        working-directory: backend
+        shell: bash
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          PORT=3001
+          DATABASE_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          DIRECT_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          REDIS_URL=redis://localhost:6380
+          JWT_ACCESS_SECRET=ci-access-secret-2026
+          JWT_REFRESH_SECRET=ci-refresh-secret-2026
+          CLIENT_URL=http://localhost:5173
+          LOG_LEVEL=error
+          EOF
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx dotenv -e .env.test -- prisma generate
+      - name: Start test services
+        run: docker compose up -d postgres-test redis-test
+      - run: npm run ci:check
+
+  performance:
+    runs-on: ubuntu-latest
+    env:
+      PERF_EMAIL: perf-admin@taskflow.test
+      PERF_PASSWORD: PerfOnly-2026!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+      - run: npm ci
+      - name: Write backend performance environment
+        working-directory: backend
+        shell: bash
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          PORT=3001
+          DATABASE_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          DIRECT_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          REDIS_URL=redis://localhost:6380
+          JWT_ACCESS_SECRET=ci-access-secret-2026
+          JWT_REFRESH_SECRET=ci-refresh-secret-2026
+          CLIENT_URL=http://localhost:5173
+          LOG_LEVEL=error
+          EOF
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx dotenv -e .env.test -- prisma generate
+      - name: Start test services
+        run: docker compose up -d postgres-test redis-test
+      - name: Reset test database and create Lighthouse fixture
+        run: |
+          npm run test --workspace=backend -- src/test/health.test.ts
+          npm run perf:fixture --workspace=backend
+      - run: npm run build:backend
+      - run: npm run build:frontend
+      - name: Start backend and frontend preview
+        shell: bash
+        run: |
+          npx dotenv -e backend/.env.test -- npm run start --workspace=backend > "$RUNNER_TEMP/taskflow-backend.log" 2>&1 &
+          npm run preview --workspace=frontend -- --host 127.0.0.1 > "$RUNNER_TEMP/taskflow-frontend.log" 2>&1 &
+          for attempt in {1..60}; do
+            curl --fail --silent http://127.0.0.1:3001/api/v1/health >/dev/null && \
+              curl --fail --silent http://127.0.0.1:4173/ >/dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/taskflow-backend.log"
+          cat "$RUNNER_TEMP/taskflow-frontend.log"
+          exit 1
+      - run: npm run perf:bundle
+      - name: Run API performance benchmark
+        env:
+          PERF_EMAIL: perf-api-admin@taskflow.test
+        run: npm run perf:api
+      - run: npm run perf:lighthouse
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: artifacts/lighthouse

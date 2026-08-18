@@ -1,0 +1,37 @@
+import { useLayoutEffect } from 'react';
+import { NavSection } from './sections/NavSection';
+import { HeroSection } from './sections/HeroSection';
+import { InteractivePreviewSection } from './sections/InteractivePreviewSection';
+import { FeaturesSection } from './sections/FeaturesSection';
+import { WorkflowSection } from './sections/WorkflowSection';
+import { FooterSection } from './sections/FooterSection';
+
+/**
+ * Public marketing landing at `/`.
+ * - Mounted outside `ProtectedRoute` (see App.tsx) so logged-out users see it.
+ * - `.theme-landing` scope remaps `--color-primary` to the spec's orange
+ *   (Button.primary inside this tree becomes orange, app stays amber).
+ * - Logged-in users hit landing with CTAs pointing to /dashboard.
+ */
+export function LandingPage() {
+  useLayoutEffect(() => {
+    document.documentElement.classList.add('landing-scroll-snap');
+
+    return () => document.documentElement.classList.remove('landing-scroll-snap');
+  }, []);
+
+  return (
+    <div className="theme-landing min-h-screen">
+      <NavSection />
+
+      <main>
+        <HeroSection />
+        <InteractivePreviewSection />
+        <FeaturesSection />
+        <WorkflowSection />
+      </main>
+
+      <FooterSection />
+    </div>
+  );
+}

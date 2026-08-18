@@ -16,13 +16,10 @@ interface HealthResponse {
 
 healthRouter.get('/', async (_req, res) => {
   const [dbOk, redisOk] = await Promise.all([
-    prisma
-      .$queryRaw`SELECT 1`
-      .then(() => 'up' as const)
-      .catch(() => 'down' as const),
+    prisma.$queryRaw`SELECT 1`.then(() => 'up' as const).catch(() => 'down' as const),
     redis
       .ping()
-      .then((r) => (r === 'PONG' ? 'up' as const : 'down' as const))
+      .then((r) => (r === 'PONG' ? ('up' as const) : ('down' as const)))
       .catch(() => 'down' as const),
   ]);
 
