@@ -1,0 +1,36 @@
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { AppError } from '../lib/appError';
+import type { TenantTransactionOptions } from './withTenant';
+
+const DEFAULT_OPTIONS: Required<Pick<TenantTransactionOptions, 'maxRetries'>> = {
+  maxRetries: 1,
+};
+
+function isSerializationConflict(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
+}
+
+export async function withUserContext<T>(
+  userId: string,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  options?: TenantTransactionOptions,
+): Promise<T> {
+  const { maxRetries, isolationLevel } = { ...DEFAULT_OPTIONS, ...options };
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SET LOCAL ROLE authenticated`;
+          await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
+          return fn(tx);
+        },
+        { timeout: 30000, ...(isolationLevel ? { isolationLevel } : {}) },
+      );
+    } catch (error) {
+      if (!isSerializationConflict(error)) throw error;
+    }
+  }
+
+  throw new AppError(409, 'İşlem çakışması. Lütfen tekrar deneyin.', 'CONCURRENT_MODIFICATION');
+}

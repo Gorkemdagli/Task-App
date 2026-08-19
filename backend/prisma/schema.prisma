@@ -43,6 +43,14 @@ enum NotificationType {
   task_status_changed
 }
 
+enum CompanyInvitationStatus {
+  pending
+  accepted
+  rejected
+  cancelled
+  expired
+}
+
 // Health-check placeholder — kaldırılmadı (CLAUDE.md §3, /health route SELECT 1 raw query kullanıyor)
 model HealthCheck {
   id        String   @id @default(cuid())
@@ -63,6 +71,7 @@ model Tenant {
 
   users User[]
   teams Team[]
+  companyInvitations CompanyInvitation[]
 
   @@map("tenants")
 }
@@ -95,6 +104,8 @@ model User {
   sentMessages     Message[]       @relation("MessageSender")
   receivedMessages Message[]       @relation("MessageReceiver")
   notifications    Notification[]
+  receivedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationRecipient")
+  sentCompanyInvitations     CompanyInvitation[] @relation("CompanyInvitationInviter")
 
   @@index([tenantId])
   @@map("users")
@@ -252,4 +263,26 @@ model Notification {
   @@index([userId, readAt])
   @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+model CompanyInvitation {
+  id              String                  @id @default(uuid()) @db.Uuid
+  tenantId        String                  @map("tenant_id") @db.Uuid
+  recipientUserId String                  @map("recipient_user_id") @db.Uuid
+  invitedByUserId String                  @map("invited_by_user_id") @db.Uuid
+  status          CompanyInvitationStatus @default(pending)
+  companyName     String                  @map("company_name")
+  inviterName     String                  @map("inviter_name")
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime                @map("expires_at") @db.Timestamptz(6)
+  respondedAt     DateTime?               @map("responded_at") @db.Timestamptz(6)
+  cancelledAt     DateTime?               @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipient User   @relation("CompanyInvitationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  inviter   User   @relation("CompanyInvitationInviter", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status])
+  @@index([recipientUserId, status, expiresAt])
+  @@map("company_invitations")
 }
