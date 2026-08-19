@@ -3,6 +3,7 @@ import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
 import { signAccessToken, signRefreshToken } from '../src/lib/jwt';
 import { registerIssuedTokens } from '../src/lib/sessionStore';
+import { redis } from '../src/lib/redis';
 
 export interface PerformanceFixture {
   tenantId: string;
@@ -66,25 +67,36 @@ export async function deletePerformanceFixture(tenantId: string): Promise<void> 
   await prisma.tenant.delete({ where: { id: tenantId } });
 }
 
+export async function closePerformanceFixtureResources(): Promise<void> {
+  try {
+    await prisma.$disconnect();
+  } finally {
+    await redis.quit();
+  }
+}
+
 if (process.argv[1]?.endsWith('performance-fixture.ts')) {
   const run = async () => {
-    const email = process.env.PERF_EMAIL;
-    const password = process.env.PERF_PASSWORD;
-    if (!email || !password) throw new Error('PERF_EMAIL and PERF_PASSWORD are required');
-    const fixture = await createPerformanceFixture({
-      slug: 'perf-lighthouse',
-      email,
-      password,
-      replaceExisting: true,
-    });
-    console.log(
-      JSON.stringify({
-        tenantId: fixture.tenantId,
-        teamId: fixture.teamId,
-        taskId: fixture.taskId,
-      }),
-    );
-    await prisma.$disconnect();
+    try {
+      const email = process.env.PERF_EMAIL;
+      const password = process.env.PERF_PASSWORD;
+      if (!email || !password) throw new Error('PERF_EMAIL and PERF_PASSWORD are required');
+      const fixture = await createPerformanceFixture({
+        slug: 'perf-lighthouse',
+        email,
+        password,
+        replaceExisting: true,
+      });
+      console.log(
+        JSON.stringify({
+          tenantId: fixture.tenantId,
+          teamId: fixture.teamId,
+          taskId: fixture.taskId,
+        }),
+      );
+    } finally {
+      await closePerformanceFixtureResources();
+    }
   };
   void run().catch((error) => {
     console.error(error);
