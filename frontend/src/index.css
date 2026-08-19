@@ -427,6 +427,18 @@ html.landing-scroll-snap {
   color: var(--landing-text);
 }
 
+.theme-landing .landing-hero-illustration {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.theme-landing .landing-hero-motion-toggle {
+  align-self: center;
+}
+
 .theme-landing .landing-hero-board__progress {
   position: absolute;
   z-index: 2;
@@ -1265,5 +1277,33 @@ html.landing-scroll-snap {
 
   .theme-landing [data-demo-task-id][data-dragging] {
     transform: none !important;
+  }
+
+  .theme-landing .landing-hero-board[data-motion-override='on'] .landing-hero-board__task--moving {
+    animation: landing-card-handoff var(--landing-hero-cycle) cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
+  .theme-landing
+    .landing-hero-board[data-motion-override='on']
+    .landing-hero-board__progress-edge--top {
+    animation: landing-progress-top var(--landing-hero-cycle) linear infinite;
+  }
+
+  .theme-landing
+    .landing-hero-board[data-motion-override='on']
+    .landing-hero-board__progress-edge--right {
+    animation: landing-progress-right var(--landing-hero-cycle) linear infinite;
+  }
+
+  .theme-landing
+    .landing-hero-board[data-motion-override='on']
+    .landing-hero-board__progress-edge--bottom {
+    animation: landing-progress-bottom var(--landing-hero-cycle) linear infinite;
+  }
+
+  .theme-landing
+    .landing-hero-board[data-motion-override='on']
+    .landing-hero-board__progress-edge--left {
+    animation: landing-progress-left var(--landing-hero-cycle) linear infinite;
   }
 }
