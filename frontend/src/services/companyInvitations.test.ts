@@ -21,7 +21,9 @@ const invitation = {
 };
 
 describe('company invitations service', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('normalizes display IDs and emails before creating invitations', async () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({ data: invitation } as never);

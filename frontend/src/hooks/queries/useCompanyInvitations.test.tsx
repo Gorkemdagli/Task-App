@@ -34,6 +34,10 @@ const invitation = {
   createdAt: '2026-08-20T00:00:00.000Z',
   expiresAt: '2026-08-27T00:00:00.000Z',
   respondedAt: null,
+  recipientUserId: 'user-2',
+  recipientDisplayId: 'USER2',
+  recipientEmail: 'user2@example.com',
+  recipientFullName: 'User Two',
 };
 
 function wrapper(client: QueryClient) {
@@ -47,7 +51,9 @@ describe('company invitation query hooks', () => {
     useAuthStore.setState({ accessToken: 'token', user: tenantlessUser });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('loads incoming invitations for tenantless authenticated users', async () => {
     const list = vi
