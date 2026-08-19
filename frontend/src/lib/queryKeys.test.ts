@@ -38,4 +38,13 @@ describe('queryKeys', () => {
       'company-settings',
     ]);
   });
+
+  it('keeps incoming invitations identity-scoped and admin invitations tenant-scoped', () => {
+    expect(queryKeys.companyInvitations.incoming()).toEqual(['company-invitations', 'incoming']);
+    expect(queryKeys.companyInvitations.admin('tenant-a')).toEqual([
+      'tenant',
+      'tenant-a',
+      'company-invitations',
+    ]);
+  });
 });
