@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { redis } from '../src/lib/redis';
+import { revokeAllUserSessions } from '../src/lib/sessionStore';
 import { createPerformanceFixture, deletePerformanceFixture } from './performance-fixture';
 
 export function percentile(values: number[], fraction: number): number {
@@ -69,6 +70,7 @@ async function main() {
       server.close((error) => (error ? reject(error) : resolve())),
     );
     await deletePerformanceFixture(fixture.tenantId);
+    await revokeAllUserSessions(fixture.userId);
     await prisma.$disconnect();
     await redis.quit();
   }

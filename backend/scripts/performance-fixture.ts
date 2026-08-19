@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
-import { signAccessToken } from '../src/lib/jwt';
+import { signAccessToken, signRefreshToken } from '../src/lib/jwt';
+import { registerIssuedTokens } from '../src/lib/sessionStore';
 
 export interface PerformanceFixture {
   tenantId: string;
@@ -48,12 +49,16 @@ export async function createPerformanceFixture(input: {
     },
   });
 
+  const accessToken = signAccessToken(user.id, tenant.id);
+  const refreshToken = signRefreshToken(user.id, tenant.id);
+  await registerIssuedTokens(accessToken, refreshToken, user.id);
+
   return {
     tenantId: tenant.id,
     teamId: team.id,
     taskId: task.id,
     userId: user.id,
-    accessToken: signAccessToken(user.id, tenant.id),
+    accessToken,
   };
 }
 
