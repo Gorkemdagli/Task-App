@@ -8,6 +8,13 @@ import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUiStore } from '@/stores/uiStore';
 import { api } from '@/lib/api';
+import * as companyInvitationsService from '@/services/companyInvitations';
+
+vi.mock('@/services/companyInvitations', () => ({
+  listMyCompanyInvitations: vi.fn(),
+  acceptCompanyInvitation: vi.fn(),
+  rejectCompanyInvitation: vi.fn(),
+}));
 
 const member: AuthUser = {
   id: '1',
@@ -20,6 +27,19 @@ const member: AuthUser = {
 };
 
 const admin: AuthUser = { ...member, role: 'companyAdmin' };
+
+const tenantless: AuthUser = { ...member, id: 'tenantless-user', tenantId: null };
+
+const invitation = {
+  id: 'invitation-1',
+  tenantId: 'tenant-a',
+  companyName: 'Acme',
+  inviterName: 'Ada Admin',
+  status: 'pending' as const,
+  createdAt: '2026-08-20T00:00:00.000Z',
+  expiresAt: '2026-08-27T00:00:00.000Z',
+  respondedAt: null,
+};
 
 function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   if (initialUser) {
@@ -50,6 +70,9 @@ describe('Topbar', () => {
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
     useUiStore.setState({ mobileSheetOpen: false });
     document.documentElement.removeAttribute('data-theme');
+    vi.mocked(companyInvitationsService.listMyCompanyInvitations).mockResolvedValue([]);
+    vi.mocked(companyInvitationsService.acceptCompanyInvitation).mockReset();
+    vi.mocked(companyInvitationsService.rejectCompanyInvitation).mockReset();
     getSpy = vi.spyOn(api, 'get').mockResolvedValue({
       data: { items: [], unreadCount: 0, nextCursor: null },
     } as never);
@@ -65,6 +88,11 @@ describe('Topbar', () => {
     expect(screen.getByRole('link', { name: 'Ana Pano' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Takımlar' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Görevler' })).toBeInTheDocument();
+  });
+
+  it('keeps profile out of the centered primary navigation', () => {
+    renderTopbar(member);
+    expect(screen.queryByRole('link', { name: 'Profil' })).not.toBeInTheDocument();
   });
 
   it('hides /permissions link for member role', () => {
@@ -116,6 +144,7 @@ describe('Topbar notification bell', () => {
 
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });
+    vi.mocked(companyInvitationsService.listMyCompanyInvitations).mockResolvedValue([]);
     getSpy = vi.spyOn(api, 'get');
   });
 
@@ -246,6 +275,19 @@ describe('Topbar notification bell', () => {
     await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(screen.getByTestId('mark-all-read'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/read-all');
+  });
+
+  it('adds pending invitations to bell badge and panel', async () => {
+    vi.mocked(companyInvitationsService.listMyCompanyInvitations).mockResolvedValue([invitation]);
+    getSpy.mockResolvedValue({
+      data: { items: [], unreadCount: 0, nextCursor: null },
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    renderTopbar(tenantless, qc);
+
+    await waitFor(() => expect(screen.getByTestId('notification-badge')).toHaveTextContent('1'));
+    await userEvent.click(screen.getByTestId('notification-bell'));
+    expect(await screen.findByTestId('company-invitation-card-invitation-1')).toBeInTheDocument();
   });
 
   it('drops previous user notifications when auth user changes', async () => {

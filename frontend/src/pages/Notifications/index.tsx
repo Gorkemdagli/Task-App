@@ -6,6 +6,12 @@ import {
   useNotifications,
   type NotificationItem as NotificationItemType,
 } from '@/hooks/useNotifications';
+import {
+  useAcceptCompanyInvitation,
+  useCompanyInvitations,
+  useRejectCompanyInvitation,
+} from '@/hooks/queries/useCompanyInvitations';
+import { CompanyInvitationCard } from '@/components/company/CompanyInvitationCard';
 import { NotificationItem } from '@/components/notifications/NotificationItem';
 import { EmptyNotifications } from '@/components/notifications/EmptyNotifications';
 import { Button } from '@/components/ui/button';
@@ -49,6 +55,10 @@ function groupByDay(items: NotificationItemType[], now: Date): DayGroup[] {
 export function NotificationsPage() {
   const navigate = useNavigate();
   const notifications = useNotifications();
+  const companyInvitations = useCompanyInvitations();
+  const invitations = companyInvitations.data ?? [];
+  const acceptInvitation = useAcceptCompanyInvitation();
+  const rejectInvitation = useRejectCompanyInvitation();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
   const items = useMemo(
@@ -61,12 +71,26 @@ export function NotificationsPage() {
   );
   const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
   const groups = useMemo(() => groupByDay(items, new Date()), [items]);
+  const isNotificationLoading = notifications.isPending && notifications.fetchStatus !== 'idle';
 
   function handleSelect(item: NotificationItemType) {
     if (item.type === 'message_received') return;
     if (item.readAt === null) markRead.mutate(item.id);
     navigate(`/tasks/${item.payload.taskId}`);
   }
+
+  function handleAcceptInvitation(id: string) {
+    acceptInvitation.mutate(id, { onSuccess: () => navigate('/dashboard') });
+  }
+
+  function handleRejectInvitation(id: string) {
+    rejectInvitation.mutate(id);
+  }
+
+  const invitationError =
+    acceptInvitation.isError || rejectInvitation.isError
+      ? 'Davet işlemi başarısız oldu.'
+      : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
@@ -96,7 +120,44 @@ export function NotificationsPage() {
         </div>
       )}
 
-      {notifications.isPending ? (
+      {companyInvitations.isError && (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          Davetler yüklenemedi.
+        </div>
+      )}
+
+      {companyInvitations.isPending && companyInvitations.fetchStatus !== 'idle' && (
+        <div
+          data-testid="company-invitations-loading"
+          className="h-20 animate-pulse rounded-md bg-secondary"
+        />
+      )}
+
+      {invitations.length > 0 && (
+        <section data-testid="company-invitations-section" className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Şirket davetleri
+          </h2>
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-2">
+            {invitations.map((invitation) => (
+              <CompanyInvitationCard
+                key={invitation.id}
+                invitation={invitation}
+                onAccept={handleAcceptInvitation}
+                onReject={handleRejectInvitation}
+                isAccepting={acceptInvitation.isPending}
+                isRejecting={rejectInvitation.isPending}
+                error={invitationError}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {isNotificationLoading ? (
         <ul data-testid="notifications-page-skeleton" className="flex flex-col gap-2" aria-hidden>
           {[0, 1, 2].map((i) => (
             <li key={i} className="h-14 animate-pulse rounded-md bg-secondary" />
@@ -142,9 +203,9 @@ export function NotificationsPage() {
             </Button>
           )}
         </>
-      ) : (
+      ) : items.length > 0 || invitations.length === 0 ? (
         <EmptyNotifications />
-      )}
+      ) : null}
     </div>
   );
 }

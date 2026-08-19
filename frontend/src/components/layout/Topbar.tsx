@@ -21,6 +21,11 @@ import {
   useMarkNotificationRead,
   useMarkAllRead,
 } from '@/hooks/useNotifications';
+import {
+  useAcceptCompanyInvitation,
+  useCompanyInvitations,
+  useRejectCompanyInvitation,
+} from '@/hooks/queries/useCompanyInvitations';
 import type { NotificationItem } from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
@@ -52,6 +57,11 @@ function TopbarContent() {
   const notifications = useNotifications();
   const items = notifications.data?.pages.flatMap((page) => page.items) ?? [];
   const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
+  const companyInvitations = useCompanyInvitations();
+  const invitations = companyInvitations.data ?? [];
+  const acceptInvitation = useAcceptCompanyInvitation();
+  const rejectInvitation = useRejectCompanyInvitation();
+  const notificationCount = unreadCount + invitations.length;
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
@@ -70,13 +80,23 @@ function TopbarContent() {
     navigate('/login', { replace: true });
   }
 
+  function handleAcceptInvitation(id: string) {
+    acceptInvitation.mutate(id, { onSuccess: () => navigate('/dashboard') });
+  }
+
+  function handleRejectInvitation(id: string) {
+    rejectInvitation.mutate(id);
+  }
+
   const initials = (user?.fullName ?? '?')
     .split(' ')
     .map((p) => p[0]?.toUpperCase() ?? '')
     .slice(0, 2)
     .join('');
 
-  const visibleNav = PRIMARY_NAV.filter((item) => canSeeNavItem(item, user?.role));
+  const visibleNav = PRIMARY_NAV.filter(
+    (item) => item.path !== '/profile' && canSeeNavItem(item, user?.role),
+  );
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-4 md:px-6">
@@ -135,13 +155,15 @@ function TopbarContent() {
             <button
               type="button"
               aria-label={
-                unreadCount > 0 ? `Bildirimler (${unreadCount} okunmamış)` : 'Bildirimler'
+                notificationCount > 0
+                  ? `Bildirimler (${notificationCount} okunmamış)`
+                  : 'Bildirimler'
               }
               data-testid="notification-bell"
               className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
             >
               <Bell className="h-5 w-5" />
-              <NotificationBadge count={unreadCount} />
+              <NotificationBadge count={notificationCount} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="bg-card p-0 text-foreground">
@@ -157,6 +179,16 @@ function TopbarContent() {
                 setBellOpen(false);
                 navigate('/notifications');
               }}
+              invitations={invitations}
+              onAcceptInvitation={handleAcceptInvitation}
+              onRejectInvitation={handleRejectInvitation}
+              isAcceptingInvitation={acceptInvitation.isPending}
+              isRejectingInvitation={rejectInvitation.isPending}
+              invitationError={
+                acceptInvitation.isError || rejectInvitation.isError
+                  ? 'Davet işlemi başarısız oldu.'
+                  : undefined
+              }
             />
           </DropdownMenuContent>
         </DropdownMenu>

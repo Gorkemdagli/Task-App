@@ -6,7 +6,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NotificationsPage } from './index';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { api } from '@/lib/api';
+import * as companyInvitationsService from '@/services/companyInvitations';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
+
+vi.mock('@/services/companyInvitations', () => ({
+  listMyCompanyInvitations: vi.fn(),
+  acceptCompanyInvitation: vi.fn(),
+  rejectCompanyInvitation: vi.fn(),
+}));
 
 const member: AuthUser = {
   id: '1',
@@ -16,6 +23,19 @@ const member: AuthUser = {
   role: 'member',
   tenantId: 't1',
   tenantName: 'Acme A.Ş.',
+};
+
+const tenantless: AuthUser = { ...member, id: 'tenantless-user', tenantId: null };
+
+const invitation = {
+  id: 'invitation-1',
+  tenantId: 'tenant-a',
+  companyName: 'Acme',
+  inviterName: 'Ada Admin',
+  status: 'pending' as const,
+  createdAt: '2026-08-20T00:00:00.000Z',
+  expiresAt: '2026-08-27T00:00:00.000Z',
+  respondedAt: null,
 };
 
 function makeItem(id: string, overrides: Partial<NotificationItemType> = {}): NotificationItemType {
@@ -51,6 +71,9 @@ describe('NotificationsPage', () => {
 
   beforeEach(() => {
     useAuthStore.setState({ accessToken: 't', user: member });
+    vi.mocked(companyInvitationsService.listMyCompanyInvitations).mockResolvedValue([]);
+    vi.mocked(companyInvitationsService.acceptCompanyInvitation).mockReset();
+    vi.mocked(companyInvitationsService.rejectCompanyInvitation).mockReset();
     getSpy = vi.spyOn(api, 'get');
     patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
   });
@@ -152,4 +175,29 @@ describe('NotificationsPage', () => {
     await screen.findByRole('alert', {}, { timeout: 15000 });
     expect(screen.getByRole('alert')).toHaveTextContent('Bildirimler yüklenemedi.');
   }, 15000);
+
+  it('renders tenantless pending invitations with accept and reject actions', async () => {
+    useAuthStore.setState({ accessToken: 't', user: tenantless });
+    getSpy.mockImplementation((url) => {
+      if (url === '/users/me/company-invitations') {
+        return Promise.resolve({ data: { invitations: [invitation], pendingCount: 1 } } as never);
+      }
+      return Promise.resolve({
+        data: { items: [], unreadCount: 0, nextCursor: null },
+      } as never);
+    });
+    vi.mocked(companyInvitationsService.listMyCompanyInvitations).mockResolvedValue([invitation]);
+    vi.mocked(companyInvitationsService.acceptCompanyInvitation).mockResolvedValue({
+      invitation: { ...invitation, status: 'accepted' },
+      user: { ...tenantless, tenantId: 'tenant-a', tenantName: 'Acme' },
+    });
+    renderPage();
+
+    expect(await screen.findByTestId('company-invitation-card-invitation-1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Kabul Et' }));
+    expect(companyInvitationsService.acceptCompanyInvitation).toHaveBeenCalledWith(
+      'invitation-1',
+      expect.any(Object),
+    );
+  });
 });

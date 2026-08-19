@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
+import type { CompanyInvitationDTO } from '@/services/companyInvitations';
+import { CompanyInvitationCard } from '@/components/company/CompanyInvitationCard';
 import { EmptyNotifications } from './EmptyNotifications';
 import { NotificationItem } from './NotificationItem';
 
@@ -13,6 +15,12 @@ interface NotificationPanelProps {
   onSelect: (item: NotificationItemType) => void;
   onMarkAllRead: () => void;
   onViewAll: () => void;
+  invitations?: CompanyInvitationDTO[];
+  onAcceptInvitation?: (id: string) => void;
+  onRejectInvitation?: (id: string) => void;
+  isAcceptingInvitation?: boolean;
+  isRejectingInvitation?: boolean;
+  invitationError?: string;
 }
 
 export function NotificationPanel({
@@ -24,8 +32,15 @@ export function NotificationPanel({
   onSelect,
   onMarkAllRead,
   onViewAll,
+  invitations = [],
+  onAcceptInvitation = () => undefined,
+  onRejectInvitation = () => undefined,
+  isAcceptingInvitation = false,
+  isRejectingInvitation = false,
+  invitationError,
 }: NotificationPanelProps) {
   const hasItems = items.length > 0;
+  const hasInvitations = invitations.length > 0;
 
   return (
     <div className="flex w-80 flex-col">
@@ -43,6 +58,27 @@ export function NotificationPanel({
         )}
       </div>
       <DropdownMenuSeparator className="bg-border" />
+
+      {hasInvitations && (
+        <section data-testid="company-invitation-list" className="border-b border-border">
+          <h4 className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Şirket davetleri
+          </h4>
+          <div className="flex flex-col gap-2 px-2 pb-2">
+            {invitations.map((invitation) => (
+              <CompanyInvitationCard
+                key={invitation.id}
+                invitation={invitation}
+                onAccept={onAcceptInvitation}
+                onReject={onRejectInvitation}
+                isAccepting={isAcceptingInvitation}
+                isRejecting={isRejectingInvitation}
+                error={invitationError}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {hasItems ? (
         <>
@@ -73,9 +109,9 @@ export function NotificationPanel({
             </div>
           )}
         </>
-      ) : (
+      ) : !hasInvitations ? (
         <EmptyNotifications />
-      )}
+      ) : null}
 
       <div className="border-t border-border px-4 py-2">
         <button
