@@ -65,6 +65,7 @@ function LocationProbe() {
 
 describe('Topbar', () => {
   let getSpy: MockInstance;
+  let postSpy: MockInstance;
 
   beforeEach(() => {
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
@@ -80,6 +81,7 @@ describe('Topbar', () => {
 
   afterEach(() => {
     getSpy.mockRestore();
+    postSpy?.mockRestore();
   });
 
   it('renders logo and primary nav links', () => {
@@ -135,6 +137,19 @@ describe('Topbar', () => {
     const menu = screen.getByRole('button', { name: 'Menüyü aç' });
     await user.click(menu);
     expect(useUiStore.getState().mobileSheetOpen).toBe(true);
+  });
+
+  it('revokes the server session before clearing local auth on logout', async () => {
+    const user = userEvent.setup();
+    postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    await user.click(screen.getByText('Oturumu Kapat'));
+
+    await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/auth/logout'));
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(screen.getByTestId('location')).toHaveTextContent('/login');
   });
 });
 

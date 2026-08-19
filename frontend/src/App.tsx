@@ -94,22 +94,19 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RootRoute() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  return accessToken ? <Navigate to="/dashboard" replace /> : <LandingPage />;
+}
+
 export default function App() {
   return (
     <AuthBootstrap>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route
-              path="/"
-              element={
-                useAuthStore.getState().accessToken ? (
-                  <Navigate to="/dashboard" replace />
-                ) : (
-                  <LandingPage />
-                )
-              }
-            />
+            <Route path="/" element={<RootRoute />} />
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import App from '../App';
 import { getMe } from '../lib/api';
 import { queryClient } from '../lib/react-query';
@@ -21,11 +22,28 @@ const canonicalUser = {
   tenantName: null,
 };
 
+function stubMatchMedia() {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+}
+
 describe('AuthBootstrap canonical flow', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/login');
     useAuthStore.setState({ accessToken: null, user: null });
     vi.mocked(getMe).mockReset();
+    stubMatchMedia();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
   });
   afterEach(() => {
@@ -104,6 +122,7 @@ describe('App', () => {
     window.history.pushState({}, '', '/login');
     useAuthStore.setState({ accessToken: null, user: null });
     vi.mocked(getMe).mockReset();
+    stubMatchMedia();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
   });
   afterEach(() => {
@@ -123,6 +142,25 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/giriş yap/i).length).toBeGreaterThan(0);
     });
+  });
+
+  it('re-evaluates the root route when auth state changes', async () => {
+    window.history.pushState({}, '', '/');
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('link', { name: 'Ücretsiz başla' }).length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      useAuthStore.setState({ accessToken: 'fresh', user: canonicalUser });
+    });
+
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard'));
   });
 
   it('renders the shared route fallback', () => {

@@ -30,6 +30,7 @@ import type { NotificationItem } from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
+import { api } from '@/lib/api';
 import { queryClient } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 
@@ -73,11 +74,15 @@ function TopbarContent() {
     navigate(`/tasks/${item.payload.taskId}`);
   }
 
-  function handleLogout() {
-    queryClient.clear();
-    clearAuth();
-    clearActiveTeam();
-    navigate('/login', { replace: true });
+  async function handleLogout() {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      queryClient.clear();
+      clearAuth();
+      clearActiveTeam();
+      navigate('/login', { replace: true });
+    }
   }
 
   function handleAcceptInvitation(id: string) {
