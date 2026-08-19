@@ -8,8 +8,12 @@ const tenantBId = randomUUID();
 const inviterId = randomUUID();
 const recipientId = randomUUID();
 const cancellationRecipientId = randomUUID();
+const claimedRecipientId = randomUUID();
+const tenantlessExpiryRecipientId = randomUUID();
 const invitationId = randomUUID();
 const cancellationInvitationId = randomUUID();
+const claimedRecipientInvitationId = randomUUID();
+const tenantlessExpiryInvitationId = randomUUID();
 
 async function createInvitation(id: string, recipientUserId = recipientId): Promise<void> {
   await prisma.$executeRaw`
@@ -67,10 +71,29 @@ describe('company invitation update RLS', () => {
           displayId: `CAN${cancellationRecipientId.slice(0, 6)}`,
           role: 'member',
         },
+        {
+          id: claimedRecipientId,
+          tenantId: tenantBId,
+          email: `claimed-recipient-${claimedRecipientId}@test.com`,
+          fullName: 'Claimed Recipient',
+          passwordHash: 'test',
+          displayId: `CLM${claimedRecipientId.slice(0, 6)}`,
+          role: 'member',
+        },
+        {
+          id: tenantlessExpiryRecipientId,
+          email: `tenantless-expiry-${tenantlessExpiryRecipientId}@test.com`,
+          fullName: 'Tenantless Expiry Recipient',
+          passwordHash: 'test',
+          displayId: `EXP${tenantlessExpiryRecipientId.slice(0, 6)}`,
+          role: 'member',
+        },
       ],
     });
     await createInvitation(invitationId);
     await createInvitation(cancellationInvitationId, cancellationRecipientId);
+    await createInvitation(claimedRecipientInvitationId, claimedRecipientId);
+    await createInvitation(tenantlessExpiryInvitationId, tenantlessExpiryRecipientId);
   });
 
   afterAll(async () => {
@@ -119,5 +142,38 @@ describe('company invitation update RLS', () => {
         `;
       }),
     ).resolves.toBe(1);
+  });
+
+  it('allows a claimed recipient to expire a still-valid invitation', async () => {
+    await expect(
+      withUserContext(claimedRecipientId, async (db) => {
+        await db.$executeRaw`SELECT set_config('app.tenant_id', ${tenantAId}, true)`;
+        return db.$executeRaw`
+          UPDATE "company_invitations"
+          SET "status" = 'expired'
+          WHERE "id" = ${claimedRecipientInvitationId}::uuid
+        `;
+      }),
+    ).resolves.toBe(1);
+
+    await expect(
+      prisma.companyInvitation.findUniqueOrThrow({
+        where: { id: claimedRecipientInvitationId },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({ status: 'expired' });
+  });
+
+  it('rejects early expiry while the recipient remains tenantless', async () => {
+    await expect(
+      withUserContext(tenantlessExpiryRecipientId, async (db) => {
+        await db.$executeRaw`SELECT set_config('app.tenant_id', ${tenantAId}, true)`;
+        return db.$executeRaw`
+          UPDATE "company_invitations"
+          SET "status" = 'expired'
+          WHERE "id" = ${tenantlessExpiryInvitationId}::uuid
+        `;
+      }),
+    ).rejects.toBeDefined();
   });
 });
