@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { DISPLAY_ID_REGEX } from '../lib/displayId';
 
 export const updateCurrentUserSchema = z
   .object({
@@ -79,9 +78,3 @@ export const updateCompanySettingsSchema = z
   .refine((value) => Object.keys(value).length > 0);
 
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
-
-export const addCompanyUserSchema = z
-  .object({ displayId: z.string().trim().toUpperCase().regex(DISPLAY_ID_REGEX) })
-  .strict();
-
-export type AddCompanyUserInput = z.infer<typeof addCompanyUserSchema>;

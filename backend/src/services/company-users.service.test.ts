@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
 import {
-  addCompanyUser,
   listCompanyUsers,
   updateCompanyRole,
   updateCompanyPermissions,
@@ -155,70 +154,5 @@ describe('company users service', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
     expect(db.user.update).not.toHaveBeenCalled();
-  });
-
-  it('claims tenantless user with fixed member role and no team roles', async () => {
-    const db = mockDb();
-    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 1 });
-    vi.mocked(db.user.findFirst).mockResolvedValue({
-      id: 'user-b',
-      displayId: 'B1234',
-      email: 'b@example.com',
-      fullName: 'User B',
-      avatarUrl: null,
-      role: 'member',
-    } as never);
-
-    await expect(addCompanyUser(db, admin, { displayId: 'B1234' })).resolves.toEqual({
-      id: 'user-b',
-      displayId: 'B1234',
-      email: 'b@example.com',
-      fullName: 'User B',
-      avatarUrl: null,
-      role: 'member',
-      teamRoles: [],
-    });
-    expect(db.user.updateMany).toHaveBeenCalledWith({
-      where: { displayId: 'B1234', tenantId: null },
-      data: { tenantId: 'tenant-a', role: 'member' },
-    });
-    expect(db.user.findFirst).toHaveBeenCalledWith({
-      where: { displayId: 'B1234', tenantId: 'tenant-a' },
-      select: {
-        id: true,
-        displayId: true,
-        email: true,
-        fullName: true,
-        avatarUrl: true,
-        role: true,
-      },
-    });
-  });
-
-  it('distinguishes same-tenant conflict without foreign lookup', async () => {
-    const db = mockDb();
-    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 0 });
-    vi.mocked(db.user.findFirst).mockResolvedValue({ id: 'user-b' } as never);
-
-    await expect(addCompanyUser(db, admin, { displayId: 'B1234' })).rejects.toMatchObject({
-      statusCode: 409,
-      code: 'USER_ALREADY_IN_COMPANY',
-    });
-    expect(db.user.findFirst).toHaveBeenCalledWith({
-      where: { displayId: 'B1234', tenantId: 'tenant-a' },
-      select: { id: true },
-    });
-  });
-
-  it('uses same 404 for missing and foreign targets', async () => {
-    const db = mockDb();
-    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 0 });
-    vi.mocked(db.user.findFirst).mockResolvedValue(null);
-
-    await expect(addCompanyUser(db, admin, { displayId: 'B1234' })).rejects.toMatchObject({
-      statusCode: 404,
-      code: 'USER_NOT_FOUND',
-    });
-    expect(db.user.findFirst).toHaveBeenCalledTimes(1);
   });
 });

@@ -17,7 +17,6 @@ import {
   updateCompanyPermissionsSchema,
   updateCompanyRoleSchema,
   updateCurrentUserSchema,
-  addCompanyUserSchema,
   updateCompanySettingsSchema,
 } from '../schemas/users.schema';
 import * as companyUsersService from '../services/company-users.service';
@@ -152,22 +151,6 @@ usersRouter.patch(
         companyUsersService.updateCompanyRole(db, req.params.id, req.body, actor),
       );
       res.json(user);
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
-usersRouter.post(
-  '/company/users',
-  writeLimiter,
-  validateBody(addCompanyUserSchema),
-  async (req, res, next) => {
-    try {
-      const user = await runTenantRequest(req, (db, actor) =>
-        companyUsersService.addCompanyUser(db, actor, req.body),
-      );
-      res.status(201).json(user);
     } catch (error) {
       next(error);
     }
