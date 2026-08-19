@@ -157,6 +157,34 @@ describe('company invitations service', () => {
     }
   });
 
+  it('expires a stale pending invitation before creating a replacement', async () => {
+    const db = mockDb();
+    vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({
+        id: 'user-b',
+        displayId: 'KMU24',
+        email: 'user@example.com',
+        fullName: 'User B',
+      } as never)
+      .mockResolvedValueOnce({ fullName: 'Admin A' } as never);
+    vi.mocked(db.tenant.findFirst).mockResolvedValue({ name: 'Acme' } as never);
+    vi.mocked(db.companyInvitation.updateMany).mockResolvedValue({ count: 1 });
+    vi.mocked(db.companyInvitation.create).mockResolvedValue(invitation() as never);
+
+    await expect(createInvitation(db, admin, { displayId: 'KMU24' })).resolves.toMatchObject({
+      status: 'pending',
+    });
+    expect(db.companyInvitation.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-a',
+        recipientUserId: 'user-b',
+        status: 'pending',
+        expiresAt: { lte: expect.any(Date) },
+      },
+      data: { status: 'expired' },
+    });
+  });
+
   it('maps duplicate pending invitations to a conflict', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
@@ -232,6 +260,32 @@ describe('company invitations service', () => {
     expect(db.companyInvitation.update).not.toHaveBeenCalled();
   });
 
+  it('returns expired when cancellation loses a race after the invitation expires', async () => {
+    const db = mockDb();
+    vi.mocked(db.companyInvitation.findFirst)
+      .mockResolvedValueOnce(invitation() as never)
+      .mockResolvedValueOnce(
+        invitation({ expiresAt: new Date('2026-08-18T12:00:00.000Z') }) as never,
+      );
+    vi.mocked(db.companyInvitation.updateMany)
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    await expect(cancelInvitation(db, admin, 'invitation-a')).rejects.toMatchObject({
+      statusCode: 410,
+      code: 'INVITATION_EXPIRED',
+    });
+    expect(db.companyInvitation.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'invitation-a',
+        tenantId: 'tenant-a',
+        status: 'pending',
+        expiresAt: { lte: expect.any(Date) },
+      },
+      data: { status: 'expired' },
+    });
+  });
+
   it('rejects without claiming recipient membership', async () => {
     const db = mockDb();
     vi.mocked(db.companyInvitation.findFirst)
@@ -255,6 +309,32 @@ describe('company invitations service', () => {
     expect(db.companyInvitation.update).not.toHaveBeenCalled();
   });
 
+  it('returns expired when rejection loses a race after the invitation expires', async () => {
+    const db = mockDb();
+    vi.mocked(db.companyInvitation.findFirst)
+      .mockResolvedValueOnce(invitation() as never)
+      .mockResolvedValueOnce(
+        invitation({ expiresAt: new Date('2026-08-18T12:00:00.000Z') }) as never,
+      );
+    vi.mocked(db.companyInvitation.updateMany)
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    await expect(rejectInvitation(db, recipient, 'invitation-a')).rejects.toMatchObject({
+      statusCode: 410,
+      code: 'INVITATION_EXPIRED',
+    });
+    expect(db.companyInvitation.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'invitation-a',
+        recipientUserId: 'user-b',
+        status: 'pending',
+        expiresAt: { lte: expect.any(Date) },
+      },
+      data: { status: 'expired' },
+    });
+  });
+
   it('does not expose an invitation owned by another recipient', async () => {
     const db = mockDb();
     vi.mocked(db.companyInvitation.findFirst).mockResolvedValue(null);
@@ -276,6 +356,7 @@ describe('company invitations service', () => {
     vi.mocked(db.companyInvitation.findFirst).mockResolvedValue(
       invitation({ expiresAt: new Date('2026-08-18T12:00:00.000Z') }) as never,
     );
+    vi.mocked(db.companyInvitation.updateMany).mockResolvedValue({ count: 1 });
 
     await expect(acceptInvitation(db, recipient, 'invitation-a')).rejects.toMatchObject({
       statusCode: 410,
@@ -306,6 +387,40 @@ describe('company invitations service', () => {
     });
     expect(db.companyInvitation.updateMany).not.toHaveBeenCalled();
     expect(db.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('expires without leaving the recipient claimed when acceptance loses an expiry race', async () => {
+    const db = mockDb();
+    vi.mocked(db.companyInvitation.findFirst)
+      .mockResolvedValueOnce(invitation() as never)
+      .mockResolvedValueOnce(
+        invitation({ expiresAt: new Date('2026-08-18T12:00:00.000Z') }) as never,
+      );
+    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 1 });
+    vi.mocked(db.companyInvitation.updateMany)
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    await expect(acceptInvitation(db, recipient, 'invitation-a')).rejects.toMatchObject({
+      statusCode: 410,
+      code: 'INVITATION_EXPIRED',
+    });
+    expect(db.companyInvitation.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'invitation-a',
+        recipientUserId: 'user-b',
+        status: 'pending',
+        expiresAt: { lte: expect.any(Date) },
+      },
+      data: { status: 'expired' },
+    });
+    expect(
+      vi
+        .mocked(db.$executeRaw)
+        .mock.calls.some(
+          ([query]) => Array.isArray(query) && query[0].includes('ROLLBACK TO SAVEPOINT'),
+        ),
+    ).toBe(true);
   });
 
   it('atomically claims the owning tenantless recipient and accepts with response fields only', async () => {

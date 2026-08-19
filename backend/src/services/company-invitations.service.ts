@@ -112,6 +112,46 @@ async function expireStaleInvitations(
   });
 }
 
+async function expireStaleInvitationAfterRace(
+  db: TenantDb,
+  where: { tenantId?: string; recipientUserId?: string },
+  invitationId: string,
+  knownInvitation?: InvitationRow,
+): Promise<never> {
+  const invitationWhere = { id: invitationId, ...where };
+  let current: InvitationRow | null = knownInvitation ?? null;
+  if (!current) {
+    current = await db.companyInvitation.findFirst({
+      where: invitationWhere,
+      select: invitationSelect,
+    });
+  }
+
+  if (!current) throwInvitationNotFound();
+  if (current.status === 'expired') commitThenThrow(invitationExpiredError());
+  if (current.status !== 'pending' || current.expiresAt > new Date()) {
+    throwInvitationNotPending();
+  }
+
+  const expired = await db.companyInvitation.updateMany({
+    where: {
+      ...invitationWhere,
+      status: 'pending',
+      expiresAt: { lte: new Date() },
+    },
+    data: { status: 'expired' },
+  });
+  if (expired.count === 1) commitThenThrow(invitationExpiredError());
+
+  current = await db.companyInvitation.findFirst({
+    where: invitationWhere,
+    select: invitationSelect,
+  });
+  if (!current) throwInvitationNotFound();
+  if (current.status === 'expired') commitThenThrow(invitationExpiredError());
+  throwInvitationNotPending();
+}
+
 function throwInvitationNotFound(): never {
   throw new AppError(404, 'Davet bulunamadı', 'INVITATION_NOT_FOUND');
 }
@@ -143,17 +183,12 @@ async function assertPendingRecipientInvitation(
   if (invitation.status !== 'pending') throwInvitationNotPending();
   const now = new Date();
   if (invitation.expiresAt > now) return invitation;
-
-  await db.companyInvitation.updateMany({
-    where: {
-      id: invitation.id,
-      recipientUserId: actorId,
-      status: 'pending',
-      expiresAt: { lte: now },
-    },
-    data: { status: 'expired' },
-  });
-  commitThenThrow(invitationExpiredError());
+  return expireStaleInvitationAfterRace(
+    db,
+    { recipientUserId: actorId },
+    invitation.id,
+    invitation,
+  );
 }
 
 export async function createInvitation(
@@ -178,6 +213,8 @@ export async function createInvitation(
     }
     throw new AppError(404, 'Kullanıcı bulunamadı', 'USER_NOT_FOUND');
   }
+
+  await expireStaleInvitations(db, { tenantId, recipientUserId: recipient.id });
 
   const [inviter, tenant] = await Promise.all([
     db.user.findFirst({ where: { id: actor.id, tenantId }, select: { fullName: true } }),
@@ -248,7 +285,9 @@ export async function cancelInvitation(
     },
     data: { status: 'cancelled', cancelledAt: new Date() },
   });
-  if (cancelled.count !== 1) throwInvitationNotPending();
+  if (cancelled.count !== 1) {
+    return expireStaleInvitationAfterRace(db, { tenantId }, invitationId);
+  }
 
   const invitation = await db.companyInvitation.findFirst({
     where: { id: invitationId, tenantId },
@@ -287,7 +326,9 @@ export async function rejectInvitation(
     },
     data: { status: 'rejected', respondedAt },
   });
-  if (transition.count !== 1) throwInvitationNotPending();
+  if (transition.count !== 1) {
+    return expireStaleInvitationAfterRace(db, { recipientUserId: actor.id }, invitation.id);
+  }
 
   const rejected = await loadRecipientInvitation(db, actor.id, invitation.id);
   return toInvitationDTO(rejected);
@@ -301,11 +342,14 @@ export async function acceptInvitation(
   const invitation = await assertPendingRecipientInvitation(db, actor.id, invitationId);
 
   await db.$executeRaw`SELECT set_config('app.tenant_id', ${invitation.tenantId}, true)`;
+  await db.$executeRaw`SAVEPOINT company_invitation_claim`;
   const claimed = await db.user.updateMany({
     where: { id: actor.id, tenantId: null },
     data: { tenantId: invitation.tenantId, role: 'member' },
   });
   if (claimed.count !== 1) {
+    const current = await loadRecipientInvitation(db, actor.id, invitation.id);
+    if (current.status !== 'pending') throwInvitationNotPending();
     await db.companyInvitation.updateMany({
       where: { id: invitation.id, recipientUserId: actor.id, status: 'pending' },
       data: { status: 'expired' },
@@ -325,7 +369,10 @@ export async function acceptInvitation(
     },
     data: { status: 'accepted', respondedAt },
   });
-  if (transition.count !== 1) throwInvitationNotPending();
+  if (transition.count !== 1) {
+    await db.$executeRaw`ROLLBACK TO SAVEPOINT company_invitation_claim`;
+    return expireStaleInvitationAfterRace(db, { recipientUserId: actor.id }, invitation.id);
+  }
 
   await db.companyInvitation.updateMany({
     where: {

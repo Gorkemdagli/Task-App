@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma';
-import { acceptInvitation } from '../services/company-invitations.service';
+import {
+  acceptInvitation,
+  createInvitation as createCompanyInvitation,
+} from '../services/company-invitations.service';
+import { withTenantContext } from './withTenant';
 import { withUserContext } from './withUser';
 
 const tenantAId = randomUUID();
@@ -14,6 +18,8 @@ const tenantlessExpiryRecipientId = randomUUID();
 const memberRecipientId = randomUUID();
 const rejectionRecipientId = randomUUID();
 const staleRecipientId = randomUUID();
+const concurrentCreateRecipientId = randomUUID();
+const concurrentAcceptRecipientId = randomUUID();
 const invitationId = randomUUID();
 const cancellationInvitationId = randomUUID();
 const claimedRecipientInvitationId = randomUUID();
@@ -21,6 +27,7 @@ const tenantlessExpiryInvitationId = randomUUID();
 const memberInvitationId = randomUUID();
 const rejectionInvitationId = randomUUID();
 const staleInvitationId = randomUUID();
+const concurrentAcceptInvitationId = randomUUID();
 
 async function createInvitation(
   id: string,
@@ -124,6 +131,22 @@ describe('company invitation update RLS', () => {
           displayId: `STA${staleRecipientId.slice(0, 6)}`,
           role: 'member',
         },
+        {
+          id: concurrentCreateRecipientId,
+          email: `concurrent-create-${concurrentCreateRecipientId}@test.com`,
+          fullName: 'Concurrent Create Recipient',
+          passwordHash: 'test',
+          displayId: `CCR${concurrentCreateRecipientId.slice(0, 6)}`,
+          role: 'member',
+        },
+        {
+          id: concurrentAcceptRecipientId,
+          email: `concurrent-accept-${concurrentAcceptRecipientId}@test.com`,
+          fullName: 'Concurrent Accept Recipient',
+          passwordHash: 'test',
+          displayId: `CAR${concurrentAcceptRecipientId.slice(0, 6)}`,
+          role: 'member',
+        },
       ],
     });
     await createInvitation(invitationId);
@@ -133,6 +156,7 @@ describe('company invitation update RLS', () => {
     await createInvitation(memberInvitationId, memberRecipientId);
     await createInvitation(rejectionInvitationId, rejectionRecipientId);
     await createInvitation(staleInvitationId, staleRecipientId, new Date(Date.now() - 60_000));
+    await createInvitation(concurrentAcceptInvitationId, concurrentAcceptRecipientId);
   });
 
   afterAll(async () => {
@@ -273,5 +297,91 @@ describe('company invitation update RLS', () => {
         `;
       }),
     ).rejects.toBeDefined();
+  });
+
+  it('keeps a real foreign-tenant target indistinguishable from a missing target', async () => {
+    const actor = { id: inviterId, role: 'companyAdmin' as const, tenantId: tenantAId };
+
+    const result = await withTenantContext(inviterId, tenantAId, async (db) => {
+      try {
+        await createCompanyInvitation(db, actor, {
+          displayId: `CLM${claimedRecipientId.slice(0, 6)}`,
+        });
+        return null;
+      } catch (error) {
+        return error;
+      }
+    });
+    expect(result).toMatchObject({ statusCode: 404, code: 'USER_NOT_FOUND' });
+  });
+
+  it('expires a stale pending row before creating a replacement', async () => {
+    const actor = { id: inviterId, role: 'companyAdmin' as const, tenantId: tenantAId };
+    const displayId = `STA${staleRecipientId.slice(0, 6)}`;
+    const created = await withTenantContext(inviterId, tenantAId, (db) =>
+      createCompanyInvitation(db, actor, { displayId }),
+    );
+
+    expect(created.status).toBe('pending');
+    await expect(
+      prisma.companyInvitation.findUniqueOrThrow({
+        where: { id: staleInvitationId },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({ status: 'expired' });
+  });
+
+  it('allows only one concurrent pending invitation create', async () => {
+    const actor = { id: inviterId, role: 'companyAdmin' as const, tenantId: tenantAId };
+    const displayId = `CCR${concurrentCreateRecipientId.slice(0, 6)}`;
+    const results = await Promise.allSettled([
+      withTenantContext(inviterId, tenantAId, (db) =>
+        createCompanyInvitation(db, actor, { displayId }),
+      ),
+      withTenantContext(inviterId, tenantAId, (db) =>
+        createCompanyInvitation(db, actor, { displayId }),
+      ),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'INVITATION_ALREADY_PENDING', statusCode: 409 },
+    });
+  });
+
+  it('allows only one concurrent acceptance and claims the recipient once', async () => {
+    const actor = { id: concurrentAcceptRecipientId, role: 'member' as const, tenantId: null };
+    const results = await Promise.allSettled([
+      withUserContext(concurrentAcceptRecipientId, (db) =>
+        acceptInvitation(db, actor, concurrentAcceptInvitationId),
+      ),
+      withUserContext(concurrentAcceptRecipientId, (db) =>
+        acceptInvitation(db, actor, concurrentAcceptInvitationId),
+      ),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: expect.objectContaining({ statusCode: 409 }),
+    });
+    await expect(
+      prisma.user.findUniqueOrThrow({
+        where: { id: concurrentAcceptRecipientId },
+        select: { tenantId: true, role: true },
+      }),
+    ).resolves.toEqual({ tenantId: tenantAId, role: 'member' });
+    await expect(
+      prisma.companyInvitation.findUniqueOrThrow({
+        where: { id: concurrentAcceptInvitationId },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({ status: 'accepted' });
+    await expect(
+      prisma.teamMember.count({ where: { userId: concurrentAcceptRecipientId } }),
+    ).resolves.toBe(0);
   });
 });
