@@ -294,6 +294,20 @@ describe('company invitations service', () => {
     });
   });
 
+  it('returns expired when the stored invitation status is expired', async () => {
+    const db = mockDb();
+    vi.mocked(db.companyInvitation.findFirst).mockResolvedValue(
+      invitation({ status: 'expired' }) as never,
+    );
+
+    await expect(acceptInvitation(db, recipient, 'invitation-a')).rejects.toMatchObject({
+      statusCode: 410,
+      code: 'INVITATION_EXPIRED',
+    });
+    expect(db.companyInvitation.updateMany).not.toHaveBeenCalled();
+    expect(db.user.updateMany).not.toHaveBeenCalled();
+  });
+
   it('atomically claims the owning tenantless recipient and accepts with response fields only', async () => {
     const db = mockDb();
     const accepted = invitation({ status: 'accepted', respondedAt: now });

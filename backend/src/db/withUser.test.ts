@@ -14,7 +14,7 @@ vi.mock('../lib/prisma', () => {
   };
 });
 
-import { withUserContext } from './withUser';
+import { commitThenThrow, withUserContext } from './withUser';
 import { mockExecuteRaw, mockTransaction, tx } from '../lib/prisma';
 
 describe('withUserContext', () => {
@@ -42,6 +42,19 @@ describe('withUserContext', () => {
     const failure = new Error('rollback');
 
     await expect(withUserContext('u', async () => Promise.reject(failure))).rejects.toBe(failure);
+  });
+
+  it('commits the transaction before throwing a deferred domain error', async () => {
+    const failure = new Error('domain');
+    const transactionCommitted = vi.fn();
+    mockTransaction.mockImplementationOnce(async (callback) => {
+      const result = await callback(tx);
+      transactionCommitted();
+      return result;
+    });
+
+    await expect(withUserContext('u', async () => commitThenThrow(failure))).rejects.toBe(failure);
+    expect(transactionCommitted).toHaveBeenCalledOnce();
   });
 
   it('returns transaction callback result', async () => {

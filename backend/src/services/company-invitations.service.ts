@@ -5,6 +5,7 @@ import type { Actor } from '../lib/permissions';
 import { assertCompanyAdmin } from './company-users.service';
 import type { AuthUser } from './auth.service';
 import type { AddCompanyInvitationInput } from '../schemas/company-invitations.schema';
+import { commitThenThrow } from '../db/withUser';
 
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -119,6 +120,10 @@ function throwInvitationNotPending(): never {
   throw new AppError(409, 'Davet artık beklemede değil', 'INVITATION_NOT_PENDING');
 }
 
+function invitationExpiredError(): AppError {
+  return new AppError(410, 'Davetin süresi doldu', 'INVITATION_EXPIRED');
+}
+
 async function loadRecipientInvitation(db: TenantDb, actorId: string, invitationId: string) {
   const invitation = await db.companyInvitation.findFirst({
     where: { id: invitationId, recipientUserId: actorId },
@@ -134,6 +139,7 @@ async function assertPendingRecipientInvitation(
   invitationId: string,
 ) {
   const invitation = await loadRecipientInvitation(db, actorId, invitationId);
+  if (invitation.status === 'expired') throw invitationExpiredError();
   if (invitation.status !== 'pending') throwInvitationNotPending();
   const now = new Date();
   if (invitation.expiresAt > now) return invitation;
@@ -147,7 +153,7 @@ async function assertPendingRecipientInvitation(
     },
     data: { status: 'expired' },
   });
-  throw new AppError(410, 'Davetin süresi doldu', 'INVITATION_EXPIRED');
+  commitThenThrow(invitationExpiredError());
 }
 
 export async function createInvitation(
@@ -304,7 +310,9 @@ export async function acceptInvitation(
       where: { id: invitation.id, recipientUserId: actor.id, status: 'pending' },
       data: { status: 'expired' },
     });
-    throw new AppError(409, 'Davet hedefi artık uygun değil', 'INVITATION_TARGET_NOT_AVAILABLE');
+    commitThenThrow(
+      new AppError(409, 'Davet hedefi artık uygun değil', 'INVITATION_TARGET_NOT_AVAILABLE'),
+    );
   }
 
   const respondedAt = new Date();

@@ -7,6 +7,13 @@ const DEFAULT_OPTIONS: Required<Pick<TenantTransactionOptions, 'maxRetries'>> = 
   maxRetries: 1,
 };
 
+const commitThenThrowErrors = new WeakSet<Error>();
+
+export function commitThenThrow(error: Error): never {
+  commitThenThrowErrors.add(error);
+  throw error;
+}
+
 function isSerializationConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
 }
@@ -18,16 +25,26 @@ export async function withUserContext<T>(
 ): Promise<T> {
   const { maxRetries, isolationLevel } = { ...DEFAULT_OPTIONS, ...options };
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    let deferredError: Error | undefined;
     try {
-      return await prisma.$transaction(
+      const result = await prisma.$transaction(
         async (tx) => {
           await tx.$executeRaw`SET LOCAL ROLE authenticated`;
           await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
-          return fn(tx);
+          try {
+            return await fn(tx);
+          } catch (error) {
+            if (!(error instanceof Error) || !commitThenThrowErrors.delete(error)) throw error;
+            deferredError = error;
+            return undefined as T;
+          }
         },
         { timeout: 30000, ...(isolationLevel ? { isolationLevel } : {}) },
       );
+      if (deferredError) throw deferredError;
+      return result;
     } catch (error) {
+      if (error === deferredError) throw error;
       if (!isSerializationConflict(error)) throw error;
     }
   }
