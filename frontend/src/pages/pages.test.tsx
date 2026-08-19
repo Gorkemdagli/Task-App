@@ -67,7 +67,6 @@ vi.mock('@/hooks/queries/useCompanyUsers', () => ({
   useCompanyUsers: () => ({ data: [], isLoading: false, isError: false }),
   useUpdateCompanyRole: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateCompanyPermissions: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useAddCompanyUser: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {

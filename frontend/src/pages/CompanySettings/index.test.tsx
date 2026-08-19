@@ -15,11 +15,28 @@ const settings: CompanySettings = {
   logoUrl: null,
 };
 
+const pendingInvitation = {
+  id: 'invitation-1',
+  tenantId: 'tenant-a',
+  companyName: 'Acme Corp',
+  inviterName: 'Admin',
+  status: 'pending' as const,
+  createdAt: '2026-08-20T00:00:00.000Z',
+  expiresAt: '2026-08-27T00:00:00.000Z',
+  respondedAt: null,
+  recipientUserId: 'user-2',
+  recipientDisplayId: 'B3X9K',
+  recipientEmail: 'target@example.com',
+  recipientFullName: 'Target User',
+};
+
 const mocks = vi.hoisted(() => ({
   useCompanySettings: vi.fn(),
   useUpdateCompanySettings: vi.fn(),
   useUploadCompanyLogo: vi.fn(),
-  useAddCompanyUser: vi.fn(),
+  useCompanyInvitationAdmin: vi.fn(),
+  useCreateCompanyInvitation: vi.fn(),
+  useCancelCompanyInvitation: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/useCompanySettings', () => ({
@@ -28,15 +45,17 @@ vi.mock('@/hooks/queries/useCompanySettings', () => ({
   useUploadCompanyLogo: mocks.useUploadCompanyLogo,
 }));
 
-vi.mock('@/hooks/queries/useCompanyUsers', () => ({
-  useAddCompanyUser: mocks.useAddCompanyUser,
+vi.mock('@/hooks/queries/useCompanyInvitations', () => ({
+  useCompanyInvitationAdmin: mocks.useCompanyInvitationAdmin,
+  useCreateCompanyInvitation: mocks.useCreateCompanyInvitation,
+  useCancelCompanyInvitation: mocks.useCancelCompanyInvitation,
 }));
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <CompanySettingsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -65,8 +84,17 @@ describe('CompanySettingsPage', () => {
       mutateAsync: vi.fn().mockResolvedValue(settings),
       isPending: false,
     });
-    mocks.useAddCompanyUser.mockReturnValue({
+    mocks.useCompanyInvitationAdmin.mockReturnValue({
+      data: [],
+      isPending: false,
+      isError: false,
+    });
+    mocks.useCreateCompanyInvitation.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({}),
+      isPending: false,
+    });
+    mocks.useCancelCompanyInvitation.mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(pendingInvitation),
       isPending: false,
     });
   });
@@ -81,7 +109,7 @@ describe('CompanySettingsPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Şirket ayarları yüklenemedi.');
   });
 
-  it('renders editable company settings, read-only slug, and direct-add form', () => {
+  it('renders editable company settings, read-only slug, and invitation form', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Şirket Ayarları' })).toBeInTheDocument();
@@ -89,8 +117,8 @@ describe('CompanySettingsPage', () => {
     expect(screen.getByLabelText('Şirket slug')).toHaveValue('acme-corp');
     expect(screen.getByLabelText('Şirket slug')).toHaveAttribute('readonly');
     expect(screen.getByText('0/500')).toBeInTheDocument();
-    expect(screen.getByLabelText('Kullanıcı display ID')).toBeInTheDocument();
-    expect(screen.queryByText(/Davet/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/display ID/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Davet Gönder' })).toBeInTheDocument();
     expect(screen.queryByText(/fatura|billing|takım oluştur/i)).not.toBeInTheDocument();
   });
 
@@ -138,21 +166,47 @@ describe('CompanySettingsPage', () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(valid));
   });
 
-  it('shows specific same-company conflict and generic not-found error', async () => {
+  it('sends invitation, updates feedback on retry, and clears it after remount', async () => {
     const user = userEvent.setup();
     const mutateAsync = vi
       .fn()
-      .mockRejectedValueOnce({ response: { data: { error: 'USER_ALREADY_IN_COMPANY' } } })
+      .mockResolvedValueOnce({})
       .mockRejectedValueOnce({ response: { data: { error: 'USER_NOT_FOUND' } } });
-    mocks.useAddCompanyUser.mockReturnValue({ mutateAsync, isPending: false });
+    mocks.useCreateCompanyInvitation.mockReturnValue({ mutateAsync, isPending: false });
+    const view = renderPage();
+    const input = screen.getByLabelText(/display ID/);
+
+    await user.type(input, 'target@example.com');
+    await user.click(screen.getByRole('button', { name: 'Davet Gönder' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(/davet.*gönderildi/i);
+
+    await user.type(input, 'missing@example.com');
+    await user.click(screen.getByRole('button', { name: 'Davet Gönder' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/bulunamad/i);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    view.unmount();
+    renderPage();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders pending invitations and cancels only after confirmation', async () => {
+    const user = userEvent.setup();
+    const cancel = vi.fn().mockResolvedValue(pendingInvitation);
+    mocks.useCompanyInvitationAdmin.mockReturnValue({
+      data: [pendingInvitation],
+      isPending: false,
+      isError: false,
+    });
+    mocks.useCancelCompanyInvitation.mockReturnValue({ mutateAsync: cancel, isPending: false });
     renderPage();
 
-    const input = screen.getByLabelText('Kullanıcı display ID');
-    await user.type(input, 'A3X9K');
-    await user.click(screen.getByRole('button', { name: 'Kullanıcı ekle' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Bu kullanıcı zaten bu şirkette.');
-
-    await user.click(screen.getByRole('button', { name: 'Kullanıcı ekle' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Kullanıcı bulunamadı.');
+    expect(screen.getByText(/target@example\.com/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'İptal' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(cancel).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Daveti iptal et' }));
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith('invitation-1'));
   });
 });

@@ -3,7 +3,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as companySettingsService from '@/services/companySettings';
-import * as companyUsersService from '@/services/companyUsers';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -11,7 +10,6 @@ import {
   useUpdateCompanySettings,
   useUploadCompanyLogo,
 } from './useCompanySettings';
-import { useAddCompanyUser } from './useCompanyUsers';
 
 const settings: companySettingsService.CompanySettings = {
   id: 'tenant-a',
@@ -93,25 +91,5 @@ describe('useCompanySettings', () => {
     expect(queryClient.getQueryData(queryKeys.companySettings('tenant-a'))).toMatchObject({
       logoUrl: 'https://cdn.test/logo.webp',
     });
-  });
-
-  it('invalidates company users after direct add', async () => {
-    vi.spyOn(companyUsersService, 'addCompanyUser').mockResolvedValue({
-      id: 'user-2',
-      displayId: 'B3X9K',
-      email: 'new@example.com',
-      fullName: 'New User',
-      avatarUrl: null,
-      role: 'member',
-      teamRoles: [],
-    });
-    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
-    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderHook(() => useAddCompanyUser(), { wrapper: wrapper(queryClient) });
-
-    result.current.mutate('B3X9K');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.companyUsers('tenant-a') });
   });
 });

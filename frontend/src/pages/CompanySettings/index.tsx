@@ -2,14 +2,27 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   useCompanySettings,
   useUpdateCompanySettings,
   useUploadCompanyLogo,
 } from '@/hooks/queries/useCompanySettings';
-import { useAddCompanyUser } from '@/hooks/queries/useCompanyUsers';
+import {
+  useCancelCompanyInvitation,
+  useCompanyInvitationAdmin,
+  useCreateCompanyInvitation,
+} from '@/hooks/queries/useCompanyInvitations';
 import { useAuth } from '@/hooks/useAuth';
+import type { CompanyInvitationAdminDTO } from '@/services/companyInvitations';
 import type { CompanySettings } from '@/services/companySettings';
 
 const MAX_LOGO_SIZE = 25 * 1024 * 1024;
@@ -31,22 +44,32 @@ type CompanySettingsContentProps = {
   settings: CompanySettings;
   updateSettings: ReturnType<typeof useUpdateCompanySettings>;
   uploadLogo: ReturnType<typeof useUploadCompanyLogo>;
-  addCompanyUser: ReturnType<typeof useAddCompanyUser>;
+  invitations: ReturnType<typeof useCompanyInvitationAdmin>;
+  createInvitation: ReturnType<typeof useCreateCompanyInvitation>;
+  cancelInvitation: ReturnType<typeof useCancelCompanyInvitation>;
 };
 
 function CompanySettingsContent({
   settings,
   updateSettings,
   uploadLogo,
-  addCompanyUser,
+  invitations,
+  createInvitation,
+  cancelInvitation,
 }: CompanySettingsContentProps) {
   const [name, setName] = useState(settings.name);
   const [description, setDescription] = useState(settings.description ?? '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
-  const [userDisplayId, setUserDisplayId] = useState('');
-  const [userError, setUserError] = useState<string | null>(null);
+  const [userIdentifier, setUserIdentifier] = useState('');
+  const [userFeedback, setUserFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [invitationToCancel, setInvitationToCancel] = useState<CompanyInvitationAdminDTO | null>(
+    null,
+  );
 
   useEffect(() => {
     return () => {
@@ -91,21 +114,38 @@ function CompanySettingsContent({
     setLogoPreview(null);
   };
 
-  const handleAddUser = async (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateInvitation = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setUserError(null);
+    setUserFeedback(null);
     try {
-      await addCompanyUser.mutateAsync(userDisplayId.trim().toUpperCase());
-      setUserDisplayId('');
+      await createInvitation.mutateAsync(userIdentifier);
+      setUserIdentifier('');
+      setUserFeedback({ type: 'success', message: 'Davet gönderildi.' });
     } catch (error) {
       const code = getErrorCode(error);
-      if (code === 'USER_ALREADY_IN_COMPANY') {
-        setUserError('Bu kullanıcı zaten bu şirkette.');
-      } else if (code === 'USER_NOT_FOUND') {
-        setUserError('Kullanıcı bulunamadı.');
+      let message = 'Davet gönderilemedi.';
+      if (code === 'USER_NOT_FOUND') {
+        message = 'Kullanıcı bulunamadı.';
+      } else if (code === 'INVITATION_ALREADY_PENDING') {
+        message = 'Bu kullanıcıya zaten bekleyen davet var.';
       } else {
-        setUserError(getErrorMessage(error, 'Kullanıcı eklenemedi.'));
+        message = getErrorMessage(error, message);
       }
+      setUserFeedback({ type: 'error', message });
+    }
+  };
+
+  const handleCancelInvitation = async () => {
+    if (!invitationToCancel) return;
+    try {
+      await cancelInvitation.mutateAsync(invitationToCancel.id);
+      setInvitationToCancel(null);
+      setUserFeedback({ type: 'success', message: 'Davet iptal edildi.' });
+    } catch (error) {
+      setUserFeedback({
+        type: 'error',
+        message: getErrorMessage(error, 'Davet iptal edilemedi.'),
+      });
     }
   };
 
@@ -205,30 +245,123 @@ function CompanySettingsContent({
       </form>
 
       <form
-        onSubmit={handleAddUser}
+        onSubmit={handleCreateInvitation}
         className="space-y-4 rounded-lg border border-border bg-card p-6"
       >
-        <h2 className="text-lg font-semibold">Şirkete kullanıcı ekle</h2>
+        <h2 className="text-lg font-semibold">Davet gönder</h2>
         <div className="space-y-2">
-          <label htmlFor="company-user-display-id" className="text-sm font-medium">
-            Kullanıcı display ID
+          <label htmlFor="company-user-identifier" className="text-sm font-medium">
+            Kullanıcı display ID veya e-posta
           </label>
           <Input
-            id="company-user-display-id"
-            aria-label="Kullanıcı display ID"
-            value={userDisplayId}
-            onChange={(event) => setUserDisplayId(event.target.value)}
+            id="company-user-identifier"
+            aria-label="Kullanıcı display ID veya e-posta"
+            placeholder="A3X9K veya user@example.com"
+            value={userIdentifier}
+            onChange={(event) => setUserIdentifier(event.target.value)}
           />
         </div>
-        {userError && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" loading={createInvitation.isPending}>
+            Davet Gönder
+          </Button>
+          {userFeedback && (
+            <p
+              role={userFeedback.type === 'success' ? 'status' : 'alert'}
+              className={`rounded-md border border-border bg-muted px-3 py-2 text-sm ${
+                userFeedback.type === 'success' ? 'text-priority-low' : 'text-priority-high'
+              }`}
+            >
+              {userFeedback.message}
+            </p>
+          )}
+        </div>
+      </form>
+
+      <section className="space-y-4 rounded-lg border border-border bg-card p-6">
+        <div>
+          <h2 className="text-lg font-semibold">Bekleyen davetler</h2>
+          <p className="text-sm text-secondary-foreground">
+            Henüz kabul edilmemiş şirket davetleri.
+          </p>
+        </div>
+        {invitations.isPending ? (
+          <p
+            data-testid="company-invitations-loading"
+            className="text-sm text-secondary-foreground"
+          >
+            Davetler yükleniyor…
+          </p>
+        ) : invitations.isError ? (
           <p role="alert" className="text-sm text-priority-high">
-            {userError}
+            Davetler yüklenemedi.
+          </p>
+        ) : invitations.data && invitations.data.length > 0 ? (
+          <ul data-testid="company-invitations-list" className="space-y-2">
+            {invitations.data.map((invitation) => (
+              <li
+                key={invitation.id}
+                data-testid={`company-invitation-row-${invitation.id}`}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-b-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {invitation.recipientFullName}
+                  </p>
+                  <p className="text-xs text-secondary-foreground">
+                    {invitation.recipientEmail} · {invitation.recipientDisplayId}
+                  </p>
+                  <p className="text-xs text-secondary-foreground">
+                    Son geçerlilik:{' '}
+                    {new Intl.DateTimeFormat('tr-TR').format(new Date(invitation.expiresAt))}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setInvitationToCancel(invitation)}
+                >
+                  İptal
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p data-testid="company-invitations-empty" className="text-sm text-secondary-foreground">
+            Bekleyen davet yok.
           </p>
         )}
-        <Button type="submit" loading={addCompanyUser.isPending}>
-          Kullanıcı ekle
-        </Button>
-      </form>
+      </section>
+
+      <Dialog
+        open={Boolean(invitationToCancel)}
+        onOpenChange={(open) => {
+          if (!open) setInvitationToCancel(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Daveti iptal et</DialogTitle>
+            <DialogDescription>
+              {invitationToCancel?.recipientEmail} adresine gönderilen davet iptal edilecek.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setInvitationToCancel(null)}>
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              loading={cancelInvitation.isPending}
+              onClick={handleCancelInvitation}
+            >
+              Daveti iptal et
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -238,7 +371,9 @@ export function CompanySettingsPage() {
   const settingsQuery = useCompanySettings();
   const updateSettings = useUpdateCompanySettings();
   const uploadLogo = useUploadCompanyLogo();
-  const addCompanyUser = useAddCompanyUser();
+  const invitations = useCompanyInvitationAdmin();
+  const createInvitation = useCreateCompanyInvitation();
+  const cancelInvitation = useCancelCompanyInvitation();
 
   if (!isCompanyAdmin) return <Navigate to="/dashboard" replace />;
 
@@ -260,7 +395,9 @@ export function CompanySettingsPage() {
       settings={settingsQuery.data}
       updateSettings={updateSettings}
       uploadLogo={uploadLogo}
-      addCompanyUser={addCompanyUser}
+      invitations={invitations}
+      createInvitation={createInvitation}
+      cancelInvitation={cancelInvitation}
     />
   );
 }
