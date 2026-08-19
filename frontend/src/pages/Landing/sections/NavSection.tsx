@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonVariants } from '@/components/ui/button';
@@ -12,6 +12,21 @@ const sectionLinks = [
   { href: '#workflow', label: 'İş akışı' },
 ] as const;
 
+function handleSectionLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+
+  const section = document.getElementById(href.slice(1));
+  if (!section) return;
+
+  event.preventDefault();
+  section.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start',
+  });
+}
+
 export function NavSection() {
   const { isAuthenticated } = useAuth();
   const { mode, toggleMode } = useTheme();
@@ -21,13 +36,22 @@ export function NavSection() {
   return (
     <header className="landing-nav">
       <div className="landing-nav__inner">
-        <a href="#hero" className="landing-wordmark" aria-label="TaskFlow anasayfa">
+        <a
+          href="#hero"
+          className="landing-wordmark"
+          aria-label="TaskFlow anasayfa"
+          onClick={(event) => handleSectionLinkClick(event, '#hero')}
+        >
           TaskFlow
         </a>
 
         <nav className="landing-nav__links" aria-label="Sayfa bölümleri">
           {sectionLinks.map((link) => (
-            <a key={link.href} href={link.href}>
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={(event) => handleSectionLinkClick(event, link.href)}
+            >
               {link.label}
             </a>
           ))}
@@ -75,7 +99,9 @@ export function NavSection() {
             <nav className="landing-mobile-links" aria-label="Mobil sayfa bölümleri">
               {sectionLinks.map((link) => (
                 <SheetClose key={link.href} asChild>
-                  <a href={link.href}>{link.label}</a>
+                  <a href={link.href} onClick={(event) => handleSectionLinkClick(event, link.href)}>
+                    {link.label}
+                  </a>
                 </SheetClose>
               ))}
             </nav>

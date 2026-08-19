@@ -20,6 +20,7 @@ function renderLanding(authenticated = false) {
 
 describe('LandingPage', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/');
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({
@@ -94,6 +95,24 @@ describe('LandingPage', () => {
       ['İş akışı', '#workflow'],
     ]) {
       expect(within(mobileMenu).getByRole('link', { name: label })).toHaveAttribute('href', href);
+    }
+  });
+
+  it('scrolls to a section without adding a hash to the landing URL', async () => {
+    const user = userEvent.setup();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      renderLanding();
+
+      await user.click(screen.getByRole('link', { name: 'İş akışı' }));
+
+      expect(window.location.hash).toBe('');
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
   });
 
