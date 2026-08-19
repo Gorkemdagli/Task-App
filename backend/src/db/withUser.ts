@@ -2,17 +2,12 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/appError';
 import type { TenantTransactionOptions } from './withTenant';
+import { takeDeferredError } from './deferred-error';
 
 const DEFAULT_OPTIONS: Required<Pick<TenantTransactionOptions, 'maxRetries'>> = {
   maxRetries: 1,
 };
-
-const commitThenThrowErrors = new WeakSet<Error>();
-
-export function commitThenThrow(error: Error): never {
-  commitThenThrowErrors.add(error);
-  throw error;
-}
+export { commitThenThrow } from './deferred-error';
 
 function isSerializationConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
@@ -34,7 +29,7 @@ export async function withUserContext<T>(
           try {
             return await fn(tx);
           } catch (error) {
-            if (!(error instanceof Error) || !commitThenThrowErrors.delete(error)) throw error;
+            if (!takeDeferredError(error)) throw error;
             deferredError = error;
             return undefined as T;
           }

@@ -1,6 +1,9 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/appError';
+import { takeDeferredError } from './deferred-error';
+
+export { commitThenThrow } from './deferred-error';
 
 export type TenantTransactionOptions = {
   isolationLevel?: Prisma.TransactionIsolationLevel;
@@ -31,19 +34,29 @@ export async function withTenantContext<T>(
 ): Promise<T> {
   const { maxRetries, isolationLevel } = { ...DEFAULT_OPTIONS, ...options };
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    let deferredError: Error | undefined;
     try {
-      return await prisma.$transaction(
+      const result = await prisma.$transaction(
         async (tx) => {
           // Sıra kritik: ROLE önce, yoksa aşağıdaki SET LOCAL'lar authenticated
           // rolünde olur ama SELECT/INSERT sırasında aktif rol hala app user.
           await tx.$executeRaw`SET LOCAL ROLE authenticated`;
           await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
           await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-          return fn(tx);
+          try {
+            return await fn(tx);
+          } catch (error) {
+            if (!takeDeferredError(error)) throw error;
+            deferredError = error;
+            return undefined as T;
+          }
         },
         { timeout: 30000, ...(isolationLevel ? { isolationLevel } : {}) },
       );
+      if (deferredError) throw deferredError;
+      return result;
     } catch (error) {
+      if (error === deferredError) throw error;
       if (!isSerializationConflict(error)) throw error;
     }
   }

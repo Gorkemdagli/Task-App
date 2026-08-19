@@ -349,6 +349,7 @@ export async function acceptInvitation(
   });
   if (claimed.count !== 1) {
     const current = await loadRecipientInvitation(db, actor.id, invitation.id);
+    if (current.status === 'expired') throw invitationExpiredError();
     if (current.status !== 'pending') throwInvitationNotPending();
     await db.companyInvitation.updateMany({
       where: { id: invitation.id, recipientUserId: actor.id, status: 'pending' },

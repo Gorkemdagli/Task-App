@@ -497,4 +497,18 @@ describe('company invitations service', () => {
       data: { status: 'expired' },
     });
   });
+
+  it('returns expired when an unavailable target sees a concurrently expired invitation', async () => {
+    const db = mockDb();
+    vi.mocked(db.companyInvitation.findFirst)
+      .mockResolvedValueOnce(invitation() as never)
+      .mockResolvedValueOnce(invitation({ status: 'expired' }) as never);
+    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 0 });
+
+    await expect(acceptInvitation(db, recipient, 'invitation-a')).rejects.toMatchObject({
+      statusCode: 410,
+      code: 'INVITATION_EXPIRED',
+    });
+    expect(db.companyInvitation.updateMany).not.toHaveBeenCalled();
+  });
 });

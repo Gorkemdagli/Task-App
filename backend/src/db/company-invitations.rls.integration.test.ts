@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma';
 import {
   acceptInvitation,
+  cancelInvitation,
   createInvitation as createCompanyInvitation,
 } from '../services/company-invitations.service';
 import { withTenantContext } from './withTenant';
@@ -20,6 +21,7 @@ const rejectionRecipientId = randomUUID();
 const staleRecipientId = randomUUID();
 const concurrentCreateRecipientId = randomUUID();
 const concurrentAcceptRecipientId = randomUUID();
+const staleCancellationRecipientId = randomUUID();
 const invitationId = randomUUID();
 const cancellationInvitationId = randomUUID();
 const claimedRecipientInvitationId = randomUUID();
@@ -28,6 +30,7 @@ const memberInvitationId = randomUUID();
 const rejectionInvitationId = randomUUID();
 const staleInvitationId = randomUUID();
 const concurrentAcceptInvitationId = randomUUID();
+const staleCancellationInvitationId = randomUUID();
 
 async function createInvitation(
   id: string,
@@ -147,6 +150,14 @@ describe('company invitation update RLS', () => {
           displayId: `CAR${concurrentAcceptRecipientId.slice(0, 6)}`,
           role: 'member',
         },
+        {
+          id: staleCancellationRecipientId,
+          email: `stale-cancellation-${staleCancellationRecipientId}@test.com`,
+          fullName: 'Stale Cancellation Recipient',
+          passwordHash: 'test',
+          displayId: `SCA${staleCancellationRecipientId.slice(0, 6)}`,
+          role: 'member',
+        },
       ],
     });
     await createInvitation(invitationId);
@@ -157,6 +168,11 @@ describe('company invitation update RLS', () => {
     await createInvitation(rejectionInvitationId, rejectionRecipientId);
     await createInvitation(staleInvitationId, staleRecipientId, new Date(Date.now() - 60_000));
     await createInvitation(concurrentAcceptInvitationId, concurrentAcceptRecipientId);
+    await createInvitation(
+      staleCancellationInvitationId,
+      staleCancellationRecipientId,
+      new Date(Date.now() - 60_000),
+    );
   });
 
   afterAll(async () => {
@@ -326,6 +342,22 @@ describe('company invitation update RLS', () => {
     await expect(
       prisma.companyInvitation.findUniqueOrThrow({
         where: { id: staleInvitationId },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({ status: 'expired' });
+  });
+
+  it('commits admin cancellation expiry before returning 410', async () => {
+    const actor = { id: inviterId, role: 'companyAdmin' as const, tenantId: tenantAId };
+
+    await expect(
+      withTenantContext(inviterId, tenantAId, (db) =>
+        cancelInvitation(db, actor, staleCancellationInvitationId),
+      ),
+    ).rejects.toMatchObject({ statusCode: 410, code: 'INVITATION_EXPIRED' });
+    await expect(
+      prisma.companyInvitation.findUniqueOrThrow({
+        where: { id: staleCancellationInvitationId },
         select: { status: true },
       }),
     ).resolves.toEqual({ status: 'expired' });

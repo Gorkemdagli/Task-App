@@ -12,7 +12,7 @@ vi.mock('../lib/prisma', () => {
   };
 });
 
-import { withTenantContext } from './withTenant';
+import { commitThenThrow, withTenantContext } from './withTenant';
 import { mockExecuteRaw, mockTransaction, tx } from '../lib/prisma';
 
 describe('withTenantContext', () => {
@@ -96,6 +96,22 @@ describe('withTenantContext', () => {
     const work = vi.fn().mockRejectedValue(failure);
 
     await expect(withTenantContext('u', 't', work, { maxRetries: 3 })).rejects.toBe(failure);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits deferred business errors before returning them', async () => {
+    let committed = false;
+    mockTransaction.mockImplementationOnce(async (cb) => {
+      const result = await cb(tx);
+      committed = true;
+      return result;
+    });
+    const failure = new Error('commit');
+
+    await expect(withTenantContext('u', 't', async () => commitThenThrow(failure))).rejects.toBe(
+      failure,
+    );
+    expect(committed).toBe(true);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 });
