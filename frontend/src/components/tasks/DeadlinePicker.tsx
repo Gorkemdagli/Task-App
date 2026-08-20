@@ -21,6 +21,7 @@ export function DeadlinePicker({
         Son Tarih{required ? ' *' : ''}
       </label>
       <input
+        aria-label="Son Tarih"
         type="date"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}

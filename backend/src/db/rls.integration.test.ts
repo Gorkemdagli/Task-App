@@ -8,6 +8,7 @@ const tenantAId = randomUUID();
 const tenantBId = randomUUID();
 const userAId = randomUUID();
 const userBId = randomUUID();
+const tenantlessUserId = randomUUID();
 const teamAId = randomUUID();
 const teamBId = randomUUID();
 const taskAId = randomUUID();
@@ -58,6 +59,15 @@ describe('RLS tenant isolation for task relations', () => {
           passwordHash: 'test',
           displayId: `#R1B-${userBId.slice(0, 8)}`,
           role: 'companyAdmin',
+        },
+        {
+          id: tenantlessUserId,
+          tenantId: null,
+          email: `r1-tenantless-${tenantlessUserId}@test.com`,
+          fullName: 'R1 Tenantless',
+          passwordHash: 'test',
+          displayId: `R1TL${tenantlessUserId.slice(0, 6)}`,
+          role: 'member',
         },
       ],
     });
@@ -123,5 +133,16 @@ describe('RLS tenant isolation for task relations', () => {
     );
     expect(updateResult.count).toBe(0);
     expect(deleteResult.count).toBe(0);
+  });
+
+  it('tenantless users can be claimed by the current tenant', async () => {
+    const result = await asTenant(tenantAId, userAId, (db) =>
+      db.user.updateMany({
+        where: { id: tenantlessUserId, tenantId: null },
+        data: { tenantId: tenantAId, role: 'member' },
+      }),
+    );
+
+    expect(result.count).toBe(1);
   });
 });

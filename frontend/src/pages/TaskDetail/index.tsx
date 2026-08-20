@@ -9,6 +9,7 @@ import {
   useCancelTaskStatus,
   useUpdateTaskPriority,
   useUpdateTaskFields,
+  useRestoreTask,
   useDeleteTask,
   type TaskStatus,
 } from '@/hooks/tasks';
@@ -30,6 +31,7 @@ import { PendingStatusBadge } from '@/components/tasks/PendingStatusBadge';
 import { ProposeConfirmDialog } from '@/components/tasks/ProposeConfirmDialog';
 import { CommentList } from '@/components/comments/CommentList';
 import { CommentInput } from '@/components/comments/CommentInput';
+import { utcTodayCalendarDate } from '@/lib/calendarDate';
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,7 +47,13 @@ export function TaskDetailPage() {
   const cancelStatus = useCancelTaskStatus();
   const updatePriority = useUpdateTaskPriority();
   const updateFields = useUpdateTaskFields();
+  const restoreTask = useRestoreTask();
   const deleteTask = useDeleteTask();
+  const [restoreSelection, setRestoreSelection] = useState<{
+    taskId: string;
+    deadline: string | null;
+  } | null>(null);
+  const today = utcTodayCalendarDate();
 
   if (isLoading) {
     return (
@@ -84,6 +92,13 @@ export function TaskDetailPage() {
   const proposerIsAssignee = task.assignees.some((a) => a.userId === task.pendingProposedBy);
   const canAck = hasPending && youAreAssignee && !yourAcked && !isProposer;
   const canCancel = hasPending && (isProposer || isTeamAdminOfThisTeam);
+  const canRestore = task.archivedAt !== null && isTeamAdminOfThisTeam;
+  const restoreDeadline =
+    restoreSelection?.taskId === task.id
+      ? restoreSelection.deadline
+      : task.deadline && task.deadline >= today
+        ? task.deadline
+        : null;
 
   const handleStatusChange = (status: TaskStatus) => {
     if (!id) return;
@@ -201,11 +216,41 @@ export function TaskDetailPage() {
             </div>
           )}
         </div>
-        <DeadlinePicker
-          value={task.deadline}
-          onChange={(deadline) => id && updateFields.mutate({ taskId: id, deadline })}
-          disabled={!allowedStatus}
-        />
+        <div>
+          <DeadlinePicker
+            value={canRestore ? restoreDeadline : task.deadline}
+            onChange={(deadline) => {
+              if (canRestore) {
+                setRestoreSelection({ taskId: task.id, deadline });
+                return;
+              }
+              if (id) updateFields.mutate({ taskId: id, deadline });
+            }}
+            disabled={task.archivedAt !== null ? !canRestore : !allowedStatus}
+          />
+          {canRestore && (
+            <button
+              type="button"
+              data-testid="restore-task-button"
+              onClick={() =>
+                id &&
+                restoreDeadline &&
+                restoreTask.mutate({ taskId: id, deadline: restoreDeadline })
+              }
+              disabled={
+                restoreTask.isPending || restoreDeadline === null || restoreDeadline < today
+              }
+              className="mt-2 h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {restoreTask.isPending ? 'Aktifleştiriliyor…' : 'Görevi Aktifleştir'}
+            </button>
+          )}
+          {restoreTask.isError && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {getApiErrorMessage(restoreTask.error, 'Görev aktifleştirilemedi.')}
+            </p>
+          )}
+        </div>
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">Takım</label>
           <div className="text-sm">{task.team.name}</div>

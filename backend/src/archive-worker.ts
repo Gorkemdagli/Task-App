@@ -1,3 +1,4 @@
+import './env';
 import cron from 'node-cron';
 import { maintenancePrisma } from './lib/maintenancePrisma';
 import { archiveExpiredTasks } from './services/tasks.archive';

@@ -58,6 +58,11 @@ export const updateTaskFieldsSchema = z
   );
 export type UpdateTaskFieldsInput = z.infer<typeof updateTaskFieldsSchema>;
 
+export const restoreTaskSchema = z.object({
+  deadline: calendarDateSchema,
+});
+export type RestoreTaskInput = z.infer<typeof restoreTaskSchema>;
+
 export const listTasksQuerySchema = z.object({
   status: z
     .union([z.string(), z.array(z.string())])

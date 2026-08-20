@@ -3,9 +3,11 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
 import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
+import { parseQuery } from '../http/parseQuery';
 import {
   createTeamSchema,
   addMemberSchema,
+  searchMemberCandidatesQuerySchema,
   updateTeamMemberRoleSchema,
 } from '../schemas/teams.schema';
 import * as teamsService from '../services/teams.service';
@@ -36,6 +38,18 @@ teamsRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const teams = await runTenantRequest(req, (db, actor) => teamsService.listTeams(db, actor));
     res.json(teams);
+  } catch (e) {
+    next(e);
+  }
+});
+
+teamsRouter.get('/:id/member-candidates', authenticatedReadLimiter, async (req, res, next) => {
+  try {
+    const query = parseQuery<{ q: string }>(searchMemberCandidatesQuerySchema, req.query);
+    const candidates = await runTenantRequest(req, (db, actor) =>
+      teamsService.searchMemberCandidates(db, req.params.id, query.q, actor),
+    );
+    res.json(candidates);
   } catch (e) {
     next(e);
   }

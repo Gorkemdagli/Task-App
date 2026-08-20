@@ -55,7 +55,7 @@ export function Sidebar() {
   if (collapsed) {
     return (
       <aside
-        className="hidden w-16 shrink-0 flex-col border-r border-border bg-card md:flex"
+        className="hidden h-full w-16 shrink-0 flex-col border-r border-border bg-card md:flex"
         aria-label="Yan menü (daraltılmış)"
       >
         <div className="flex flex-1 flex-col items-center justify-between py-4">
@@ -75,7 +75,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="hidden w-[260px] shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 ease-out md:flex"
+      className="hidden h-full w-[260px] shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 ease-out md:flex"
       aria-label="Yan menü"
     >
       <TeamSidebarSection

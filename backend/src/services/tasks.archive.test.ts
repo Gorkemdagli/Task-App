@@ -64,15 +64,11 @@ describe('archiveExpiredTasks', () => {
   beforeEach(cleanDb);
   afterEach(() => vi.useRealTimers());
 
-  it('uses the next UTC calendar day as the archive boundary', async () => {
+  it('archives tasks exactly seven UTC calendar days after their deadline', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-13T12:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
     const { admin, member, team } = await makeSetup();
-    const dates = [
-      new Date('2026-08-12T00:00:00.000Z'),
-      new Date('2026-08-13T00:00:00.000Z'),
-      new Date('2026-08-14T00:00:00.000Z'),
-    ];
+    const dates = [new Date('2026-08-13T00:00:00.000Z'), new Date('2026-08-14T00:00:00.000Z')];
     const tasks = await Promise.all(
       dates.map((deadline, index) =>
         tasksService
@@ -100,7 +96,41 @@ describe('archiveExpiredTasks', () => {
       where: { id: { in: tasks.map((task) => task.id) }, archivedAt: { not: null } },
     });
     expect(archived).toHaveLength(1);
-    expect(archived[0].deadline?.toISOString()).toBe('2026-08-12T00:00:00.000Z');
+    expect(archived[0].deadline?.toISOString()).toBe('2026-08-13T00:00:00.000Z');
+  });
+
+  it('archives todo, in-progress, and done tasks after seven days', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
+    const { admin, member, team } = await makeSetup();
+    const tasks = await Promise.all(
+      (['todo', 'in_progress', 'done'] as const).map((status) =>
+        tasksService
+          .createTask(
+            {
+              title: `status-${status}`,
+              priority: 'low',
+              assigneeIds: [member.id],
+              teamId: team.id,
+            },
+            admin,
+          )
+          .then((task) =>
+            prisma.task.update({
+              where: { id: task.id },
+              data: { status, deadline: new Date('2026-08-12T00:00:00.000Z') },
+            }),
+          ),
+      ),
+    );
+
+    const result = await archiveExpiredTasks(admin);
+    expect(result.archivedCount).toBe(3);
+    expect(
+      await prisma.task.count({
+        where: { id: { in: tasks.map((task) => task.id) }, archivedAt: { not: null } },
+      }),
+    ).toBe(3);
   });
 
   it('archives done tasks with past deadline', async () => {
@@ -111,7 +141,7 @@ describe('archiveExpiredTasks', () => {
     );
     await prisma.task.update({
       where: { id: t.id },
-      data: { status: 'done', deadline: new Date(Date.now() - 86400000) },
+      data: { status: 'done', deadline: new Date(Date.now() - 8 * 86400000) },
     });
 
     const result = await archiveExpiredTasks(admin);
@@ -158,7 +188,7 @@ describe('archiveExpiredTasks', () => {
     expect(found?.archivedAt?.getTime()).toBe(archivedAt.getTime());
   });
 
-  it('skips non-done tasks even with past deadline', async () => {
+  it('archives non-done tasks with a deadline older than seven days', async () => {
     const { admin, member, team } = await makeSetup();
     const t = await tasksService.createTask(
       { title: 'todo-past', priority: 'low', assigneeIds: [member.id], teamId: team.id },
@@ -166,11 +196,11 @@ describe('archiveExpiredTasks', () => {
     );
     await prisma.task.update({
       where: { id: t.id },
-      data: { deadline: new Date(Date.now() - 86400000) },
+      data: { deadline: new Date(Date.now() - 8 * 86400000) },
     });
 
     const result = await archiveExpiredTasks(admin);
-    expect(result.archivedCount).toBe(0);
+    expect(result.archivedCount).toBe(1);
   });
 
   it('archives multiple matching tasks in one run', async () => {
@@ -185,7 +215,7 @@ describe('archiveExpiredTasks', () => {
     );
     await prisma.task.updateMany({
       where: { id: { in: [t1.id, t2.id] } },
-      data: { status: 'done', deadline: new Date(Date.now() - 86400000) },
+      data: { status: 'done', deadline: new Date(Date.now() - 8 * 86400000) },
     });
 
     const result = await archiveExpiredTasks(admin);

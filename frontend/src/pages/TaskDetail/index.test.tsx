@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -94,6 +94,7 @@ let mockTask: Task | null = null;
 // vi.clearAllMocks() implementation'ı siler, beforeEach'te tekrar bağlanır.
 const proposeMock = vi.fn();
 const updateMock = vi.fn();
+const restoreMock = vi.fn();
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -111,6 +112,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useCancelTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+    useRestoreTask: () => ({ mutate: restoreMock, mutateAsync: restoreMock, isPending: false }),
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   };
 });
@@ -182,6 +184,34 @@ function renderTaskDetail() {
     </QueryClientProvider>,
   );
 }
+
+describe('TaskDetailPage — archived task restore', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthStore.setState({ accessToken: 't', user: admin });
+  });
+
+  it('company admin selects a valid deadline and restores an archived task', async () => {
+    mockTask = makeTask({ archivedAt: '2026-08-01T00:00:00.000Z', deadline: '2026-08-01' });
+    renderTaskDetail();
+
+    const restoreButton = screen.getByTestId('restore-task-button');
+    expect(restoreButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Son Tarih'), { target: { value: '2099-01-01' } });
+    expect(restoreButton).not.toBeDisabled();
+    await userEvent.click(restoreButton);
+
+    expect(restoreMock).toHaveBeenCalledWith({ taskId: 't1', deadline: '2099-01-01' });
+  });
+
+  it('regular member does not see archived task restore control', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockTask = makeTask({ archivedAt: '2026-08-01T00:00:00.000Z', deadline: '2026-08-01' });
+    renderTaskDetail();
+
+    expect(screen.queryByTestId('restore-task-button')).toBeNull();
+  });
+});
 
 describe('TaskDetailPage — status change intercept', () => {
   beforeEach(() => {

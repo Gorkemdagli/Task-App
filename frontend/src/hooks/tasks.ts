@@ -329,6 +329,22 @@ export function useUpdateTaskFields() {
   });
 }
 
+export function useRestoreTask() {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: async (vars: { taskId: string; deadline: string }) => {
+      const r = await api.post<Task>(`/tasks/${vars.taskId}/restore`, {
+        deadline: vars.deadline,
+      });
+      return r.data;
+    },
+    onSettled: (_data, _error, vars) => {
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    },
+  });
+}
+
 export function useDeleteTask() {
   const qc = useQueryClient();
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);

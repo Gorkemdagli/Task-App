@@ -23,6 +23,14 @@ export type TeamMember = {
   joinedAt: string;
 };
 
+export type TeamMemberCandidate = {
+  id: string;
+  displayId: string;
+  email: string;
+  fullName: string;
+  avatarUrl: string | null;
+};
+
 export type TeamDetail = Team & {
   members: TeamMember[];
   taskCount: number;
@@ -44,6 +52,17 @@ export async function listTeams(): Promise<Team[]> {
 
 export async function getTeam(id: string): Promise<TeamDetail> {
   const r = await api.get<TeamDetail>(`/teams/${id}`);
+  return r.data;
+}
+
+export async function searchTeamMemberCandidates(
+  teamId: string,
+  query: string,
+): Promise<TeamMemberCandidate[]> {
+  const normalizedQuery = query.trim();
+  const r = await api.get<TeamMemberCandidate[]>(
+    `/teams/${teamId}/member-candidates?q=${encodeURIComponent(normalizedQuery)}`,
+  );
   return r.data;
 }
 

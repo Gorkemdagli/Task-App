@@ -1,5 +1,5 @@
 import { AppError } from '../middleware/errorHandler';
-import { assertCanManageTeam, isCompanyAdmin, type Actor } from '../lib/permissions';
+import { assertCanManageTeam, isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import type { TenantDb } from '../db/types';
 import type { CreateTeamInput, UpdateTeamMemberRoleInput } from '../schemas/teams.schema';
 import type { TeamMemberRole } from '@prisma/client';
@@ -20,6 +20,14 @@ export interface TeamMemberInfo {
   avatarUrl: string | null;
   role: TeamMemberRole;
   joinedAt: Date;
+}
+
+export interface TeamMemberCandidate {
+  id: string;
+  displayId: string;
+  email: string;
+  fullName: string;
+  avatarUrl: string | null;
 }
 
 export interface TeamDetail extends TeamSummary {
@@ -106,6 +114,40 @@ export async function getTeam(db: TenantDb, teamId: string, actor: Actor): Promi
   };
 }
 
+export async function searchMemberCandidates(
+  db: TenantDb,
+  teamId: string,
+  query: string,
+  actor: Actor,
+): Promise<TeamMemberCandidate[]> {
+  await assertCanManageTeam(db, actor, teamId);
+  const tenantId = requireTenant(actor);
+  const normalizedQuery = query.trim();
+  const normalizedDisplayIdQuery = normalizedQuery.replace(/^#?TF-/i, '').toUpperCase();
+
+  const users = await db.user.findMany({
+    where: {
+      tenantId,
+      teamMembers: { none: { teamId } },
+      OR: [
+        {
+          displayId: {
+            contains: normalizedDisplayIdQuery || normalizedQuery,
+            mode: 'insensitive',
+          },
+        },
+        { email: { contains: normalizedQuery, mode: 'insensitive' } },
+        { fullName: { contains: normalizedQuery, mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, displayId: true, email: true, fullName: true, avatarUrl: true },
+    orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+    take: 20,
+  });
+
+  return users;
+}
+
 export async function addMemberByDisplayId(
   db: TenantDb,
   teamId: string,
@@ -119,15 +161,11 @@ export async function addMemberByDisplayId(
   const user = await db.user.findFirst({
     where: {
       displayId,
-      OR: [{ tenantId: actor.tenantId }, { tenantId: null }],
+      tenantId: actor.tenantId,
     },
     select: { id: true, displayId: true, fullName: true, avatarUrl: true, tenantId: true },
   });
   if (!user) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
-
-  if (user.tenantId === null) {
-    await db.user.update({ where: { id: user.id }, data: { tenantId: actor.tenantId } });
-  }
 
   const existing = await db.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId: user.id } },

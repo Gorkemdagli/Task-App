@@ -6,6 +6,7 @@ import {
   listTeams as listTeamsService,
   getTeam as getTeamService,
   addMemberByDisplayId as addMemberByDisplayIdService,
+  searchMemberCandidates as searchMemberCandidatesService,
   removeMember as removeMemberService,
 } from '../services/teams.service';
 import { register } from '../services/auth.service';
@@ -46,6 +47,8 @@ const getTeam = (teamId: string, actor: Actor) =>
   inTenant(actor, (db) => getTeamService(db, teamId, actor));
 const addMemberByDisplayId = (teamId: string, displayId: string, actor: Actor) =>
   inTenant(actor, (db) => addMemberByDisplayIdService(db, teamId, displayId, actor));
+const searchMemberCandidates = (teamId: string, query: string, actor: Actor) =>
+  inTenant(actor, (db) => searchMemberCandidatesService(db, teamId, query, actor));
 const removeMember = (teamId: string, userId: string, actor: Actor) =>
   inTenant(actor, (db) => removeMemberService(db, teamId, userId, actor));
 
@@ -222,17 +225,18 @@ describe('addMemberByDisplayId', () => {
     });
   });
 
-  it('tenantless user is transferred to admin tenant on add', async () => {
+  it('tenantless user cannot be added directly to a team', async () => {
     const admin = await makeAdmin('admin@a.com', 'Acme');
     // tenantless user (register without companyName → tenantId: null)
     const r = await register({ fullName: 'Solo', email: 'solo@x.com', password: 'hunter22' });
     expect(r.user.tenantId).toBeNull();
     const t = await createTeam({ name: 'Eng' }, admin);
-    const m = await addMemberByDisplayId(t.id, r.user.displayId, admin);
-    expect(m.userId).toBe(r.user.id);
+    await expect(addMemberByDisplayId(t.id, r.user.displayId, admin)).rejects.toMatchObject({
+      statusCode: 404,
+    });
     // User'ın tenantId'si artık admin tenant'ı
     const updated = await prisma.user.findUnique({ where: { id: r.user.id } });
-    expect(updated?.tenantId).toBe(admin.tenantId);
+    expect(updated?.tenantId).toBeNull();
   });
 
   it('per-team teamAdmin (TeamMember.role=teamAdmin) can add (User.role=member)', async () => {
@@ -269,6 +273,44 @@ describe('addMemberByDisplayId', () => {
         tenantId: teamAdmin.tenantId,
       }),
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+describe('searchMemberCandidates', () => {
+  beforeEach(cleanDb);
+
+  it('searches only same-company users who are not already team members', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const candidate = await makeMember('selin@example.com', admin.tenantId);
+    await prisma.user.update({
+      where: { id: candidate.id },
+      data: { fullName: 'Selin Demir' },
+    });
+    const existing = await makeMember('existing@example.com', admin.tenantId);
+    const foreign = await makeAdmin('selin@foreign.com', 'Globex');
+    const team = await createTeam({ name: 'Eng' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: team.id, userId: existing.id, role: 'member' },
+    });
+
+    const byName = await searchMemberCandidates(team.id, 'selin', admin);
+    expect(byName).toEqual([
+      expect.objectContaining({
+        id: candidate.id,
+        displayId: candidate.displayId,
+        email: candidate.email,
+        fullName: 'Selin Demir',
+      }),
+    ]);
+
+    const byEmail = await searchMemberCandidates(team.id, 'selin@example.com', admin);
+    expect(byEmail.map((user) => user.id)).toEqual([candidate.id]);
+
+    const byDisplayId = await searchMemberCandidates(team.id, `#TF-${candidate.displayId}`, admin);
+    expect(byDisplayId.map((user) => user.id)).toEqual([candidate.id]);
+
+    await expect(searchMemberCandidates(team.id, foreign.email, admin)).resolves.toEqual([]);
+    await expect(searchMemberCandidates(team.id, 'existing', admin)).resolves.toEqual([]);
   });
 });
 

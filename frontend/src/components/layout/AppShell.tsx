@@ -21,12 +21,14 @@ export function AppShell() {
   return (
     <div
       data-testid="app-shell"
-      className="flex min-h-screen flex-col bg-background text-foreground"
+      className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
     >
-      <Topbar />
-      <div className="flex flex-1">
+      <div className="shrink-0">
+        <Topbar />
+      </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 p-4 md:p-8">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
           <Outlet />
         </main>
       </div>

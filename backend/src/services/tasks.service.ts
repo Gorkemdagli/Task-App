@@ -6,6 +6,7 @@ import {
   assertCanCancelTaskStatus,
   assertCanCreateTask,
   assertCanDeleteTask,
+  assertCanRestoreTask,
   assertCanProposeTaskStatus,
   assertCanUpdateTaskFields,
   assertCanUpdateTaskPriority,
@@ -27,7 +28,9 @@ import type {
   UpdateTaskPriorityInput,
   UpdateTaskStatusInput,
   AckTaskStatusInput,
+  RestoreTaskInput,
 } from '../schemas/tasks.schema';
+import { startOfUtcToday } from '../lib/calendarDate';
 
 export interface TaskWithRelations {
   id: string;
@@ -567,6 +570,38 @@ export async function updateTaskFields(
     }
   }
 
+  return updated as TaskWithRelations;
+}
+
+export async function restoreTask(
+  db: TenantDb,
+  taskId: string,
+  input: RestoreTaskInput,
+  actor: Actor,
+): Promise<TaskWithRelations> {
+  const task = await db.task.findFirst({
+    where: { id: taskId, team: { tenantId: requireTenant(actor) } },
+    select: { id: true, teamId: true, archivedAt: true },
+  });
+  if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
+
+  await assertCanRestoreTask(db, actor, task);
+  if (task.archivedAt === null) {
+    throw new AppError(400, 'Görev arşivlenmiş değil', 'TASK_NOT_ARCHIVED');
+  }
+  if (input.deadline < startOfUtcToday()) {
+    throw new AppError(
+      400,
+      'Aktifleştirme tarihi bugün veya gelecek olmalı',
+      'INVALID_RESTORE_DEADLINE',
+    );
+  }
+
+  const updated = await db.task.update({
+    where: { id: taskId },
+    data: { deadline: input.deadline, archivedAt: null },
+    include: TASK_INCLUDE,
+  });
   return updated as TaskWithRelations;
 }
 

@@ -15,6 +15,14 @@ describe('queryKeys', () => {
       'team-1',
       'detail',
     ]);
+    expect(queryKeys.team.memberCandidates('tenant-a', 'team-1', 'selin')).toEqual([
+      'tenant',
+      'tenant-a',
+      'team-scope',
+      'team-1',
+      'member-candidates',
+      'selin',
+    ]);
     expect(queryKeys.tasks.list('tenant-a', { teamId: 'team-1', limit: 100 })).toEqual([
       'tenant',
       'tenant-a',

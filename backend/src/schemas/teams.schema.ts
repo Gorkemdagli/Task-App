@@ -21,6 +21,11 @@ export const addMemberSchema = z.object({
 });
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 
+export const searchMemberCandidatesQuerySchema = z
+  .object({ q: z.string().trim().min(2).max(100) })
+  .strict();
+export type SearchMemberCandidatesQuery = z.infer<typeof searchMemberCandidatesQuerySchema>;
+
 export const updateTeamMemberRoleSchema = z.object({
   role: z.enum(['member', 'teamAdmin']),
 });

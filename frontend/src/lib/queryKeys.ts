@@ -11,6 +11,8 @@ export const queryKeys = {
   team: {
     detail: (tenantId: string, teamId: string) =>
       ['tenant', tenantId, 'team-scope', teamId, 'detail'] as const,
+    memberCandidates: (tenantId: string, teamId: string, query: string) =>
+      ['tenant', tenantId, 'team-scope', teamId, 'member-candidates', query] as const,
   },
   tasks: {
     list: (tenantId: string, filters: ListTasksFilters = {}) =>

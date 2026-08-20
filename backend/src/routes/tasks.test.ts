@@ -51,6 +51,11 @@ const tasksService = {
     input: Parameters<typeof taskServiceImpl.updateTaskFields>[2],
     actor: Actor,
   ) => inTenant(actor, (db) => taskServiceImpl.updateTaskFields(db, taskId, input, actor)),
+  restoreTask: (
+    taskId: string,
+    input: Parameters<typeof taskServiceImpl.restoreTask>[2],
+    actor: Actor,
+  ) => inTenant(actor, (db) => taskServiceImpl.restoreTask(db, taskId, input, actor)),
   deleteTask: (taskId: string, actor: Actor) =>
     inTenant(actor, (db) => taskServiceImpl.deleteTask(db, taskId, actor)),
 };
@@ -376,6 +381,74 @@ describe('deleteTask', () => {
     await expect(tasksService.deleteTask(t.id, assignee)).rejects.toMatchObject({
       statusCode: 403,
     });
+  });
+});
+
+describe('restoreTask', () => {
+  beforeEach(cleanDb);
+
+  it('team admin restores an archived task with today-or-future deadline', async () => {
+    const { member, team } = await makeTeamWithTeamAdminMember();
+    const task = await tasksService.createTask(
+      { title: 'Archived task', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      member,
+    );
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { archivedAt: new Date(), deadline: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    const restored = await tasksService.restoreTask(
+      task.id,
+      { deadline: new Date('2099-01-01T00:00:00.000Z') },
+      member,
+    );
+
+    expect(restored.archivedAt).toBeNull();
+    expect(restored.deadline?.toISOString()).toBe('2099-01-01T00:00:00.000Z');
+  });
+
+  it('company admin restores an archived task', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Archived task', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+    await prisma.task.update({ where: { id: task.id }, data: { archivedAt: new Date() } });
+
+    const restored = await tasksService.restoreTask(
+      task.id,
+      { deadline: new Date('2099-01-01T00:00:00.000Z') },
+      admin,
+    );
+
+    expect(restored.archivedAt).toBeNull();
+  });
+
+  it('rejects restore for non-admin member', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Archived task', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+    await prisma.task.update({ where: { id: task.id }, data: { archivedAt: new Date() } });
+
+    await expect(
+      tasksService.restoreTask(task.id, { deadline: new Date('2099-01-01T00:00:00.000Z') }, member),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('rejects a restore deadline before today', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Archived task', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+    await prisma.task.update({ where: { id: task.id }, data: { archivedAt: new Date() } });
+
+    await expect(
+      tasksService.restoreTask(task.id, { deadline: new Date('2020-01-01T00:00:00.000Z') }, admin),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_RESTORE_DEADLINE' });
   });
 });
 

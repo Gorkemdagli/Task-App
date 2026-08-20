@@ -146,6 +146,15 @@ export async function assertCanUpdateTaskPriority(
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
+export async function assertCanRestoreTask(
+  db: TenantDb,
+  actor: Actor,
+  task: Pick<TaskForPerm, 'teamId'>,
+): Promise<void> {
+  if (await isTeamAdminOf(db, actor, task.teamId)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
 export async function assertCanUpdateTaskFields(
   db: TenantDb,
   actor: Actor,

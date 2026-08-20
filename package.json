@@ -10,6 +10,7 @@
   "scripts": {
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
+    "dev:archive-worker": "npm run dev:archive-worker --workspace=backend",
     "docker:up": "docker compose up -d --wait postgres redis",
     "docker:down": "docker compose down",
     "build:frontend": "npm run build --workspace=frontend",
@@ -17,7 +18,7 @@
     "perf:lighthouse": "lhci autorun --config=./lighthouserc.cjs",
     "perf:api": "npm run perf:api --workspace=backend",
     "build:backend": "npm run build --workspace=backend",
-    "build": "concurrently --kill-others-on-fail --names \"docker,backend,frontend\" --prefix-colors \"blue,green,cyan\" \"npm:docker:up\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "build": "concurrently --kill-others-on-fail --names \"docker,backend,archive-worker,frontend\" --prefix-colors \"blue,green,yellow,cyan\" \"npm:docker:up\" \"npm run dev --workspace=backend\" \"npm run dev:archive-worker --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "down": "npm run docker:down",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",

@@ -8,6 +8,7 @@ import {
   updateTaskStatusSchema,
   updateTaskPrioritySchema,
   updateTaskFieldsSchema,
+  restoreTaskSchema,
   listTasksQuerySchema,
   ackTaskStatusSchema,
 } from '../schemas/tasks.schema';
@@ -61,6 +62,22 @@ tasksRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
     next(e);
   }
 });
+
+tasksRouter.post(
+  '/:id/restore',
+  writeLimiter,
+  validateBody(restoreTaskSchema),
+  async (req, res, next) => {
+    try {
+      const task = await runTenantRequest(req, (db, actor) =>
+        tasksService.restoreTask(db, req.params.id, req.body, actor),
+      );
+      res.json(toTaskDto(task));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 tasksRouter.patch(
   '/:id/status',

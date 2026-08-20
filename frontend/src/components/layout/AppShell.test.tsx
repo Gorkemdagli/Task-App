@@ -41,9 +41,12 @@ function renderWithRouter(initialPath = '/dashboard') {
 
 describe('AppShell', () => {
   beforeEach(() => {
-    vi.spyOn(api, 'get').mockResolvedValue({
-      data: { items: [], unreadCount: 0, nextCursor: null },
-    } as never);
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/users/me/company-invitations') {
+        return { data: { invitations: [], pendingCount: 0 } } as never;
+      }
+      return { data: { items: [], unreadCount: 0, nextCursor: null } } as never;
+    });
   });
 
   it('renders Topbar + Sidebar + main with children', () => {
@@ -59,5 +62,14 @@ describe('AppShell', () => {
     renderWithRouter();
     const link = screen.getByRole('link', { name: 'Ana Pano' });
     expect(link).toHaveAttribute('href', '/dashboard');
+  });
+
+  it('keeps the sidebar fixed while the content area owns vertical scrolling', () => {
+    useAuthStore.setState({ accessToken: 't', user: baseUser });
+    renderWithRouter();
+
+    expect(screen.getByTestId('app-shell')).toHaveClass('h-screen', 'overflow-hidden');
+    expect(screen.getByRole('complementary', { name: 'Yan menü' })).toHaveClass('h-full');
+    expect(screen.getByRole('main')).toHaveClass('min-h-0', 'min-w-0', 'overflow-y-auto');
   });
 });
