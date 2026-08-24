@@ -170,32 +170,28 @@
    Within this scope, Button's `bg-primary` resolves to the landing orange
    because --color-primary is overridden below. */
 :root {
-  --landing-nav-height: 4rem;
-}
-
-html.landing-scroll-snap {
-  scroll-padding-top: var(--landing-nav-height);
-  scroll-snap-type: y mandatory;
+  --landing-nav-height: 4.5rem;
 }
 
 .theme-landing {
-  --color-primary: #ff9933;
-  --color-primary-hover: #e68829;
-  --color-ring: #ff9933;
-
-  --landing-bg: #0a0a0a;
-  --landing-bg-alt: #0f0f10;
-  --landing-card: #161617;
-  --landing-card-hover: #1c1c1d;
-  --landing-primary: #ff9933;
-  --landing-primary-text: var(--landing-primary);
-  --landing-primary-soft: rgba(255, 153, 51, 0.1);
-  --landing-text: #ffffff;
-  --landing-text-muted: #8e8e93;
-  --landing-border: color-mix(in srgb, var(--landing-text-muted) 70%, transparent);
-
-  background-color: var(--landing-bg);
+  --color-primary: #c77818;
+  --color-primary-hover: #a85f0e;
+  --color-ring: #c77818;
+  --landing-bg: #f3efe5;
+  --landing-bg-alt: #e9e2d3;
+  --landing-card: #fffaf0;
+  --landing-card-hover: #eee5d4;
+  --landing-primary: #c77818;
+  --landing-primary-text: #7a3e00;
+  --landing-primary-soft: rgb(199 120 24 / 12%);
+  --landing-text: #171611;
+  --landing-text-muted: #625f56;
+  --landing-border: #cfc5b3;
+  --landing-font-display: 'Cabinet Grotesk', 'Geist Variable', sans-serif;
+  --landing-font-body: 'Geist Variable', 'Inter', sans-serif;
+  background: var(--landing-bg);
   color: var(--landing-text);
+  font-family: var(--landing-font-body);
   overflow-x: clip;
 
   /* Landing-scoped utility classes (avoided polluting tailwind.config.ts) */
@@ -234,21 +230,31 @@ html.landing-scroll-snap {
    flips the html[data-theme] attribute, landing tokens follow.
    Primary stays orange-family but darker for AA contrast on white;
    --color-primary override here keeps Button.primary readable too. */
-[data-theme='light'] .theme-landing {
-  --color-primary: #d97706;
-  --color-primary-hover: #b45309;
-  --color-ring: #d97706;
+[data-theme='dark'] .theme-landing {
+  --color-primary: #e1a24f;
+  --color-primary-hover: #f0b760;
+  --color-ring: #e1a24f;
+  --landing-bg: #14130f;
+  --landing-bg-alt: #1c1a15;
+  --landing-card: #242119;
+  --landing-card-hover: #2d291f;
+  --landing-primary: #e1a24f;
+  --landing-primary-text: #f0b760;
+  --landing-primary-soft: rgb(225 162 79 / 12%);
+  --landing-text: #f3efe5;
+  --landing-text-muted: #b4ad9e;
+  --landing-border: #474136;
+}
 
-  --landing-bg: #fafafa;
-  --landing-bg-alt: #ededed;
-  --landing-card: #ffffff;
-  --landing-card-hover: #f5f5f5;
-  --landing-primary: #d97706;
-  --landing-primary-text: var(--color-primary-hover);
-  --landing-primary-soft: rgba(217, 119, 6, 0.12);
-  --landing-text: #171717;
-  --landing-text-muted: #525252;
-  --landing-border: color-mix(in srgb, var(--landing-text-muted) 70%, transparent);
+.theme-landing h1,
+.theme-landing h2,
+.theme-landing h3 {
+  font-family: var(--landing-font-display);
+  text-wrap: balance;
+}
+
+.theme-landing p {
+  text-wrap: pretty;
 }
 
 /* === LANDING WORKBENCH === */

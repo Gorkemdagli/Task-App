@@ -129,12 +129,13 @@ describe('LandingPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('uses document scroll and gives every main section a viewport minimum', () => {
+  it('uses natural document scroll inside the editorial overflow boundary', () => {
     const { container, unmount } = renderLanding();
+    const root = container.firstElementChild;
 
-    expect(container.firstElementChild).not.toHaveClass('landing-scroll-viewport');
-    expect(document.documentElement).toHaveClass('landing-scroll-snap');
-    expect(container.querySelectorAll('main > .landing-viewport-section')).toHaveLength(4);
+    expect(root).toHaveClass('theme-landing', 'landing-editorial');
+    expect(root).toHaveClass('overflow-x-hidden', 'w-full', 'max-w-full');
+    expect(document.documentElement).not.toHaveClass('landing-scroll-snap');
 
     unmount();
     expect(document.documentElement).not.toHaveClass('landing-scroll-snap');
@@ -148,9 +149,9 @@ describe('LandingPage', () => {
 
     expect(sectionTitles).toEqual([
       'İşin nerede kaldığını herkes görsün.',
-      'TaskFlow’u 30 saniyede deneyin.',
       'Özellikler',
       'İş akışı',
+      'TaskFlow’u 30 saniyede deneyin.',
     ]);
   });
 });
