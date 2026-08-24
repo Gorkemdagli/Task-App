@@ -12,13 +12,7 @@ export function HeroSection() {
     <section id="hero" aria-labelledby="hero-title" className="landing-hero">
       <div className="landing-section-shell landing-hero__inner">
         <h1 id="hero-title" className="max-w-6xl">
-          İşin nerede{' '}
-          <span data-testid="hero-inline-product" className="landing-inline-product" aria-hidden>
-            <span />
-            <span />
-            <span />
-          </span>
-          kaldığını herkes görsün.
+          İşin nerede kaldığını herkes görsün.
         </h1>
         <div className="landing-hero__split">
           <div className="landing-hero__copy">

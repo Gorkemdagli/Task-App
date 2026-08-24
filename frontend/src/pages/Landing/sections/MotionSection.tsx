@@ -17,6 +17,10 @@ const frames = [
     copy: 'Yetkili admin öncelik ve termini görünür kılar.',
   },
   {
+    title: 'Görevde konuş',
+    copy: 'Yorumlar, kararlar ve güncellemeler görev bağlamında tek yerde kalır.',
+  },
+  {
     title: 'Durumu ilerlet',
     copy: 'Sorumlu kendi görevini üç sabit durum arasında taşır.',
   },

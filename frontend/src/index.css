@@ -203,29 +203,6 @@
   letter-spacing: -0.055em;
 }
 
-.theme-landing .landing-inline-product {
-  display: inline-grid;
-  width: clamp(4.5rem, 9vw, 8.5rem);
-  height: 0.62em;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.08em;
-  margin-inline: 0.12em;
-  vertical-align: 0.05em;
-  overflow: hidden;
-  border: 1px solid var(--landing-border);
-  border-radius: 999px;
-  background: var(--landing-card);
-}
-
-.theme-landing .landing-inline-product > span {
-  border-inline-end: 1px solid var(--landing-border);
-  background: var(--landing-primary-soft);
-}
-
-.theme-landing .landing-inline-product > span:last-child {
-  border-inline-end: 0;
-}
-
 .theme-landing .landing-hero__split {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(24rem, 1.28fr);
@@ -411,20 +388,6 @@
 .theme-landing .landing-message-thread {
   display: grid;
   gap: 0.75rem;
-}
-
-.theme-landing .landing-message-thread span {
-  width: fit-content;
-  max-width: 85%;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--landing-border);
-  background: var(--landing-bg-alt);
-  font-size: 0.875rem;
-}
-
-.theme-landing .landing-message-thread span:last-child {
-  margin-inline-start: auto;
-  border-color: var(--landing-primary);
 }
 
 .theme-landing .landing-permission-lines {
@@ -1903,29 +1866,6 @@
   letter-spacing: -0.055em;
 }
 
-.theme-landing .landing-inline-product {
-  display: inline-grid;
-  width: clamp(4.5rem, 9vw, 8.5rem);
-  height: 0.62em;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.08em;
-  margin-inline: 0.12em;
-  vertical-align: 0.05em;
-  overflow: hidden;
-  border: 1px solid var(--landing-border);
-  border-radius: 999px;
-  background: var(--landing-card);
-}
-
-.theme-landing .landing-inline-product > span {
-  border-inline-end: 1px solid var(--landing-border);
-  background: var(--landing-primary-soft);
-}
-
-.theme-landing .landing-inline-product > span:last-child {
-  border-inline-end: 0;
-}
-
 .theme-landing .landing-hero__split {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(24rem, 1.28fr);
@@ -2276,4 +2216,118 @@
     opacity: 1;
     transform: none;
   }
+}
+
+/* Workflow motion refinement */
+.theme-landing .landing-motion {
+  min-height: auto;
+}
+
+.theme-landing .landing-motion__copy {
+  position: sticky;
+  top: calc(var(--landing-nav-height) + 2rem);
+  align-self: start;
+}
+
+.theme-landing .landing-motion__frames {
+  gap: 8vh;
+  padding-block: 6vh 16vh;
+}
+
+.theme-landing [data-motion-frame] {
+  min-height: clamp(15rem, 36vh, 22rem);
+  opacity: 1;
+  will-change: transform, opacity;
+}
+
+.theme-landing [data-motion-frame] h3 {
+  font-size: clamp(1.75rem, 3vw, 3.25rem);
+}
+
+@media (max-width: 63.9375rem) {
+  .theme-landing .landing-motion__copy {
+    position: static;
+  }
+
+  .theme-landing .landing-motion__frames {
+    gap: 1px;
+    padding-block: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-landing [data-motion-frame] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Compact task chat */
+.theme-landing .landing-chatbox {
+  overflow: hidden;
+  border: 1px solid var(--landing-border);
+  background: var(--landing-bg-alt);
+}
+
+.theme-landing .landing-chatbox__header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--landing-border);
+  background: var(--landing-card);
+  font-size: 0.75rem;
+}
+
+.theme-landing .landing-chatbox__avatar {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  background: var(--landing-primary-soft);
+  color: var(--landing-primary-text);
+  font-size: 0.625rem;
+  font-weight: 800;
+}
+
+.theme-landing .landing-chatbox__header small {
+  color: var(--landing-text-muted);
+}
+
+.theme-landing .landing-chatbox .landing-message-thread {
+  gap: 0.625rem;
+  padding: 0.75rem;
+}
+
+.theme-landing .landing-message-bubble {
+  display: grid;
+  width: min(82%, 17rem);
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--landing-border);
+  background: var(--landing-card);
+}
+
+.theme-landing .landing-message-bubble:last-child {
+  margin-inline-start: auto;
+  border-color: var(--landing-primary);
+}
+
+.theme-landing .landing-message-bubble strong,
+.theme-landing .landing-message-bubble time {
+  font-size: 0.625rem;
+}
+
+.theme-landing .landing-message-bubble time {
+  color: var(--landing-text-muted);
+}
+
+.theme-landing .landing-message-bubble p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--landing-text);
+  font-size: 0.8125rem;
+  line-height: 1.35;
 }

@@ -79,7 +79,7 @@ describe('LandingPage', () => {
     expect(demo).toHaveAttribute('href', '#interactive-app-preview');
     expect(register).toHaveClass('landing-hero-cta');
     expect(demo).toHaveClass('landing-hero-cta');
-    expect(within(hero).getByTestId('hero-inline-product')).toBeInTheDocument();
+    expect(within(hero).queryByTestId('hero-inline-product')).not.toBeInTheDocument();
   });
 
   it('marks the current landing anchor semantically', () => {

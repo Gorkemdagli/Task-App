@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   add: vi.fn(),
   revert: vi.fn(),
   to: vi.fn(),
+  fromTo: vi.fn(),
   refresh: vi.fn(),
 }));
 
@@ -12,6 +13,7 @@ vi.mock('gsap', () => ({
     registerPlugin: vi.fn(),
     matchMedia: () => ({ add: mocks.add, revert: mocks.revert }),
     to: mocks.to,
+    fromTo: mocks.fromTo,
   },
 }));
 
@@ -40,8 +42,32 @@ describe('createLandingMotion', () => {
       'matchMedia',
       vi.fn(() => ({ matches: false })),
     );
-    const cleanup = createLandingMotion(document.createElement('section'));
+    const root = document.createElement('section');
+    root.innerHTML = `
+      <span data-motion-word></span>
+      <article data-motion-frame></article>
+      <article data-motion-frame></article>
+      <article data-motion-frame></article>
+      <article data-motion-frame></article>
+      <article data-motion-frame></article>
+    `;
+    const cleanup = createLandingMotion(root);
     expect(mocks.add).toHaveBeenCalledWith('(min-width: 1024px)', expect.any(Function));
+    const setup = mocks.add.mock.calls[0]?.[1] as () => void;
+    setup();
+
+    expect(mocks.fromTo).toHaveBeenCalledTimes(5);
+    for (const frame of root.querySelectorAll('[data-motion-frame]')) {
+      expect(mocks.fromTo).toHaveBeenCalledWith(
+        frame,
+        expect.objectContaining({ opacity: 0, scale: 0.82 }),
+        expect.objectContaining({
+          opacity: 1,
+          y: 0,
+          scrollTrigger: expect.objectContaining({ trigger: frame, scrub: 0.65 }),
+        }),
+      );
+    }
     cleanup();
     expect(mocks.revert).toHaveBeenCalledOnce();
   });

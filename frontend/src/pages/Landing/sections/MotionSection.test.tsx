@@ -12,8 +12,20 @@ describe('MotionSection', () => {
     expect(region).toHaveAttribute('id', 'workflow');
     expect(screen.getByText('Görevi aç')).toBeVisible();
     expect(screen.getByText('Önceliği netleştir')).toBeVisible();
+    expect(screen.getByText('Görevde konuş')).toBeVisible();
     expect(screen.getByText('Durumu ilerlet')).toBeVisible();
     expect(screen.getByText('Tamamla, arşivle')).toBeVisible();
+    expect(
+      Array.from(region.querySelectorAll('[data-motion-frame]')).map(
+        (frame) => frame.querySelector('h3')?.textContent,
+      ),
+    ).toEqual([
+      'Görevi aç',
+      'Önceliği netleştir',
+      'Görevde konuş',
+      'Durumu ilerlet',
+      'Tamamla, arşivle',
+    ]);
     expect(region.querySelectorAll('[data-motion-word]').length).toBeGreaterThan(8);
   });
 });

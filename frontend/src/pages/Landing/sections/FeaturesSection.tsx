@@ -65,9 +65,24 @@ export function FeaturesSection() {
               <h3>Konuşma işin yanında kalır.</h3>
               <p>Karar, yorum ve güncelleme görev bağlamından kopmaz.</p>
             </div>
-            <div className="landing-message-thread" aria-hidden="true">
-              <span>Termin netleşti.</span>
-              <span>Bağımlılık çözüldü.</span>
+            <div className="landing-chatbox" aria-hidden="true">
+              <div className="landing-chatbox__header">
+                <span className="landing-chatbox__avatar">GK</span>
+                <strong>Görev sohbeti</strong>
+                <small>2 mesaj</small>
+              </div>
+              <div className="landing-message-thread">
+                <div className="landing-message-bubble">
+                  <strong>Selin</strong>
+                  <p>Termin netleşti.</p>
+                  <time dateTime="10:24">10:24</time>
+                </div>
+                <div className="landing-message-bubble">
+                  <strong>Görkem</strong>
+                  <p>Bağımlılık çözüldü.</p>
+                  <time dateTime="10:31">10:31</time>
+                </div>
+              </div>
             </div>
           </article>
 

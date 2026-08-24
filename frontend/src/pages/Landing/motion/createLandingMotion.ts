@@ -25,19 +25,24 @@ export function createLandingMotion(root: HTMLElement): () => void {
         },
       });
 
-      gsap.to(frames, {
-        yPercent: -12,
-        opacity: 1,
-        stagger: 0.12,
-        ease: 'none',
-        scrollTrigger: {
-          trigger: root,
-          start: 'top top',
-          end: 'bottom bottom',
-          scrub: 0.8,
-          pin: root.querySelector('[data-motion-pin]'),
-          invalidateOnRefresh: true,
-        },
+      frames.forEach((frame) => {
+        gsap.fromTo(
+          frame,
+          { y: 48, opacity: 0, scale: 0.82, transformOrigin: '50% 65%' },
+          {
+            y: 0,
+            opacity: 1,
+            scale: 1,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: frame,
+              start: 'top 88%',
+              end: 'top 58%',
+              scrub: 0.65,
+              invalidateOnRefresh: true,
+            },
+          },
+        );
       });
     });
   }

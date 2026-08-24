@@ -52,4 +52,14 @@ describe('FeaturesSection', () => {
     const grid = screen.getByTestId('feature-bento');
     expect(grid.querySelectorAll('[data-feature-reveal]')).toHaveLength(2);
   });
+
+  it('presents task updates inside a recognizable compact chatbox', () => {
+    const { container } = render(<FeaturesSection />);
+    const chatbox = container.querySelector('.landing-chatbox');
+
+    expect(chatbox).toHaveTextContent('Görev sohbeti');
+    expect(chatbox?.querySelectorAll('.landing-message-bubble')).toHaveLength(2);
+    expect(chatbox).toHaveTextContent('Termin netleşti.');
+    expect(chatbox).toHaveTextContent('Bağımlılık çözüldü.');
+  });
 });
