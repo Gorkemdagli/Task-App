@@ -1,4 +1,3 @@
-import { ArrowDown, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { HeroIllustration } from '@/components/landing/HeroIllustration';
 import { buttonVariants } from '@/components/ui/button';
@@ -10,35 +9,42 @@ export function HeroSection() {
   const primaryLabel = isAuthenticated ? 'Panoya git' : 'Ücretsiz başla';
 
   return (
-    <section
-      id="hero"
-      aria-labelledby="hero-title"
-      className="landing-hero landing-viewport-section"
-    >
-      <div className="landing-section-shell landing-hero__grid">
-        <div className="landing-hero__copy">
-          <h1 id="hero-title">İşin nerede kaldığını herkes görsün.</h1>
-          <p>
-            TaskFlow, teknik ekiplerin görevleri üç sabit durumda izlemesini, sorumluluğu
-            netleştirmesini ve yetki sınırlarını korumasını sağlar.
-          </p>
+    <section id="hero" aria-labelledby="hero-title" className="landing-hero">
+      <div className="landing-section-shell landing-hero__inner">
+        <h1 id="hero-title" className="max-w-6xl">
+          İşin nerede{' '}
+          <span data-testid="hero-inline-product" className="landing-inline-product" aria-hidden>
+            <span />
+            <span />
+            <span />
+          </span>
+          kaldığını herkes görsün.
+        </h1>
+        <div className="landing-hero__split">
+          <div className="landing-hero__copy">
+            <p>
+              Görev, sorumluluk ve yetki aynı görünür akışta kalsın. Ekip neyin sırada olduğunu
+              tahmin etmeden ilerlesin.
+            </p>
 
-          <div className="landing-hero__actions">
-            <Link to={primaryHref} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-              {primaryLabel}
-              {!isAuthenticated ? <ArrowRight aria-hidden /> : null}
-            </Link>
-            <a
-              href="#interactive-app-preview"
-              className={buttonVariants({ variant: 'secondary', size: 'lg' })}
-            >
-              Panoyu dene
-              <ArrowDown aria-hidden />
-            </a>
+            <div className="landing-hero__actions">
+              <Link
+                to={primaryHref}
+                className={`${buttonVariants({ variant: 'primary', size: 'lg' })} landing-hero-cta`}
+              >
+                {primaryLabel}
+              </Link>
+              <a
+                href="#interactive-app-preview"
+                className={`${buttonVariants({ variant: 'secondary', size: 'lg' })} landing-hero-cta`}
+              >
+                Demo’yu dene
+              </a>
+            </div>
           </div>
-        </div>
 
-        <HeroIllustration />
+          <HeroIllustration />
+        </div>
       </div>
     </section>
   );

@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonVariants } from '@/components/ui/button';
@@ -7,10 +7,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 
 const sectionLinks = [
-  { href: '#interactive-app-preview', label: 'Demo' },
   { href: '#features', label: 'Özellikler' },
   { href: '#workflow', label: 'İş akışı' },
+  { href: '#interactive-app-preview', label: 'Demo' },
 ] as const;
+
+type LandingSectionId = 'hero' | 'features' | 'workflow' | 'interactive-app-preview';
 
 function handleSectionLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
@@ -31,7 +33,29 @@ export function NavSection() {
   const { isAuthenticated } = useAuth();
   const { mode, toggleMode } = useTheme();
   const [open, setOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<LandingSectionId>('hero');
   const themeLabel = mode === 'dark' ? 'Aydınlık temaya geç' : 'Karanlık temaya geç';
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) setActiveSection(visible.target.id as LandingSectionId);
+      },
+      { rootMargin: '-20% 0px -65% 0px', threshold: [0, 0.25, 0.5, 0.75] },
+    );
+
+    (['hero', 'features', 'workflow', 'interactive-app-preview'] as const).forEach((id) => {
+      const section = document.getElementById(id);
+      if (section) observer.observe(section);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <header className="landing-nav">
@@ -40,6 +64,7 @@ export function NavSection() {
           href="#hero"
           className="landing-wordmark"
           aria-label="TaskFlow anasayfa"
+          aria-current={activeSection === 'hero' ? 'location' : undefined}
           onClick={(event) => handleSectionLinkClick(event, '#hero')}
         >
           TaskFlow
@@ -50,6 +75,7 @@ export function NavSection() {
             <a
               key={link.href}
               href={link.href}
+              aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
               onClick={(event) => handleSectionLinkClick(event, link.href)}
             >
               {link.label}
@@ -99,7 +125,11 @@ export function NavSection() {
             <nav className="landing-mobile-links" aria-label="Mobil sayfa bölümleri">
               {sectionLinks.map((link) => (
                 <SheetClose key={link.href} asChild>
-                  <a href={link.href} onClick={(event) => handleSectionLinkClick(event, link.href)}>
+                  <a
+                    href={link.href}
+                    aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
+                    onClick={(event) => handleSectionLinkClick(event, link.href)}
+                  >
                     {link.label}
                   </a>
                 </SheetClose>

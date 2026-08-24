@@ -48,7 +48,7 @@ describe('LandingPage', () => {
       'href',
       '/register',
     );
-    expect(within(hero).getByRole('link', { name: 'Panoyu dene' })).toHaveAttribute(
+    expect(within(hero).getByRole('link', { name: 'Demo’yu dene' })).toHaveAttribute(
       'href',
       '#interactive-app-preview',
     );
@@ -66,6 +66,27 @@ describe('LandingPage', () => {
     expect(within(hero).getByRole('link', { name: 'Panoya git' })).toHaveAttribute(
       'href',
       '/dashboard',
+    );
+  });
+
+  it('presents equal-weight hero actions and the approved editorial copy', () => {
+    renderLanding();
+    const hero = screen.getByRole('region', { name: 'İşin nerede kaldığını herkes görsün.' });
+    const register = within(hero).getByRole('link', { name: 'Ücretsiz başla' });
+    const demo = within(hero).getByRole('link', { name: 'Demo’yu dene' });
+
+    expect(register).toHaveAttribute('href', '/register');
+    expect(demo).toHaveAttribute('href', '#interactive-app-preview');
+    expect(register).toHaveClass('landing-hero-cta');
+    expect(demo).toHaveClass('landing-hero-cta');
+    expect(within(hero).getByTestId('hero-inline-product')).toBeInTheDocument();
+  });
+
+  it('marks the current landing anchor semantically', () => {
+    renderLanding();
+    expect(screen.getByRole('link', { name: 'TaskFlow anasayfa' })).toHaveAttribute(
+      'aria-current',
+      'location',
     );
   });
 
