@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { redis } from './redis';
 import { verifyAccessToken, verifyRefreshToken } from './jwt';
 
@@ -6,7 +5,11 @@ const USER_SESSION_INDEX = (userId: string) => `user-sessions:${userId}`;
 const ACCESS_SESSION_KEY = (jti: string) => `access-session:${jti}`;
 const REFRESH_SESSION_KEY = (jti: string) => `session:${jti}`;
 
-export type SessionRecord = { userId: string; familyId: string };
+export type SessionRecord = {
+  userId: string;
+  familyId: string;
+  sessionExpiresAt: number;
+};
 
 function remainingTtl(exp: number): number {
   return Math.max(1, exp - Math.floor(Date.now() / 1000));
@@ -24,20 +27,22 @@ export async function registerIssuedTokens(
   accessToken: string,
   refreshToken: string,
   userId: string,
-  familyId: string = randomUUID(),
+  familyId: string,
+  sessionExpiresAt: number,
 ): Promise<void> {
   const access = verifyAccessToken(accessToken);
   const refresh = verifyRefreshToken(refreshToken);
+  const refreshExpiresAt = Math.min(refresh.exp, sessionExpiresAt);
   const accessKey = ACCESS_SESSION_KEY(access.jti);
   const refreshKey = REFRESH_SESSION_KEY(refresh.jti);
   const indexKey = USER_SESSION_INDEX(userId);
-  const value = JSON.stringify({ userId, familyId });
+  const value = JSON.stringify({ userId, familyId, sessionExpiresAt });
   const transaction = redis.multi();
 
   transaction.set(accessKey, value, 'EX', remainingTtl(access.exp));
-  transaction.set(refreshKey, value, 'EX', remainingTtl(refresh.exp));
+  transaction.set(refreshKey, value, 'EX', remainingTtl(refreshExpiresAt));
   transaction.sadd(indexKey, accessKey, refreshKey);
-  transaction.expire(indexKey, remainingTtl(refresh.exp));
+  transaction.expire(indexKey, remainingTtl(refreshExpiresAt));
   await transaction.exec();
 }
 

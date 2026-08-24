@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { LoginPage } from './LoginPage';
 
-import { api } from '../../lib/api';
-vi.mock('../../lib/api', () => ({ api: { post: vi.fn() } }));
+import { authApi } from '../../lib/api';
+vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() } }));
 
 describe('LoginPage', () => {
   it('renders fields', () => {
@@ -29,7 +29,7 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/şifre gerekli/i)).toBeInTheDocument();
   });
   it('form-top on 401', async () => {
-    vi.mocked(api.post).mockRejectedValueOnce({
+    vi.mocked(authApi.post).mockRejectedValueOnce({
       response: { status: 401, data: { message: 'E-posta veya şifre hatalı' } },
     });
     const u = userEvent.setup();

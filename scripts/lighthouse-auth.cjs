@@ -1,6 +1,14 @@
-module.exports = async function prepareLighthouse(browser, { url }) {
+function assertLocalLighthouseTarget(value) {
+  const target = new URL(value);
+  if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) {
+    throw new Error('Lighthouse credential target is local-only');
+  }
+  return target;
+}
+
+async function prepareLighthouse(browser, { url }) {
   const page = await browser.newPage();
-  const target = new URL(url);
+  const target = assertLocalLighthouseTarget(url);
 
   if (target.pathname === '/dashboard') {
     const email = process.env.PERF_EMAIL;
@@ -22,4 +30,7 @@ module.exports = async function prepareLighthouse(browser, { url }) {
     await page.deleteCookie(...(await page.cookies()));
   }
   await page.close();
-};
+}
+
+module.exports = prepareLighthouse;
+module.exports.assertLocalLighthouseTarget = assertLocalLighthouseTarget;

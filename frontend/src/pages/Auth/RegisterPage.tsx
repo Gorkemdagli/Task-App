@@ -3,7 +3,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerSchema, type RegisterInput } from '../../lib/schemas';
-import { api } from '../../lib/api';
+import { authApi } from '../../lib/api';
 import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
 import { getPasswordStrength } from '../../lib/passwordStrength';
@@ -34,7 +34,7 @@ export function RegisterPage() {
     setFormError(null);
     const payload = data.companyName?.trim() ? data : { ...data, companyName: undefined };
     try {
-      const res = await api.post('/auth/register', payload);
+      const res = await authApi.post('/register', payload);
       setAccessToken(res.data.accessToken);
       setUser(res.data.user);
       navigate('/dashboard');

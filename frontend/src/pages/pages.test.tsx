@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { DashboardPage } from './Dashboard';
@@ -11,7 +11,7 @@ import { TaskDetailPage } from './TaskDetail';
 import { ChatPage } from './Chat';
 import { ProfilePage } from './Profile';
 import { PermissionsPage } from './Permissions';
-import { CompanySettingsPage } from './CompanySettings';
+import { CompanyManagementPage } from './Company';
 
 const { useTasksMock } = vi.hoisted(() => ({
   useTasksMock: vi.fn(() => ({ data: { tasks: [], total: 0 }, isLoading: false, isError: false })),
@@ -61,6 +61,15 @@ vi.mock('@/hooks/queries/useCompanySettings', () => ({
   }),
   useUpdateCompanySettings: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUploadCompanyLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock('@/hooks/queries/useCompanyDashboard', () => ({
+  useCompanyDashboard: () => ({
+    data: undefined,
+    isLoading: true,
+    isFetching: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('@/hooks/queries/useCompanyUsers', () => ({
@@ -153,7 +162,8 @@ function renderAt(path: string) {
           <Route path="/chat/:id" element={<ChatPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/permissions" element={<PermissionsPage />} />
-          <Route path="/company/settings" element={<CompanySettingsPage />} />
+          <Route path="/company" element={<CompanyManagementPage />} />
+          <Route path="/company/settings" element={<Navigate to="/company" replace />} />
           <Route path="*" element={<div>404</div>} />
         </Routes>
       </MemoryRouter>
@@ -249,6 +259,15 @@ describe('role-guarded pages', () => {
   it('CompanySettings renders for companyAdmin', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     renderAt('/company/settings');
-    expect(screen.getByRole('heading', { name: 'Şirket Ayarları' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Şirket Dashboardu' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('CompanyManagement renders dashboard for companyAdmin', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderAt('/company');
+    expect(screen.getByRole('tab', { name: 'Şirket Dashboardu' })).toBeInTheDocument();
   });
 });

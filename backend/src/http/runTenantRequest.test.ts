@@ -32,6 +32,16 @@ describe('runTenantRequest', () => {
     expect(withTenantContext).not.toHaveBeenCalled();
   });
 
+  it('401 without authenticated actor', async () => {
+    const work = vi.fn();
+
+    await expect(runTenantRequest({} as Request, work)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+    });
+    expect(withTenantContext).not.toHaveBeenCalled();
+  });
+
   it('aynı db ve actor nesnesini work callbackine verir', async () => {
     const tx = {};
     const work = vi.fn().mockResolvedValue('done');

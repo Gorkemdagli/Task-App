@@ -32,4 +32,6 @@ export const queryKeys = {
   },
   companyUsers: (tenantId: string) => ['tenant', tenantId, 'company-users'] as const,
   companySettings: (tenantId: string) => ['tenant', tenantId, 'company-settings'] as const,
+  companyDashboard: (tenantId: string, teamId: string | null) =>
+    ['tenant', tenantId, 'company-dashboard', teamId ?? 'all'] as const,
 };

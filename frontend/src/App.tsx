@@ -6,7 +6,7 @@ import { AppShell } from './components/layout/AppShell';
 import { RouteFallback } from './components/layout/RouteFallback';
 import { useAuthStore } from './stores/authStore';
 import { HelloTaskFlow } from './components/HelloTaskFlow';
-import { getMe } from './lib/api';
+import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
 
 const LandingPage = lazy(() =>
@@ -45,8 +45,8 @@ const ProfilePage = lazy(() =>
 const PermissionsPage = lazy(() =>
   import('./pages/Permissions').then((module) => ({ default: module.PermissionsPage })),
 );
-const CompanySettingsPage = lazy(() =>
-  import('./pages/CompanySettings').then((module) => ({ default: module.CompanySettingsPage })),
+const CompanyManagementPage = lazy(() =>
+  import('./pages/Company').then((module) => ({ default: module.CompanyManagementPage })),
 );
 
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
@@ -58,19 +58,14 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const response = await fetch('/api/v1/auth/refresh', {
-          method: 'POST',
-          credentials: 'include',
-        });
+        const response = await authApi.post('/refresh', null);
 
         if (response.status === 204) {
           clearAuth();
           queryClient.clear();
           return;
         }
-        if (!response.ok) throw new Error('Auth refresh failed');
-
-        const data = (await response.json()) as { accessToken: string };
+        const data = response.data as { accessToken: string };
         setAccessToken(data.accessToken);
         const canonicalUser = await getMe();
         setUser(canonicalUser);
@@ -122,7 +117,8 @@ export default function App() {
                 <Route path="/chat/:id" element={<ChatPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/permissions" element={<PermissionsPage />} />
-                <Route path="/company/settings" element={<CompanySettingsPage />} />
+                <Route path="/company" element={<CompanyManagementPage />} />
+                <Route path="/company/settings" element={<Navigate to="/company" replace />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

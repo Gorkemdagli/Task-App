@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { RegisterPage } from './RegisterPage';
 
-vi.mock('../../lib/api', () => ({ api: { post: vi.fn() } }));
-import { api } from '../../lib/api';
+vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() } }));
+import { authApi } from '../../lib/api';
 
 describe('RegisterPage', () => {
   it('renders fields', () => {
@@ -54,7 +54,7 @@ describe('RegisterPage', () => {
     expect(screen.getByText('Orta')).toBeInTheDocument();
   });
   it('form-top on 409', async () => {
-    vi.mocked(api.post).mockRejectedValueOnce({
+    vi.mocked(authApi.post).mockRejectedValueOnce({
       response: { status: 409, data: { message: 'Bu e-posta zaten kullanılıyor' } },
     });
     const u = userEvent.setup();

@@ -366,16 +366,13 @@ function CompanySettingsContent({
   );
 }
 
-export function CompanySettingsPage() {
-  const { isCompanyAdmin } = useAuth();
+export function CompanySettingsContentPage() {
   const settingsQuery = useCompanySettings();
   const updateSettings = useUpdateCompanySettings();
   const uploadLogo = useUploadCompanyLogo();
   const invitations = useCompanyInvitationAdmin();
   const createInvitation = useCreateCompanyInvitation();
   const cancelInvitation = useCancelCompanyInvitation();
-
-  if (!isCompanyAdmin) return <Navigate to="/dashboard" replace />;
 
   if (settingsQuery.isLoading) {
     return <p className="text-sm text-secondary-foreground">Yükleniyor…</p>;
@@ -400,4 +397,10 @@ export function CompanySettingsPage() {
       cancelInvitation={cancelInvitation}
     />
   );
+}
+
+export function CompanySettingsPage() {
+  const { isCompanyAdmin } = useAuth();
+  if (!isCompanyAdmin) return <Navigate to="/dashboard" replace />;
+  return <CompanySettingsContentPage />;
 }

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import { verifyRefreshToken } from '../lib/jwt';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -32,6 +33,16 @@ describe('POST /api/v1/auth/register', () => {
     expect(r.body.accessToken).toBeDefined();
     expect(r.body.user.displayId).toMatch(/^[A-Z2-9]{5}$/);
     expect(r.headers['set-cookie']?.[0]).toMatch(/refreshToken=/);
+  });
+
+  it('sets refresh cookie max age to the 3-day idle lifetime', async () => {
+    const r = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({ fullName: 'Aa', email: 'cookie-age@x.com', password: 'hunter22' });
+    const maxAge = Number(r.headers['set-cookie']?.[0].match(/Max-Age=(\d+)/)?.[1]);
+
+    expect(maxAge).toBeGreaterThan(3 * 24 * 60 * 60 - 5);
+    expect(maxAge).toBeLessThanOrEqual(3 * 24 * 60 * 60);
   });
   it('201 personal', async () => {
     const r = await request(createApp())
@@ -115,6 +126,47 @@ describe('POST /api/v1/auth/refresh', () => {
     const r = await request(createApp()).post('/api/v1/auth/refresh');
     expect(r.status).toBe(204);
   });
+
+  it('caps rotated refresh cookie max age at the absolute deadline', async () => {
+    const reg = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({ fullName: 'Aa', email: 'cookie-deadline@x.com', password: 'hunter22' });
+    const cookie = reg.headers['set-cookie']![0];
+    const token = cookie.match(/refreshToken=([^;]+)/)![1];
+    const payload = verifyRefreshToken(token);
+    const deadline = Math.floor(Date.now() / 1000) + 60;
+    const record = JSON.parse((await redis.get(`session:${payload.jti}`))!);
+    await redis.set(
+      `session:${payload.jti}`,
+      JSON.stringify({ ...record, sessionExpiresAt: deadline }),
+    );
+
+    const refreshed = await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    const maxAge = Number(refreshed.headers['set-cookie']?.[0].match(/Max-Age=(\d+)/)?.[1]);
+
+    expect(refreshed.status).toBe(200);
+    expect(maxAge).toBeLessThanOrEqual(60);
+  });
+
+  it('clears refresh cookie after absolute session expiry', async () => {
+    const reg = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({ fullName: 'Aa', email: 'cookie-expired@x.com', password: 'hunter22' });
+    const cookie = reg.headers['set-cookie']![0];
+    const token = cookie.match(/refreshToken=([^;]+)/)![1];
+    const payload = verifyRefreshToken(token);
+    const record = JSON.parse((await redis.get(`session:${payload.jti}`))!);
+    await redis.set(
+      `session:${payload.jti}`,
+      JSON.stringify({ ...record, sessionExpiresAt: Math.floor(Date.now() / 1000) - 1 }),
+    );
+
+    const expired = await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', cookie);
+
+    expect(expired.status).toBe(401);
+    expect(expired.body.error).toBe('SESSION_EXPIRED');
+    expect(expired.headers['set-cookie']?.[0]).toMatch(/refreshToken=;/);
+  });
 });
 
 describe('POST /api/v1/auth/logout', () => {
@@ -132,6 +184,23 @@ describe('POST /api/v1/auth/logout', () => {
   it('401 no auth', async () => {
     const r = await request(createApp()).post('/api/v1/auth/logout');
     expect(r.status).toBe(401);
+  });
+
+  it('clears the refresh session when the access token is stale', async () => {
+    const reg = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({ fullName: 'Aa', email: 'stale-logout@x.com', password: 'hunter22' });
+    const refreshCookie = reg.headers['set-cookie']![0];
+
+    const logoutResponse = await request(createApp())
+      .post('/api/v1/auth/logout')
+      .set('Authorization', 'Bearer stale-access-token')
+      .set('Cookie', refreshCookie);
+
+    expect(logoutResponse.status).toBe(204);
+    expect(
+      (await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', refreshCookie)).status,
+    ).toBe(401);
   });
 
   it('rejects access and refresh token reuse after logout', async () => {

@@ -44,6 +44,16 @@ describe('requireAuth', () => {
     const app = buildApp(requireAuth);
     expect((await request(app).get('/p').set('Authorization', 'Basic x')).status).toBe(401);
   });
+  it('401 empty Bearer token', async () => {
+    const error = await new Promise<unknown>((resolve) => {
+      void requireAuth(
+        { headers: { authorization: 'Bearer   ' } } as express.Request,
+        {} as express.Response,
+        resolve,
+      );
+    });
+    expect(error).toMatchObject({ statusCode: 401, code: 'UNAUTHORIZED' });
+  });
   it('401 tampered token', async () => {
     const app = buildApp(requireAuth);
     expect((await request(app).get('/p').set('Authorization', 'Bearer not.a.jwt')).status).toBe(

@@ -2,61 +2,72 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { queryClient } from './react-query';
 import { useAuthStore, type AuthUser } from '../stores/authStore';
 
-export function createApi(opts: { baseURL: string }): AxiosInstance {
-  const api = axios.create({ baseURL: opts.baseURL, withCredentials: true });
+const API_PREFIX = '/api/v1';
+const apiOrigin = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
+const directApiBaseURL = apiOrigin ? `${apiOrigin}${API_PREFIX}` : API_PREFIX;
 
-  api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    const t = useAuthStore.getState().accessToken;
-    if (t) config.headers.set('Authorization', `Bearer ${t}`);
-    return config;
-  });
+export const authApi: AxiosInstance = axios.create({
+  baseURL: `${API_PREFIX}/auth`,
+  withCredentials: true,
+});
 
-  let refreshInFlight: Promise<string | null> | null = null;
-  async function doRefresh(): Promise<string | null> {
-    try {
-      const r = await axios.post('/api/v1/auth/refresh', null, { withCredentials: true });
-      const tok = r.data.accessToken as string;
-      useAuthStore.getState().setAccessToken(tok);
-      return tok;
-    } catch {
-      queryClient.clear();
-      useAuthStore.getState().clearAuth();
-      return null;
-    }
+authApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token && config.url === '/logout') config.headers.set('Authorization', `Bearer ${token}`);
+  return config;
+});
+
+export const api: AxiosInstance = axios.create({
+  baseURL: directApiBaseURL,
+  withCredentials: false,
+});
+
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = useAuthStore.getState().accessToken;
+  const isAuthRequest = config.url?.startsWith('/auth/');
+  if (token && !isAuthRequest) config.headers.set('Authorization', `Bearer ${token}`);
+  return config;
+});
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function doRefresh(): Promise<string | null> {
+  try {
+    const response = await authApi.post('/refresh', null);
+    const token = response.data.accessToken as string;
+    useAuthStore.getState().setAccessToken(token);
+    return token;
+  } catch {
+    queryClient.clear();
+    useAuthStore.getState().clearAuth();
+    return null;
   }
-
-  api.interceptors.response.use(
-    (r) => r,
-    async (error) => {
-      const orig = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-      const status = error.response?.status;
-      const url = orig?.url ?? '';
-      const isAuth =
-        url.includes('/auth/login') ||
-        url.includes('/auth/refresh') ||
-        url.includes('/auth/register');
-      if (status !== 401 || orig._retry || isAuth) return Promise.reject(error);
-      orig._retry = true;
-      refreshInFlight ??= doRefresh();
-      const tok = await refreshInFlight;
-      refreshInFlight = null;
-      if (!tok) {
-        if (typeof window !== 'undefined') window.location.href = '/login';
-        return Promise.reject(error);
-      }
-      orig.headers.set('Authorization', `Bearer ${tok}`);
-      return api(orig);
-    },
-  );
-
-  return api;
 }
 
-export const api = createApi({ baseURL: '/api/v1' });
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const status = error.response?.status;
+    const url = original?.url ?? '';
+    const isAuthRequest = url.startsWith('/auth/');
+    if (status !== 401 || original._retry || isAuthRequest) return Promise.reject(error);
 
-// Auth durumunu store'dan okur. FAZ-3 takip işi: backend'de GET /api/v1/users/me
-// yok — login yanıtındaki user kullanılıyor. İleride backend hazır olunca
-// network call ile değiştirilecek.
+    original._retry = true;
+    refreshInFlight ??= doRefresh();
+    const token = await refreshInFlight;
+    refreshInFlight = null;
+    if (!token) {
+      if (typeof window !== 'undefined') window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    original.headers.set('Authorization', `Bearer ${token}`);
+    return api(original);
+  },
+);
+
+// Auth routes use same-origin authApi. All other API and upload routes use direct Render api.
 export async function getMe(): Promise<AuthUser> {
   const response = await api.get<AuthUser>('/users/me');
   return response.data;

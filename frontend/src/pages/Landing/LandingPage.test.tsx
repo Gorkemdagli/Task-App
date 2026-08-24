@@ -82,6 +82,16 @@ describe('LandingPage', () => {
     expect(within(hero).queryByTestId('hero-inline-product')).not.toBeInTheDocument();
   });
 
+  it('keeps the hero headline in the same content flow as its copy and actions', () => {
+    renderLanding();
+    const hero = screen.getByRole('region', { name: 'İşin nerede kaldığını herkes görsün.' });
+    const copy = hero.querySelector('.landing-hero__copy');
+
+    expect(copy).toContainElement(within(hero).getByRole('heading', { level: 1 }));
+    expect(copy).toContainElement(within(hero).getByText(/Görev, sorumluluk ve yetki/));
+    expect(copy).toContainElement(within(hero).getByRole('link', { name: 'Ücretsiz başla' }));
+  });
+
   it('marks the current landing anchor semantically', () => {
     renderLanding();
     expect(screen.getByRole('link', { name: 'TaskFlow anasayfa' })).toHaveAttribute(

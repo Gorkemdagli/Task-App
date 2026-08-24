@@ -14,9 +14,21 @@ describe('jwt', () => {
     expect(p.jti).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('uses a 15-minute access token lifetime', () => {
+    const token = signAccessToken(userId, tenantId);
+    const payload = verifyAccessToken(token);
+    expect(payload.exp - payload.iat).toBe(15 * 60);
+  });
+
   it('signs and verifies refresh token', () => {
     const token = signRefreshToken(userId, tenantId);
     expect(verifyRefreshToken(token).type).toBe('refresh');
+  });
+
+  it('accepts a bounded refresh lifetime', () => {
+    const token = signRefreshToken(userId, tenantId, 3 * 24 * 60 * 60);
+    const payload = verifyRefreshToken(token);
+    expect(payload.exp - payload.iat).toBe(3 * 24 * 60 * 60);
   });
 
   it('rejects tampered token', () => {

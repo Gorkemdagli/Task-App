@@ -30,7 +30,7 @@ import type { NotificationItem } from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
-import { api } from '@/lib/api';
+import { authApi } from '@/lib/api';
 import { queryClient } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 
@@ -76,7 +76,9 @@ function TopbarContent() {
 
   async function handleLogout() {
     try {
-      await api.post('/auth/logout');
+      await authApi.post('/logout');
+    } catch {
+      // Local cleanup still completes when the server session is already expired.
     } finally {
       queryClient.clear();
       clearAuth();
@@ -243,9 +245,9 @@ function TopbarContent() {
             </DropdownMenuItem>
             {isCompanyAdmin && (
               <DropdownMenuItem asChild className="focus:bg-secondary">
-                <Link to="/company/settings" className="flex w-full items-center gap-2">
+                <Link to="/company" className="flex w-full items-center gap-2">
                   <Settings className="h-4 w-4" />
-                  Şirket Ayarları
+                  Şirket Yönetimi
                 </Link>
               </DropdownMenuItem>
             )}

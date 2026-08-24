@@ -166,6 +166,44 @@ describe('refresh', () => {
       code: 'TOKEN_REVOKED',
     });
   });
+
+  it('preserves the absolute deadline while rotating refresh tokens', async () => {
+    const registered = await register({
+      fullName: 'Absolute',
+      email: 'absolute@x.com',
+      password: 'hunter22',
+    });
+    const original = verifyRefreshToken(registered.refreshToken);
+    const originalRecord = JSON.parse((await redis.get(`session:${original.jti}`))!);
+
+    const rotated = await refresh(registered.refreshToken);
+    const next = verifyRefreshToken(rotated.refreshToken);
+    const nextRecord = JSON.parse((await redis.get(`session:${next.jti}`))!);
+
+    expect(nextRecord.familyId).toBe(originalRecord.familyId);
+    expect(nextRecord.sessionExpiresAt).toBe(originalRecord.sessionExpiresAt);
+    expect(next.exp - next.iat).toBeLessThanOrEqual(3 * 24 * 60 * 60);
+  });
+
+  it('rejects refresh after the absolute session deadline', async () => {
+    const registered = await register({
+      fullName: 'Expired',
+      email: 'expired@x.com',
+      password: 'hunter22',
+    });
+    const payload = verifyRefreshToken(registered.refreshToken);
+    const recordKey = `session:${payload.jti}`;
+    const record = JSON.parse((await redis.get(recordKey))!);
+    await redis.set(
+      recordKey,
+      JSON.stringify({ ...record, sessionExpiresAt: Math.floor(Date.now() / 1000) - 1 }),
+    );
+
+    await expect(refresh(registered.refreshToken)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'SESSION_EXPIRED',
+    });
+  });
 });
 
 describe('logout', () => {

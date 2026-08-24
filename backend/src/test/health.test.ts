@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
+import { prisma } from '../lib/prisma';
+import { redis } from '../lib/redis';
 import './setup';
 
 describe('GET /api/v1/health', () => {
@@ -8,18 +10,25 @@ describe('GET /api/v1/health', () => {
     const app = createApp();
     const res = await request(app).get('/api/v1/health');
 
-    expect([200, 503]).toContain(res.status);
-    // Spec Step 22: Postgres/Redis yoksa degraded (503) döner ama test geçer
-    // Bu yüzden 200 veya 503 kabul edilir.
+    expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      status: expect.stringMatching(/^(ok|degraded)$/),
+      status: 'ok',
       timestamp: expect.any(String),
       uptime: expect.any(Number),
-      services: {
-        database: expect.stringMatching(/^(up|down)$/),
-        redis: expect.stringMatching(/^(up|down)$/),
-      },
+      release: expect.any(String),
     });
+  });
+
+  it('does not contact database or Redis', async () => {
+    const databaseSpy = vi.spyOn(prisma, '$queryRaw');
+    const redisSpy = vi.spyOn(redis, 'ping');
+
+    await request(createApp()).get('/api/v1/health');
+
+    expect(databaseSpy).not.toHaveBeenCalled();
+    expect(redisSpy).not.toHaveBeenCalled();
+    databaseSpy.mockRestore();
+    redisSpy.mockRestore();
   });
 
   it('returns JSON content type', async () => {
@@ -27,5 +36,17 @@ describe('GET /api/v1/health', () => {
     const res = await request(app).get('/api/v1/health');
 
     expect(res.headers['content-type']).toMatch(/application\/json/);
+  });
+
+  it('reports the Render deploy commit when available', async () => {
+    vi.stubEnv('RENDER_GIT_COMMIT', 'render-sha');
+
+    try {
+      const res = await request(createApp()).get('/api/v1/health');
+
+      expect(res.body.release).toBe('render-sha');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

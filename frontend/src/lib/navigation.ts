@@ -6,7 +6,6 @@ import {
   MessageSquare,
   UserCircle,
   Shield,
-  Settings,
   type LucideProps,
 } from 'lucide-react';
 
@@ -35,9 +34,9 @@ export const ALL_NAV: NavItem[] = [
   ...PRIMARY_NAV,
   { path: '/chat/:id', label: 'Mesajlaşma', Icon: MessageSquare },
   {
-    path: '/company/settings',
-    label: 'Şirket Ayarları',
-    Icon: Settings,
+    path: '/company',
+    label: 'Şirket Yönetimi',
+    Icon: Users,
     requiredRoles: ['companyAdmin'],
   },
 ];

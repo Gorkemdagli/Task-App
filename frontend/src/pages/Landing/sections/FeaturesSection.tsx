@@ -95,7 +95,10 @@ export function FeaturesSection() {
               <h3>Yetki, çalışma alanını izler.</h3>
               <p>Her rol yalnız izin verilen tenant ve takım kapsamında hareket eder.</p>
             </div>
-            <div className="landing-permission-lines" aria-hidden="true">
+            <div
+              className="landing-permission-lines landing-permission-lines--centered"
+              aria-hidden="true"
+            >
               <span>Tenant</span>
               <span>Takım</span>
               <span>Görev</span>

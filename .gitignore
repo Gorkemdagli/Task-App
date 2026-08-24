@@ -21,6 +21,7 @@ out/
 .env.staging.local
 .envrc
 !.env.example
+.env.test
 
 # Logs
 *.log
@@ -89,7 +90,11 @@ backend/prisma/migrations/dev.db*
 *.tsbuildinfo
 .cache/
 .turbo/
+.lighthouseci/
+artifacts/
 .pg-dump-backup.sql
+*.dump.gpg
+*.dump.gpg.sha256
 .taskflow_app_pwd
 
 # Claude Code / IDE tool caches (per-user, per-machine)
@@ -119,3 +124,12 @@ todo.md
 .vi3ecode
 .tmp-r4
 .superpowers
+.visual-qa
+.workflow-cdp-profile
+.workflow-qa-profile
+.workflow-qa.msj
+.vercel/
+frontend/.vercel/
+hero-qa.png
+workflow-qa.png
+.github/workflows/release.yml

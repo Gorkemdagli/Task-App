@@ -260,10 +260,6 @@
   border-color: var(--landing-primary);
 }
 
-.theme-landing .landing-hero-board__task--moving {
-  animation: none;
-}
-
 @media (max-width: 47.9375rem) {
   .theme-landing .landing-hero h1 {
     font-size: clamp(2.75rem, 14vw, 4.6rem);
@@ -941,7 +937,7 @@
 }
 
 .theme-landing .landing-hero-board {
-  --landing-hero-cycle: 4s;
+  --landing-hero-cycle: 6s;
 
   position: relative;
   display: grid;
@@ -972,6 +968,12 @@
   border: 2px solid color-mix(in srgb, var(--landing-primary) 24%, transparent);
   border-radius: 0.75rem;
   pointer-events: none;
+}
+
+.theme-landing .landing-hero-board__progress--outer {
+  inset: 0;
+  border-width: 1px;
+  border-radius: inherit;
 }
 
 .theme-landing .landing-hero-board__progress-edge {
@@ -1099,7 +1101,8 @@
 
 .theme-landing .landing-hero-board__task--moving {
   z-index: 1;
-  animation: landing-card-handoff var(--landing-hero-cycle) cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation: landing-card-handoff var(--landing-hero-cycle) cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform, opacity;
 }
 
 .theme-landing .landing-hero-board__link {
@@ -1711,26 +1714,59 @@
 
 @keyframes landing-card-handoff {
   0%,
-  25% {
+  14% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
   }
-  50%,
-  75% {
+  24% {
     opacity: 1;
-    transform: translate3d(calc(100% + 2.25rem), 0, 0);
+    transform: translate3d(var(--landing-hero-lane-x-1), var(--landing-hero-lane-y-1), 0);
   }
-  87.5% {
+  34% {
+    opacity: 1;
+    transform: translate3d(var(--landing-hero-lane-x-1), var(--landing-hero-lane-y-1), 0);
+  }
+  44% {
+    opacity: 1;
+    transform: translate3d(var(--landing-hero-lane-x-2), var(--landing-hero-lane-y-2), 0);
+  }
+  54% {
+    opacity: 1;
+    transform: translate3d(var(--landing-hero-lane-x-2), var(--landing-hero-lane-y-2), 0);
+  }
+  66% {
+    opacity: 1;
+    transform: translate3d(var(--landing-hero-lane-x-3), var(--landing-hero-lane-y-3), 0);
+  }
+  88% {
     opacity: 0;
-    transform: translate3d(calc(100% + 2.25rem), 0, 0);
+    transform: translate3d(var(--landing-hero-lane-x-3), var(--landing-hero-lane-y-3), 0);
   }
-  87.501% {
+  88.001% {
     opacity: 0;
     transform: translate3d(0, 0, 0);
   }
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes landing-archive-count {
+  0%,
+  53% {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.8);
+  }
+  54%,
+  66% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  66.001%,
+  100% {
+    opacity: 0;
+    transform: translateY(-0.25rem) scale(0.95);
   }
 }
 
@@ -1805,7 +1841,19 @@
   }
 
   .theme-landing .landing-hero-board[data-motion-override='on'] .landing-hero-board__task--moving {
-    animation: landing-card-handoff var(--landing-hero-cycle) cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    animation: landing-card-handoff var(--landing-hero-cycle) cubic-bezier(0.22, 1, 0.36, 1)
+      infinite;
+  }
+
+  .theme-landing .landing-hero-board__archive-count {
+    animation: none;
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.8);
+  }
+
+  .theme-landing .landing-hero-board[data-motion-override='on'] .landing-hero-board__archive-count {
+    animation: landing-archive-count var(--landing-hero-cycle) cubic-bezier(0.22, 1, 0.36, 1)
+      infinite;
   }
 
   .theme-landing
@@ -1920,10 +1968,6 @@
 .theme-landing .landing-hero-board:hover {
   transform: scale(1.025);
   border-color: var(--landing-primary);
-}
-
-.theme-landing .landing-hero-board__task--moving {
-  animation: none;
 }
 
 @media (max-width: 47.9375rem) {
@@ -2345,4 +2389,158 @@
 .theme-landing .landing-mini-board > div {
   justify-content: flex-start;
   gap: 1.25rem;
+}
+
+/* Keep the hero message and actions in one visual flow. */
+.theme-landing .landing-hero__split {
+  grid-template-columns: minmax(0, 0.95fr) minmax(24rem, 1.05fr);
+  align-items: center;
+  margin-top: 0;
+}
+
+.theme-landing .landing-hero__copy h1 {
+  max-width: 11ch;
+  text-wrap: balance;
+}
+
+.theme-landing .landing-hero-board__columns--lifecycle {
+  gap: 0.75rem;
+}
+
+.theme-landing .landing-hero-board__archive {
+  position: relative;
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  place-content: end center;
+  place-items: center;
+  gap: 0.15rem;
+  padding-bottom: 0;
+  z-index: 2;
+}
+
+.theme-landing .landing-hero-board__archive-visual {
+  position: relative;
+  display: grid;
+  width: 100%;
+  align-content: center;
+  gap: 0.25rem;
+  place-items: center;
+}
+
+.theme-landing .landing-hero-board__archive-illustration {
+  width: 100%;
+  max-width: 8rem;
+  height: auto;
+  overflow: visible;
+  color: var(--landing-primary);
+}
+
+.theme-landing .landing-hero-board__archive-illustration path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.theme-landing .landing-hero-board__archive-label {
+  margin-top: -0.25rem;
+  position: relative;
+  z-index: 1;
+  color: var(--landing-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-landing .landing-hero-board__archive-count {
+  display: inline-flex;
+  min-width: 2rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-status-done) 38%, var(--landing-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-status-done) 12%, var(--landing-card));
+  color: var(--color-status-done);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  position: static;
+  opacity: 0;
+  transform: translateY(0.5rem) scale(0.8);
+  animation: landing-archive-count var(--landing-hero-cycle) cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-landing
+    .landing-hero-board:not([data-motion-override='on'])
+    .landing-hero-board__archive-count {
+    animation: none;
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.8);
+  }
+}
+
+.theme-landing .landing-permission-lines--centered {
+  text-align: center;
+}
+
+.theme-landing .landing-permission-lines--centered span {
+  font-weight: 700;
+}
+
+@media (min-width: 48rem) {
+  .theme-landing .landing-hero-board__columns--lifecycle {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .theme-landing .landing-hero-board__columns--lifecycle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto minmax(9rem, auto);
+  }
+}
+
+/* Let the animated frame own the board edge without a double border. */
+.theme-landing .landing-hero-board {
+  border: 0;
+}
+
+.theme-landing .landing-hero-board__progress--outer {
+  border-color: var(--landing-border);
+}
+
+.theme-landing .landing-hero-board:hover .landing-hero-board__progress--outer {
+  border-color: var(--landing-primary);
+}
+
+.theme-landing .landing-hero-board__progress--outer .landing-hero-board__progress-edge--top,
+.theme-landing .landing-hero-board__progress--outer .landing-hero-board__progress-edge--bottom {
+  height: 1px;
+}
+
+.theme-landing .landing-hero-board__progress--outer .landing-hero-board__progress-edge--right,
+.theme-landing .landing-hero-board__progress--outer .landing-hero-board__progress-edge--left {
+  width: 1px;
+}
+
+@media (max-width: 47.9375rem) {
+  .theme-landing .landing-hero__split {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: clamp(2rem, 8vw, 4rem);
+  }
+
+  .theme-landing .landing-hero__copy,
+  .theme-landing .landing-hero-illustration,
+  .theme-landing .landing-hero-board {
+    width: 100%;
+  }
 }

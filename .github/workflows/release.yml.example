@@ -1,0 +1,282 @@
+name: Production Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit SHA to release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taskflow-production-release
+  cancel-in-progress: false
+
+jobs:
+  verify-required-checks:
+    name: Verify R6B checks
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: ${{ github.event.inputs.target_sha || github.sha }}
+    steps:
+      - name: Require quality and performance checks for exact SHA
+        uses: actions/github-script@v7
+        env:
+          TARGET_SHA: ${{ github.event.inputs.target_sha || github.sha }}
+        with:
+          script: |
+            const required = ['r6b-quality', 'r6b-performance'];
+            const response = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: process.env.TARGET_SHA,
+              per_page: 100,
+            });
+            for (const name of required) {
+              const check = response.data.check_runs.find((run) => run.name === name);
+              if (!check || check.status !== 'completed' || check.conclusion !== 'success') {
+                throw new Error(`Required check failed or missing: ${name} @ ${process.env.TARGET_SHA}`);
+              }
+              }
+
+  provider-preflight:
+    name: Verify provider configuration
+    needs: verify-required-checks
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_MIGRATION_URL: ${{ secrets.SUPABASE_MIGRATION_URL }}
+      BACKUP_PUBLIC_RECIPIENT: ${{ secrets.BACKUP_PUBLIC_RECIPIENT }}
+      BACKUP_PRIVATE_KEY: ${{ secrets.BACKUP_PRIVATE_KEY }}
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      RENDER_ORIGIN: ${{ secrets.RENDER_ORIGIN }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      API_ORIGIN: ${{ vars.API_ORIGIN }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      VITE_SENTRY_ENVIRONMENT: ${{ vars.VITE_SENTRY_ENVIRONMENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: node scripts/provider-preflight.mjs github-release
+
+  migration-validation:
+    name: Validate migrations
+    needs: [verify-required-checks, provider-preflight]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Write disposable backend environment
+        working-directory: backend
+        shell: bash
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          PORT=3001
+          DATABASE_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          DIRECT_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          MAINTENANCE_DATABASE_URL=postgresql://postgres:taskflow@localhost:5433/taskflow_test
+          REDIS_URL=redis://localhost:6380
+          JWT_ACCESS_SECRET=ci-access-secret-2026
+          JWT_REFRESH_SECRET=ci-refresh-secret-2026
+          CLIENT_URL=http://localhost:5173
+          LOG_LEVEL=error
+          EOF
+      - run: npx dotenv -e backend/.env.test -- npx prisma generate --schema=backend/prisma/schema.prisma
+      - run: docker compose up -d postgres-test redis-test
+      - run: npx dotenv -e backend/.env.test -- npx prisma migrate deploy --schema=backend/prisma/schema.prisma
+      - run: npm run test --workspace=backend -- src/db src/test/health.test.ts
+
+  backup:
+    name: Encrypted backup gate
+    needs: migration-validation
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_MIGRATION_URL }}
+      BACKUP_RECIPIENT: ${{ secrets.BACKUP_PUBLIC_RECIPIENT }}
+      BACKUP_PRIVATE_KEY: ${{ secrets.BACKUP_PRIVATE_KEY }}
+      BACKUP_OUTPUT_DIR: ${{ runner.temp }}/taskflow-backup
+      BACKUP_ID: ${{ github.event.inputs.target_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create encrypted backup
+        shell: bash
+        run: bash scripts/encrypted-pg-backup.sh
+      - name: Verify encrypted backup
+        shell: bash
+        run: |
+          key_file="$RUNNER_TEMP/taskflow-restore-key.asc"
+          printf '%s' "$BACKUP_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          encrypted_file="$(find "$BACKUP_OUTPUT_DIR" -maxdepth 1 -type f -name '*.dump.gpg' -print -quit)"
+          test -n "$encrypted_file"
+          BACKUP_ENCRYPTED_FILE="$encrypted_file" \
+            BACKUP_CHECKSUM_FILE="$encrypted_file.sha256" \
+            BACKUP_PRIVATE_KEY_FILE="$key_file" \
+            bash scripts/verify-backup.sh
+          rm -f -- "$key_file"
+      - name: Upload encrypted artifacts only
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskflow-backup-${{ github.event.inputs.target_sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/taskflow-backup/*.dump.gpg
+            ${{ runner.temp }}/taskflow-backup/*.dump.gpg.sha256
+          retention-days: 14
+
+  migrate-production:
+    name: Migrate production
+    needs: backup
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_MIGRATION_URL }}
+      DIRECT_URL: ${{ secrets.SUPABASE_MIGRATION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate status --schema=backend/prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema=backend/prisma/schema.prisma
+
+  deploy-render:
+    name: Deploy Render exact SHA
+    needs: migrate-production
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TARGET_SHA: ${{ github.event.inputs.target_sha || github.sha }}
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    steps:
+      - name: Trigger Render deploy hook
+        shell: bash
+        run: |
+          case "$RENDER_DEPLOY_HOOK" in
+            *\?*) separator='&' ;;
+            *) separator='?' ;;
+          esac
+          curl --fail --silent --show-error -X POST \
+            "${RENDER_DEPLOY_HOOK}${separator}ref=${TARGET_SHA}" >/dev/null
+      - name: Verify Render health and readiness
+        env:
+          RENDER_ORIGIN: ${{ secrets.RENDER_ORIGIN }}
+          TARGET_RELEASE: ${{ github.event.inputs.target_sha || github.sha }}
+        run: node scripts/verify-release.mjs
+
+  deploy-vercel:
+    name: Deploy Vercel prebuilt output
+    needs: deploy-render
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TARGET_SHA: ${{ github.event.inputs.target_sha || github.sha }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      API_ORIGIN: ${{ vars.API_ORIGIN }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      VITE_SENTRY_ENVIRONMENT: ${{ vars.VITE_SENTRY_ENVIRONMENT }}
+      VITE_SENTRY_RELEASE: ${{ github.event.inputs.target_sha || github.sha }}
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build frontend exact SHA
+        run: npm run build:frontend
+      - name: Upload Sentry source maps when generated
+        if: ${{ env.SENTRY_AUTH_TOKEN != '' }}
+        shell: bash
+        run: |
+          if find frontend/dist -type f -name '*.map' -print -quit | grep -q .; then
+            npx @sentry/cli releases new "$TARGET_SHA"
+            npx @sentry/cli releases files "$TARGET_SHA" upload-sourcemaps frontend/dist \
+              --rewrite --url-prefix '~/'
+            npx @sentry/cli releases finalize "$TARGET_SHA"
+          fi
+      - name: Remove source maps from deployment output
+        shell: bash
+        run: find frontend/dist -type f -name '*.map' -delete
+      - name: Verify source maps are absent from frontend output
+        shell: bash
+        run: test -z "$(find frontend/dist -type f -name '*.map' -print -quit)"
+      - name: Link Vercel project and deploy prebuilt output
+        id: deploy
+        working-directory: frontend
+        shell: bash
+        run: |
+          npx vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null
+          npx vercel build --prod --token "$VERCEL_TOKEN" >/dev/null
+          deployment_url="$(npx vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
+          printf 'url=%s\n' "$(printf '%s' "$deployment_url" | tail -n 1)" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    name: Read-only production smoke
+    needs: [deploy-render, deploy-vercel]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_ORIGIN: ${{ needs.deploy-vercel.outputs.url }}
+      RENDER_ORIGIN: ${{ secrets.RENDER_ORIGIN }}
+      TARGET_RELEASE: ${{ github.event.inputs.target_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/production-smoke.mjs
+
+  publish-summary:
+    name: Publish safe release summary
+    needs: [verify-required-checks, migration-validation, backup, migrate-production, deploy-render, deploy-vercel, smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write non-sensitive summary
+        shell: bash
+        run: |
+          {
+            echo '## TaskFlow production release'
+            echo ''
+            echo "- SHA: ${{ github.event.inputs.target_sha || github.sha }}"
+            echo "- Required checks: ${{ needs.verify-required-checks.result }}"
+            echo "- Migration validation: ${{ needs.migration-validation.result }}"
+            echo "- Encrypted backup: ${{ needs.backup.result }}"
+            echo "- Production migration: ${{ needs.migrate-production.result }}"
+            echo "- Render deploy: ${{ needs.deploy-render.result }}"
+            echo "- Vercel deploy: ${{ needs.deploy-vercel.result }}"
+            echo "- Read-only smoke: ${{ needs.smoke.result }}"
+          } >> "$GITHUB_STEP_SUMMARY"

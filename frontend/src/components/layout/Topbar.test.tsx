@@ -7,7 +7,7 @@ import { Topbar } from './Topbar';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUiStore } from '@/stores/uiStore';
-import { api } from '@/lib/api';
+import { api, authApi } from '@/lib/api';
 import * as companyInvitationsService from '@/services/companyInvitations';
 
 vi.mock('@/services/companyInvitations', () => ({
@@ -107,6 +107,15 @@ describe('Topbar', () => {
     expect(screen.getByRole('link', { name: 'Yetkiler' })).toBeInTheDocument();
   });
 
+  it('shows company management link for companyAdmin role', async () => {
+    renderTopbar(admin);
+    await userEvent.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    expect(screen.getByRole('menuitem', { name: 'Şirket Yönetimi' })).toHaveAttribute(
+      'href',
+      '/company',
+    );
+  });
+
   it('shows avatar with initials from full name', () => {
     renderTopbar(member);
     // Full name "Ada Yılmaz" → initials "AY"
@@ -141,13 +150,13 @@ describe('Topbar', () => {
 
   it('revokes the server session before clearing local auth on logout', async () => {
     const user = userEvent.setup();
-    postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: null } as never);
+    postSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ data: null } as never);
     renderTopbar(member);
 
     await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
     await user.click(screen.getByText('Oturumu Kapat'));
 
-    await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/auth/logout'));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
     expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
     expect(screen.getByTestId('location')).toHaveTextContent('/login');
   });

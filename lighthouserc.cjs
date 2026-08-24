@@ -1,14 +1,33 @@
+const fs = require('node:fs');
+
+const chromeCandidates = [
+  process.env.CHROME_PATH,
+  process.platform === 'win32'
+    ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    : null,
+  process.platform === 'win32'
+    ? 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+    : null,
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean);
+const chromePath = chromeCandidates.find((candidate) => fs.existsSync(candidate));
+
 module.exports = {
   ci: {
     collect: {
       numberOfRuns: 3,
-      url: [
-        'http://127.0.0.1:4173/',
-        'http://127.0.0.1:4173/login',
-        'http://127.0.0.1:4173/dashboard',
-      ],
+      url: (process.env.LIGHTHOUSE_PUBLIC_ONLY === '1'
+        ? ['/', '/login']
+        : ['/', '/login', '/dashboard']
+      ).map((path) => `http://127.0.0.1:4173${path}`),
+      ...(chromePath ? { chromePath } : {}),
       puppeteerScript: './scripts/lighthouse-auth.cjs',
-      puppeteerLaunchOptions: { args: ['--no-sandbox'] },
+      puppeteerLaunchOptions: {
+        ...(chromePath ? { executablePath: chromePath } : {}),
+        args: ['--no-sandbox'],
+      },
       settings: { disableStorageReset: true },
     },
     assert: {

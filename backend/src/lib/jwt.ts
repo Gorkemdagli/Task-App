@@ -2,6 +2,10 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { env } from '../env';
 
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+export const REFRESH_TOKEN_IDLE_TTL_SECONDS = 3 * 24 * 60 * 60;
+export const AUTH_SESSION_MAX_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 export interface TokenPayload {
   sub: string;
   // tenantId NULL olabilir (tenantless user); token'da bu şekilde taşınır.
@@ -16,19 +20,19 @@ function verify(token: string, secret: string): TokenPayload {
   return jwt.verify(token, secret) as TokenPayload;
 }
 
-// TTL'ler literal olarak inline: @types/jsonwebtoken v9 `expiresIn`'i
-// `StringValue | number` olarak istiyor. `string` parametre kabul eden bir
-// helper yazmak cast gerektirir — 2 call site için over-engineering. Her sign
-// doğrudan `jwt.sign`'i çağırır.
 export function signAccessToken(userId: string, tenantId: string | null): string {
   return jwt.sign({ sub: userId, tenantId, type: 'access' }, env.JWT_ACCESS_SECRET, {
-    expiresIn: '15m',
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     jwtid: randomUUID(),
   });
 }
-export function signRefreshToken(userId: string, tenantId: string | null): string {
+export function signRefreshToken(
+  userId: string,
+  tenantId: string | null,
+  expiresInSeconds: number = REFRESH_TOKEN_IDLE_TTL_SECONDS,
+): string {
   return jwt.sign({ sub: userId, tenantId, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
-    expiresIn: '7d',
+    expiresIn: expiresInSeconds,
     jwtid: randomUUID(),
   });
 }

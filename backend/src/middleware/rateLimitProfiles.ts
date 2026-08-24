@@ -6,6 +6,7 @@ export const RATE_LIMIT_PROFILES = {
   register: { windowMs: 60_000, max: 5, keyPrefix: 'rl:register:' },
   login: { windowMs: 60_000, max: 10, keyPrefix: 'rl:login:' },
   refresh: { windowMs: 60_000, max: 30, keyPrefix: 'rl:refresh:' },
+  internalDelivery: { windowMs: 60_000, max: 10, keyPrefix: 'rl:internal:' },
   authenticatedRead: { windowMs: 60_000, max: 120, keyPrefix: 'rl:read:' },
   write: { windowMs: 60_000, max: 30, keyPrefix: 'rl:write:' },
   upload: { windowMs: 60_000, max: 10, keyPrefix: 'rl:upload:' },
@@ -29,6 +30,11 @@ export const loginLimiter = createRateLimit({
 
 export const refreshLimiter = createRateLimit({
   ...RATE_LIMIT_PROFILES.refresh,
+  keyGenerator: publicKey,
+});
+
+export const internalDeliveryLimiter = createRateLimit({
+  ...RATE_LIMIT_PROFILES.internalDelivery,
   keyGenerator: publicKey,
 });
 

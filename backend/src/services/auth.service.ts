@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { hashPassword, verifyPassword } from '../lib/password';
@@ -8,6 +9,8 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   verifyAccessToken,
+  AUTH_SESSION_MAX_TTL_SECONDS,
+  REFRESH_TOKEN_IDLE_TTL_SECONDS,
 } from '../lib/jwt';
 import { companyNameKey, slugify } from './tenant.service';
 import { AppError } from '../middleware/errorHandler';
@@ -17,6 +20,7 @@ import {
   refreshSessionKey,
   registerIssuedTokens,
   removeSessionKeys,
+  getRefreshSession,
 } from '../lib/sessionStore';
 
 const DISPLAY_ID_RETRIES = 5;
@@ -35,6 +39,8 @@ export interface AuthResult {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
+  refreshExpiresAt: number;
+  sessionExpiresAt: number;
 }
 
 async function findUniqueDisplayId(): Promise<string> {
@@ -46,10 +52,20 @@ async function findUniqueDisplayId(): Promise<string> {
 }
 
 function issueTokens(user: AuthUser): AuthResult {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const sessionExpiresAt = nowSeconds + AUTH_SESSION_MAX_TTL_SECONDS;
+  const refreshLifetimeSeconds = Math.min(
+    REFRESH_TOKEN_IDLE_TTL_SECONDS,
+    sessionExpiresAt - nowSeconds,
+  );
+  const refreshToken = signRefreshToken(user.id, user.tenantId, refreshLifetimeSeconds);
+
   return {
     user,
     accessToken: signAccessToken(user.id, user.tenantId),
-    refreshToken: signRefreshToken(user.id, user.tenantId),
+    refreshToken,
+    refreshExpiresAt: verifyRefreshToken(refreshToken).exp,
+    sessionExpiresAt,
   };
 }
 
@@ -98,7 +114,13 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     role: user.role,
     tenantId: user.tenantId,
   });
-  await registerIssuedTokens(r.accessToken, r.refreshToken, user.id);
+  await registerIssuedTokens(
+    r.accessToken,
+    r.refreshToken,
+    user.id,
+    randomUUID(),
+    r.sessionExpiresAt,
+  );
   return r;
 }
 
@@ -121,7 +143,13 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     tenantId: user.tenantId,
     tenantName: user.tenant?.name ?? null,
   });
-  await registerIssuedTokens(r.accessToken, r.refreshToken, user.id);
+  await registerIssuedTokens(
+    r.accessToken,
+    r.refreshToken,
+    user.id,
+    randomUUID(),
+    r.sessionExpiresAt,
+  );
   return r;
 }
 
@@ -134,21 +162,30 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   }
   if (await isTokenBlacklisted(p.jti))
     throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const sessionJson = await redis.get(refreshSessionKey(p.jti));
-  if (!sessionJson) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const { userId, familyId } = JSON.parse(sessionJson) as { userId: string; familyId: string };
+  const session = await getRefreshSession(p.jti);
+  if (!session) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
+  const { userId, familyId, sessionExpiresAt } = session;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (sessionExpiresAt <= nowSeconds) {
+    throw new AppError(401, 'Oturum süresi doldu', 'SESSION_EXPIRED');
+  }
   // tenant join → response'da tenantName döner; Sidebar/MobileSidebar tenant adını gösterir.
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { tenant: { select: { name: true } } },
   });
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
-  const ttl = p.exp - Math.floor(Date.now() / 1000);
+  const ttl = Math.min(p.exp, sessionExpiresAt) - nowSeconds;
   if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
   await removeSessionKeys(userId, [refreshSessionKey(p.jti)]);
   const accessToken = signAccessToken(user.id, user.tenantId);
-  const newRefreshToken = signRefreshToken(user.id, user.tenantId);
-  await registerIssuedTokens(accessToken, newRefreshToken, user.id, familyId);
+  const refreshLifetimeSeconds = Math.min(
+    REFRESH_TOKEN_IDLE_TTL_SECONDS,
+    sessionExpiresAt - nowSeconds,
+  );
+  const newRefreshToken = signRefreshToken(user.id, user.tenantId, refreshLifetimeSeconds);
+  const refreshExpiresAt = verifyRefreshToken(newRefreshToken).exp;
+  await registerIssuedTokens(accessToken, newRefreshToken, user.id, familyId, sessionExpiresAt);
   return {
     user: {
       id: user.id,
@@ -161,23 +198,44 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
     },
     accessToken,
     refreshToken: newRefreshToken,
+    refreshExpiresAt,
+    sessionExpiresAt,
   };
 }
 
-export async function logout(accessToken: string, refreshToken?: string): Promise<void> {
-  const p = verifyAccessToken(accessToken);
-  const ttl = p.exp - Math.floor(Date.now() / 1000);
-  if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
-  const keys = [accessSessionKey(p.jti)];
-  if (refreshToken) {
+export async function logout(accessToken?: string, refreshToken?: string): Promise<void> {
+  let accessPayload: ReturnType<typeof verifyAccessToken> | undefined;
+  let refreshPayload: ReturnType<typeof verifyRefreshToken> | undefined;
+
+  if (accessToken) {
     try {
-      const rp = verifyRefreshToken(refreshToken);
-      if (rp.sub === p.sub) keys.push(refreshSessionKey(rp.jti));
+      accessPayload = verifyAccessToken(accessToken);
     } catch {
-      // refresh token invalid/expired — ignore
+      // An expired or already-revoked access token should not prevent logout.
     }
   }
-  await removeSessionKeys(p.sub, keys);
+
+  if (refreshToken) {
+    try {
+      refreshPayload = verifyRefreshToken(refreshToken);
+    } catch {
+      // An expired refresh token has nothing left to revoke.
+    }
+  }
+
+  if (accessPayload) {
+    const ttl = accessPayload.exp - Math.floor(Date.now() / 1000);
+    if (ttl > 0) await redis.set(BLACKLIST_KEY(accessPayload.jti), '1', 'EX', ttl);
+  }
+
+  const userId = accessPayload?.sub ?? refreshPayload?.sub;
+  if (!userId) return;
+
+  const keys = accessPayload ? [accessSessionKey(accessPayload.jti)] : [];
+  if (refreshPayload && (!accessPayload || refreshPayload.sub === accessPayload.sub)) {
+    keys.push(refreshSessionKey(refreshPayload.jti));
+  }
+  await removeSessionKeys(userId, keys);
 }
 
 export async function isTokenBlacklisted(jti: string): Promise<boolean> {

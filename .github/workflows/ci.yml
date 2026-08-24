@@ -6,6 +6,7 @@ on:
 
 jobs:
   quality:
+    name: r6b-quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +36,15 @@ jobs:
       - name: Start test services
         run: docker compose up -d postgres-test redis-test
       - run: npm run ci:check
+      - name: Enforce backend coverage gates
+        run: |
+          npm run test:coverage --workspace=backend
+          node scripts/check-critical-coverage.mjs backend/coverage/coverage-final.json
+      - name: Enforce frontend coverage gates
+        run: npm run test:coverage --workspace=frontend
 
   performance:
+    name: r6b-performance
     runs-on: ubuntu-latest
     env:
       PERF_EMAIL: perf-admin@taskflow.test

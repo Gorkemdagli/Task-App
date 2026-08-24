@@ -11,10 +11,14 @@ describe('navigation', () => {
     expect(paths).toContain('/profile');
   });
 
-  it('ALL_NAV includes chat and company settings', () => {
+  it('ALL_NAV includes chat and company management', () => {
     const paths = ALL_NAV.map((i) => i.path);
     expect(paths).toContain('/chat/:id');
-    expect(paths).toContain('/company/settings');
+    expect(paths).toContain('/company');
+    expect(ALL_NAV.find((item) => item.path === '/company')).toMatchObject({
+      label: 'Şirket Yönetimi',
+      requiredRoles: ['companyAdmin'],
+    });
   });
 
   it('canSeeNavItem returns true for items without requiredRoles', () => {

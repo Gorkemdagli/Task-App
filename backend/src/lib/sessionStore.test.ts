@@ -24,15 +24,20 @@ describe('sessionStore', () => {
     const accessToken = signAccessToken(userId, null);
     const refreshToken = signRefreshToken(userId, null);
     const familyId = randomUUID();
+    const sessionExpiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
 
-    await registerIssuedTokens(accessToken, refreshToken, userId, familyId);
+    await registerIssuedTokens(accessToken, refreshToken, userId, familyId, sessionExpiresAt);
 
     const accessJti = verifyAccessToken(accessToken).jti;
     const refreshJti = verifyRefreshToken(refreshToken).jti;
     expect(await hasAccessSession(accessJti)).toBe(true);
     expect(await redis.sismember(`user-sessions:${userId}`, `access-session:${accessJti}`)).toBe(1);
     expect(await redis.sismember(`user-sessions:${userId}`, `session:${refreshJti}`)).toBe(1);
-    expect(JSON.parse((await redis.get(`session:${refreshJti}`))!)).toEqual({ userId, familyId });
+    expect(JSON.parse((await redis.get(`session:${refreshJti}`))!)).toEqual({
+      userId,
+      familyId,
+      sessionExpiresAt,
+    });
 
     await removeSessionKeys(userId, [`session:${refreshJti}`]);
     expect(await redis.sismember(`user-sessions:${userId}`, `session:${refreshJti}`)).toBe(0);
@@ -44,9 +49,10 @@ describe('sessionStore', () => {
     const firstRefresh = signRefreshToken(userId, null);
     const secondAccess = signAccessToken(userId, null);
     const secondRefresh = signRefreshToken(userId, null);
+    const sessionExpiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
 
-    await registerIssuedTokens(firstAccess, firstRefresh, userId);
-    await registerIssuedTokens(secondAccess, secondRefresh, userId);
+    await registerIssuedTokens(firstAccess, firstRefresh, userId, randomUUID(), sessionExpiresAt);
+    await registerIssuedTokens(secondAccess, secondRefresh, userId, randomUUID(), sessionExpiresAt);
     await revokeAllUserSessions(userId);
 
     expect(await hasAccessSession(verifyAccessToken(firstAccess).jti)).toBe(false);
@@ -54,5 +60,41 @@ describe('sessionStore', () => {
     expect(await redis.exists(`user-sessions:${userId}`)).toBe(0);
     expect(await redis.exists(`session:${verifyRefreshToken(firstRefresh).jti}`)).toBe(0);
     expect(await redis.exists(`session:${verifyRefreshToken(secondRefresh).jti}`)).toBe(0);
+  });
+
+  it('caps Redis session TTL at the earlier refresh expiry or absolute deadline', async () => {
+    const refreshShortUser = randomUUID();
+    const refreshShortAccess = signAccessToken(refreshShortUser, null);
+    const refreshShortToken = signRefreshToken(refreshShortUser, null, 60);
+    const refreshShortDeadline = Math.floor(Date.now() / 1000) + 60 * 60;
+
+    await registerIssuedTokens(
+      refreshShortAccess,
+      refreshShortToken,
+      refreshShortUser,
+      randomUUID(),
+      refreshShortDeadline,
+    );
+
+    const refreshShortJti = verifyRefreshToken(refreshShortToken).jti;
+    expect(await redis.ttl(`session:${refreshShortJti}`)).toBeLessThanOrEqual(60);
+    expect(await redis.ttl(`user-sessions:${refreshShortUser}`)).toBeLessThanOrEqual(60);
+
+    const deadlineShortUser = randomUUID();
+    const deadlineShortAccess = signAccessToken(deadlineShortUser, null);
+    const deadlineShortToken = signRefreshToken(deadlineShortUser, null, 60 * 60);
+    const deadlineShortDeadline = Math.floor(Date.now() / 1000) + 60;
+
+    await registerIssuedTokens(
+      deadlineShortAccess,
+      deadlineShortToken,
+      deadlineShortUser,
+      randomUUID(),
+      deadlineShortDeadline,
+    );
+
+    const deadlineShortJti = verifyRefreshToken(deadlineShortToken).jti;
+    expect(await redis.ttl(`session:${deadlineShortJti}`)).toBeLessThanOrEqual(60);
+    expect(await redis.ttl(`user-sessions:${deadlineShortUser}`)).toBeLessThanOrEqual(60);
   });
 });

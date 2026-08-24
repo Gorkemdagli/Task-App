@@ -11,11 +11,11 @@ export function HeroSection() {
   return (
     <section id="hero" aria-labelledby="hero-title" className="landing-hero">
       <div className="landing-section-shell landing-hero__inner">
-        <h1 id="hero-title" className="max-w-6xl">
-          İşin nerede kaldığını herkes görsün.
-        </h1>
         <div className="landing-hero__split">
           <div className="landing-hero__copy">
+            <h1 id="hero-title" className="max-w-6xl">
+              İşin nerede kaldığını herkes görsün.
+            </h1>
             <p>
               Görev, sorumluluk ve yetki aynı görünür akışta kalsın. Ekip neyin sırada olduğunu
               tahmin etmeden ilerlesin.

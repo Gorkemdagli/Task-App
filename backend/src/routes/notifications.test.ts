@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
-import { signAccessToken, signRefreshToken } from '../lib/jwt';
+import { AUTH_SESSION_MAX_TTL_SECONDS, signAccessToken, signRefreshToken } from '../lib/jwt';
 import { registerIssuedTokens } from '../lib/sessionStore';
+import { randomUUID } from 'crypto';
 
 async function cleanDb() {
   // Notification.userId FK → User.id with onDelete: Cascade; tenants/users must die last.
@@ -45,7 +46,13 @@ async function seedUser(opts: { name?: string; withNotifications?: number } = {}
     if (i < count - 1) await new Promise((r) => setTimeout(r, 5));
   }
   const token = signAccessToken(user.id, user.tenantId);
-  await registerIssuedTokens(token, signRefreshToken(user.id, user.tenantId), user.id);
+  await registerIssuedTokens(
+    token,
+    signRefreshToken(user.id, user.tenantId),
+    user.id,
+    randomUUID(),
+    Math.floor(Date.now() / 1000) + AUTH_SESSION_MAX_TTL_SECONDS,
+  );
   return { tenant, user, token };
 }
 

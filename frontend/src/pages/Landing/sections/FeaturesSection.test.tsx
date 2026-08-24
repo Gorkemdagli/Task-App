@@ -54,6 +54,14 @@ describe('FeaturesSection', () => {
     expect(grid.querySelectorAll('[data-feature-reveal]')).toHaveLength(2);
   });
 
+  it('centers and emphasizes the tenant, team, and task scope labels', () => {
+    const { container } = render(<FeaturesSection />);
+    const scopeLabels = container.querySelector('.landing-permission-lines');
+
+    expect(scopeLabels).toHaveClass('landing-permission-lines--centered');
+    expect(scopeLabels?.querySelectorAll('span')).toHaveLength(3);
+  });
+
   it('presents task updates inside a recognizable compact chatbox', () => {
     const { container } = render(<FeaturesSection />);
     const chatbox = container.querySelector('.landing-chatbox');

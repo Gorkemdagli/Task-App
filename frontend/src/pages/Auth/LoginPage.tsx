@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginSchema, type LoginInput } from '../../lib/schemas';
-import { api } from '../../lib/api';
+import { authApi } from '../../lib/api';
 import { queryClient } from '../../lib/react-query';
 import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
@@ -27,7 +27,7 @@ export function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     setFormError(null);
     try {
-      const res = await api.post('/auth/login', data);
+      const res = await authApi.post('/login', data);
       setAccessToken(res.data.accessToken);
       setUser(res.data.user);
       clearActiveTeam();

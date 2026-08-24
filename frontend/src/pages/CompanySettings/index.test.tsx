@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/authStore';
 import type { CompanySettings } from '@/services/companySettings';
-import { CompanySettingsPage } from './index';
+import { CompanySettingsContentPage, CompanySettingsPage } from './index';
 
 const settings: CompanySettings = {
   id: 'tenant-a',
@@ -62,6 +62,17 @@ function renderPage() {
   );
 }
 
+function renderContentPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <CompanySettingsContentPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe('CompanySettingsPage', () => {
   beforeEach(() => {
     useAuthStore.setState({
@@ -97,6 +108,11 @@ describe('CompanySettingsPage', () => {
       mutateAsync: vi.fn().mockResolvedValue(pendingInvitation),
       isPending: false,
     });
+  });
+
+  it('exposes reusable settings content without a second role guard', () => {
+    renderContentPage();
+    expect(screen.getByRole('heading', { name: 'Şirket Ayarları' })).toBeInTheDocument();
   });
 
   it('shows loading and error states', () => {

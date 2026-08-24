@@ -8,9 +8,9 @@ export default defineConfig({
   test: {
     fileParallelism: false,
     pool: 'forks',
-    poolOptions: {
-      forks: { singleFork: true },
-    },
+    maxWorkers: 1,
+    minWorkers: 1,
+    isolate: true,
     globalSetup: ['./test/globalSetup.ts'],
     env: {
       NODE_ENV: 'test',

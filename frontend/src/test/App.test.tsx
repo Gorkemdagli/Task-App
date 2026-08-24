@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from '../App';
-import { getMe } from '../lib/api';
+import { authApi, getMe } from '../lib/api';
 import { queryClient } from '../lib/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { RouteFallback } from '../components/layout/RouteFallback';
@@ -21,6 +21,8 @@ const canonicalUser = {
   tenantId: null,
   tenantName: null,
 };
+
+let refreshSpy: MockInstance;
 
 function stubMatchMedia() {
   vi.stubGlobal(
@@ -44,7 +46,7 @@ describe('AuthBootstrap canonical flow', () => {
     useAuthStore.setState({ accessToken: null, user: null });
     vi.mocked(getMe).mockReset();
     stubMatchMedia();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    refreshSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ status: 204, data: null } as never);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -53,15 +55,10 @@ describe('AuthBootstrap canonical flow', () => {
 
   it('stores /users/me as canonical after refresh', async () => {
     const refreshUser = { ...canonicalUser, fullName: 'Stale' };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ accessToken: 'fresh', user: refreshUser }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      ),
-    );
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: refreshUser },
+    } as never);
     vi.mocked(getMe).mockResolvedValue(canonicalUser);
 
     render(<App />);
@@ -85,7 +82,7 @@ describe('AuthBootstrap canonical flow', () => {
 
   it('clears auth when refresh fails', async () => {
     useAuthStore.setState({ accessToken: 'stale', user: canonicalUser });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    refreshSpy.mockRejectedValue(new Error('refresh failed'));
 
     render(<App />);
 
@@ -96,15 +93,7 @@ describe('AuthBootstrap canonical flow', () => {
   });
 
   it('clears auth and query cache when canonical user fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ accessToken: 'fresh' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      ),
-    );
+    refreshSpy.mockResolvedValue({ status: 200, data: { accessToken: 'fresh' } } as never);
     vi.mocked(getMe).mockRejectedValue(new Error('me failed'));
     const clearSpy = vi.spyOn(queryClient, 'clear');
 
@@ -123,7 +112,7 @@ describe('App', () => {
     useAuthStore.setState({ accessToken: null, user: null });
     vi.mocked(getMe).mockReset();
     stubMatchMedia();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    refreshSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ status: 204, data: null } as never);
   });
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -47,6 +47,21 @@ describe('queryKeys', () => {
     ]);
   });
 
+  it('scopes company dashboard by tenant and team', () => {
+    expect(queryKeys.companyDashboard('tenant-a', null)).toEqual([
+      'tenant',
+      'tenant-a',
+      'company-dashboard',
+      'all',
+    ]);
+    expect(queryKeys.companyDashboard('tenant-a', 'team-a')).toEqual([
+      'tenant',
+      'tenant-a',
+      'company-dashboard',
+      'team-a',
+    ]);
+  });
+
   it('keeps incoming invitations identity-scoped and admin invitations tenant-scoped', () => {
     expect(queryKeys.companyInvitations.incoming()).toEqual(['company-invitations', 'incoming']);
     expect(queryKeys.companyInvitations.admin('tenant-a')).toEqual([
