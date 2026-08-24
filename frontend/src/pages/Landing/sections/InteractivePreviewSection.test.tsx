@@ -7,6 +7,9 @@ describe('InteractivePreviewSection', () => {
   it('tracks the four sandbox tasks and clears them with reset', async () => {
     const user = userEvent.setup();
     render(<InteractivePreviewSection />);
+    expect(screen.getByRole('region', { name: 'TaskFlow’u 30 saniyede deneyin.' })).toHaveClass(
+      'landing-preview-section',
+    );
     const challenges = screen.getByRole('list', { name: 'Demo görevleri' });
 
     expect(within(challenges).getAllByRole('listitem')).toHaveLength(4);

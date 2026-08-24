@@ -694,6 +694,176 @@
   }
 }
 
+/* Interactive proof and conversion */
+.theme-landing .landing-preview-section {
+  padding-block: clamp(9rem, 16vw, 16rem);
+}
+
+.theme-landing .landing-preview-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+  align-items: end;
+  gap: 3rem;
+  margin-bottom: clamp(4rem, 8vw, 8rem);
+}
+
+.theme-landing .landing-preview-heading h2 {
+  max-width: 12ch;
+  font-size: clamp(3rem, 7vw, 7rem);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+}
+
+.theme-landing .landing-preview-heading p {
+  max-width: 48ch;
+  color: var(--landing-text-muted);
+  font-size: 1.125rem;
+  line-height: 1.65;
+}
+
+.theme-landing .landing-demo-sandbox {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.24fr) minmax(0, 1fr);
+  gap: 1px;
+  border: 1px solid var(--landing-border);
+  background: var(--landing-border);
+}
+
+.theme-landing .landing-demo-challenges {
+  margin: 0;
+  padding: 1.5rem;
+  background: var(--landing-bg-alt);
+}
+
+.theme-landing .landing-demo-challenges li {
+  border-bottom: 1px solid var(--landing-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.theme-landing .landing-demo-challenges li[data-complete='true'] {
+  border-inline-start: 3px solid var(--landing-primary);
+  background: var(--landing-primary-soft);
+}
+
+.theme-landing .landing-product-demo {
+  border: 0;
+  border-radius: 0;
+  background: var(--landing-card);
+  box-shadow: 0 2rem 6rem rgb(87 59 20 / 12%);
+}
+
+.theme-landing .landing-product-demo__toolbar {
+  border-bottom-color: var(--landing-border);
+  background: var(--landing-card);
+}
+
+.theme-landing .landing-demo-column,
+.theme-landing .landing-demo-inspector,
+.theme-landing .landing-demo-teams {
+  background: var(--landing-bg-alt);
+}
+
+.theme-landing .landing-product-demo button:active,
+.theme-landing .landing-footer a:active {
+  transform: scale(0.98);
+}
+
+.theme-landing .landing-footer {
+  padding-block: clamp(8rem, 15vw, 14rem) 2rem;
+  border-top: 1px solid var(--landing-border);
+  background: var(--landing-text);
+  color: var(--landing-bg);
+}
+
+.theme-landing .landing-footer__action {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
+  align-items: end;
+  gap: clamp(3rem, 8vw, 8rem);
+}
+
+.theme-landing .landing-footer__statement {
+  max-width: 15ch;
+  margin: 0;
+  color: inherit;
+  font-family: var(--landing-font-display);
+  font-size: clamp(3rem, 8vw, 8rem);
+  font-weight: 800;
+  line-height: 0.88;
+  letter-spacing: -0.055em;
+}
+
+.theme-landing .landing-footer__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.theme-landing .landing-footer__actions a {
+  min-height: 3rem;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.theme-landing .landing-footer__secondary {
+  border-color: color-mix(in srgb, var(--landing-bg) 45%, transparent);
+  background: transparent;
+  color: var(--landing-bg);
+}
+
+.theme-landing .landing-footer__secondary:hover {
+  background: color-mix(in srgb, var(--landing-bg) 12%, transparent);
+}
+
+.theme-landing .landing-footer__base {
+  display: flex;
+  margin-top: clamp(6rem, 12vw, 12rem);
+  padding-top: 1.5rem;
+  border-top-color: color-mix(in srgb, var(--landing-bg) 28%, transparent);
+  color: color-mix(in srgb, var(--landing-bg) 72%, transparent);
+}
+
+.theme-landing .landing-footer__base a {
+  color: inherit;
+}
+
+.theme-landing .landing-footer__base a:hover {
+  color: var(--landing-bg);
+}
+
+@media (max-width: 63.9375rem) {
+  .theme-landing .landing-demo-sandbox {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .theme-landing .landing-preview-heading,
+  .theme-landing .landing-footer__action {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-landing .landing-footer__actions,
+  .theme-landing .landing-footer__actions a {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-landing .landing-product-demo button,
+  .theme-landing .landing-footer a {
+    transition: none;
+  }
+
+  .theme-landing .landing-product-demo button:active,
+  .theme-landing .landing-footer a:active {
+    transform: none;
+  }
+}
+
 /* === LANDING PAGE TOKENS ===
    Scoped to .theme-landing so the rest of the app keeps its amber tokens.
    Within this scope, Button's `bg-primary` resolves to the landing orange

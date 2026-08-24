@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
+import { buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { scrollToLandingSection } from '../landingScroll';
 
 export function FooterSection() {
   const { isAuthenticated } = useAuth();
@@ -7,20 +9,34 @@ export function FooterSection() {
   return (
     <footer className="landing-footer">
       <div className="landing-section-shell landing-footer__inner">
-        <p className="landing-footer__statement">İş görünür. Sorumluluk net. Akış bozulmaz.</p>
+        <div className="landing-footer__action">
+          <p className="landing-footer__statement">İş görünür. Sorumluluk net. Akış bozulmaz.</p>
+          <div className="landing-footer__actions">
+            {isAuthenticated ? (
+              <Link to="/dashboard" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+                Panoya git
+              </Link>
+            ) : (
+              <>
+                <Link to="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+                  Ücretsiz başla
+                </Link>
+                <Link
+                  to="/login"
+                  className={`${buttonVariants({ variant: 'secondary', size: 'lg' })} landing-footer__secondary`}
+                >
+                  Giriş yap
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
 
         <div className="landing-footer__base">
           <p>© 2026 TaskFlow</p>
-          <nav aria-label="Hesap bağlantıları">
-            {isAuthenticated ? (
-              <Link to="/dashboard">Panoya git</Link>
-            ) : (
-              <>
-                <Link to="/login">Giriş yap</Link>
-                <Link to="/register">Ücretsiz başla</Link>
-              </>
-            )}
-          </nav>
+          <a href="#hero" onClick={(event) => scrollToLandingSection(event, '#hero')}>
+            Başa dön
+          </a>
         </div>
       </div>
     </footer>

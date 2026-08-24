@@ -175,4 +175,21 @@ describe('LandingPage', () => {
       'TaskFlow’u 30 saniyede deneyin.',
     ]);
   });
+
+  it('ends with real account actions and no invented legal routes', () => {
+    renderLanding();
+    const footer = screen.getByRole('contentinfo');
+
+    expect(within(footer).getByText('İş görünür. Sorumluluk net. Akış bozulmaz.')).toBeVisible();
+    expect(within(footer).getByRole('link', { name: 'Ücretsiz başla' })).toHaveAttribute(
+      'href',
+      '/register',
+    );
+    expect(within(footer).getByRole('link', { name: 'Giriş yap' })).toHaveAttribute(
+      'href',
+      '/login',
+    );
+    expect(document.querySelector('a[href="/privacy"]')).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/terms"]')).not.toBeInTheDocument();
+  });
 });

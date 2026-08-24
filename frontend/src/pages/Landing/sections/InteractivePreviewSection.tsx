@@ -30,14 +30,14 @@ export function InteractivePreviewSection() {
     <section
       id="interactive-app-preview"
       aria-labelledby="preview-title"
-      className="landing-preview-section landing-viewport-section bg-landing-bg-alt"
+      className="landing-preview-section"
     >
       <div className="landing-section-shell">
-        <header className="landing-section-heading">
+        <header className="landing-preview-heading">
           <h2 id="preview-title">TaskFlow’u 30 saniyede deneyin.</h2>
           <p>
-            Dört küçük adımı tamamlayın. Demo yalnızca tarayıcınızda çalışır; hesabınızı veya gerçek
-            verinizi değiştirmez.
+            Dört küçük adımı tamamlayın; dört gerçek etkileşimle panoyu, listeyi ve görev detayını
+            hesap açmadan deneyin.
           </p>
         </header>
 

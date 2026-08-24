@@ -1,10 +1,11 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
+import { scrollToLandingSection } from '../landingScroll';
 
 const sectionLinks = [
   { href: '#features', label: 'Özellikler' },
@@ -13,21 +14,6 @@ const sectionLinks = [
 ] as const;
 
 type LandingSectionId = 'hero' | 'features' | 'workflow' | 'interactive-app-preview';
-
-function handleSectionLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-    return;
-  }
-
-  const section = document.getElementById(href.slice(1));
-  if (!section) return;
-
-  event.preventDefault();
-  section.scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start',
-  });
-}
 
 export function NavSection() {
   const { isAuthenticated } = useAuth();
@@ -65,7 +51,7 @@ export function NavSection() {
           className="landing-wordmark"
           aria-label="TaskFlow anasayfa"
           aria-current={activeSection === 'hero' ? 'location' : undefined}
-          onClick={(event) => handleSectionLinkClick(event, '#hero')}
+          onClick={(event) => scrollToLandingSection(event, '#hero')}
         >
           TaskFlow
         </a>
@@ -76,7 +62,7 @@ export function NavSection() {
               key={link.href}
               href={link.href}
               aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
-              onClick={(event) => handleSectionLinkClick(event, link.href)}
+              onClick={(event) => scrollToLandingSection(event, link.href)}
             >
               {link.label}
             </a>
@@ -128,7 +114,7 @@ export function NavSection() {
                   <a
                     href={link.href}
                     aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
-                    onClick={(event) => handleSectionLinkClick(event, link.href)}
+                    onClick={(event) => scrollToLandingSection(event, link.href)}
                   >
                     {link.label}
                   </a>
