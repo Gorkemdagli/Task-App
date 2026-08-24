@@ -315,6 +315,288 @@
   }
 }
 
+/* Editorial feature story */
+.theme-landing .landing-features {
+  display: block;
+  padding-block: clamp(8rem, 14vw, 14rem);
+}
+
+.theme-landing .landing-section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+  align-items: end;
+  gap: 3rem;
+  margin-bottom: clamp(4rem, 8vw, 8rem);
+}
+
+.theme-landing .landing-section-heading h2 {
+  font-size: clamp(3rem, 7vw, 7rem);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+}
+
+.theme-landing .landing-section-heading p {
+  max-width: 48ch;
+  color: var(--landing-text-muted);
+  font-size: 1.125rem;
+  line-height: 1.65;
+}
+
+.theme-landing .landing-marquee {
+  overflow: hidden;
+  margin-bottom: clamp(5rem, 9vw, 9rem);
+  border-block: 1px solid var(--landing-border);
+}
+
+.theme-landing .landing-marquee:focus-visible {
+  outline: 2px solid var(--landing-primary);
+  outline-offset: 0.25rem;
+}
+
+.theme-landing .landing-marquee__track {
+  display: flex;
+  width: max-content;
+  animation: landing-marquee 28s linear infinite;
+  will-change: transform;
+}
+
+.theme-landing .landing-marquee:hover .landing-marquee__track,
+.theme-landing .landing-marquee:focus .landing-marquee__track {
+  animation-play-state: paused;
+}
+
+.theme-landing .landing-marquee ul {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 1.2rem 0;
+  list-style: none;
+}
+
+.theme-landing .landing-marquee li {
+  display: flex;
+  align-items: center;
+  color: var(--landing-text);
+  font-family: var(--landing-font-display);
+  font-size: clamp(1.1rem, 2vw, 1.75rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.theme-landing .landing-marquee li::after {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-inline: 2rem;
+  background: var(--landing-primary);
+  content: '';
+}
+
+@keyframes landing-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.theme-landing .landing-bento {
+  border: 1px solid var(--landing-border);
+  background: var(--landing-border);
+  gap: 1px;
+}
+
+.theme-landing .landing-bento-card {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 3rem;
+  padding: clamp(1.5rem, 3vw, 3rem);
+  background: var(--landing-card);
+}
+
+.theme-landing .landing-bento-card h3 {
+  max-width: 15ch;
+  font-size: clamp(1.75rem, 3.2vw, 3.5rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.theme-landing .landing-bento-card p {
+  max-width: 45ch;
+  margin-top: 1rem;
+  color: var(--landing-text-muted);
+  line-height: 1.6;
+}
+
+.theme-landing .landing-mini-board {
+  display: grid;
+  min-height: 18rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--landing-border);
+  background: var(--landing-border);
+}
+
+.theme-landing .landing-mini-board > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1rem;
+  background: var(--landing-bg-alt);
+}
+
+.theme-landing .landing-mini-board span,
+.theme-landing .landing-permission-lines span {
+  color: var(--landing-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.theme-landing .landing-mini-board strong {
+  padding: 1rem;
+  border-inline-start: 3px solid var(--landing-primary);
+  background: var(--landing-card);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.theme-landing .landing-message-thread {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.theme-landing .landing-message-thread span {
+  width: fit-content;
+  max-width: 85%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--landing-border);
+  background: var(--landing-bg-alt);
+  font-size: 0.875rem;
+}
+
+.theme-landing .landing-message-thread span:last-child {
+  margin-inline-start: auto;
+  border-color: var(--landing-primary);
+}
+
+.theme-landing .landing-permission-lines {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--landing-border);
+}
+
+.theme-landing .landing-permission-lines span {
+  padding-top: 1rem;
+  border-inline-start: 3px solid var(--landing-primary);
+}
+
+.theme-landing .landing-role-accordion {
+  display: flex;
+  min-height: 30rem;
+  margin-top: clamp(6rem, 11vw, 11rem);
+  border-block: 1px solid var(--landing-border);
+}
+
+.theme-landing .landing-role-panel {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  flex-direction: column;
+  border-inline-end: 1px solid var(--landing-border);
+  transition: flex-grow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-landing .landing-role-panel:last-child {
+  border-inline-end: 0;
+}
+
+.theme-landing .landing-role-panel[data-active='true'] {
+  flex-grow: 3;
+}
+
+.theme-landing .landing-role-panel button {
+  min-height: 5rem;
+  padding: 1.5rem;
+  color: var(--landing-text);
+  font-family: var(--landing-font-display);
+  font-size: clamp(1.2rem, 2.2vw, 2rem);
+  font-weight: 700;
+  text-align: start;
+}
+
+.theme-landing .landing-role-panel button:focus-visible {
+  outline: 2px solid var(--landing-primary);
+  outline-offset: -2px;
+}
+
+.theme-landing .landing-role-panel [role='region'] {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  padding: clamp(1.5rem, 3vw, 3rem);
+  background: var(--landing-primary-soft);
+}
+
+.theme-landing .landing-role-panel [role='region'] p {
+  max-width: 38ch;
+  font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+  line-height: 1.5;
+}
+
+@media (max-width: 47.9375rem) {
+  .theme-landing .landing-section-heading {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .theme-landing .landing-mini-board {
+    min-height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .theme-landing .landing-mini-board > div {
+    min-height: 10rem;
+  }
+
+  .theme-landing .landing-role-accordion {
+    min-height: auto;
+    flex-direction: column;
+  }
+
+  .theme-landing .landing-role-panel {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--landing-border);
+  }
+
+  .theme-landing .landing-role-panel:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-landing .landing-marquee__track {
+    width: auto;
+    animation: none;
+    flex-wrap: wrap;
+  }
+
+  .theme-landing .landing-marquee__track > div[aria-hidden='true'] {
+    display: none;
+  }
+
+  .theme-landing .landing-marquee ul {
+    flex-wrap: wrap;
+  }
+
+  .theme-landing .landing-role-panel {
+    transition: none;
+  }
+}
+
 /* === LANDING PAGE TOKENS ===
    Scoped to .theme-landing so the rest of the app keeps its amber tokens.
    Within this scope, Button's `bg-primary` resolves to the landing orange
