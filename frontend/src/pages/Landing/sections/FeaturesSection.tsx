@@ -1,65 +1,40 @@
-import { useState } from 'react';
+import { useRef } from 'react';
+import { gsap } from 'gsap';
+import { useGSAP } from '@gsap/react';
+import { createFeatureMotion } from '../motion/createFeatureMotion';
 
-const principles = [
-  'Üç sabit durum',
-  'Net sorumluluk',
-  'Tenant sınırı',
-  'Görevde kalan bağlam',
-] as const;
-
-const roles = [
-  {
-    id: 'member',
-    label: 'Üye',
-    copy: 'Kendi görevini ilerletir; görev oluşturmaz, atamaz veya silemez.',
-  },
-  {
-    id: 'team-admin',
-    label: 'Takım Admini',
-    copy: 'Yalnız yönettiği takımda görev ve üye akışını yönetir.',
-  },
-  {
-    id: 'company-admin',
-    label: 'Şirket Admini',
-    copy: 'Kendi tenant kapsamındaki şirket, takım ve rol yönetimini yürütür.',
-  },
-] as const;
+gsap.registerPlugin(useGSAP);
 
 export function FeaturesSection() {
-  const [activeRole, setActiveRole] = useState<(typeof roles)[number]['id']>('member');
+  const scope = useRef<HTMLElement>(null);
+
+  useGSAP(
+    () => {
+      if (!scope.current) return;
+      return createFeatureMotion(scope.current);
+    },
+    { scope },
+  );
 
   return (
-    <section id="features" aria-labelledby="features-title" className="landing-features">
-      <div className="landing-marquee" tabIndex={0}>
-        <div className="landing-marquee__track">
-          <ul aria-label="TaskFlow ürün prensipleri">
-            {principles.map((principle) => (
-              <li key={principle}>{principle}</li>
-            ))}
-          </ul>
-          <div aria-hidden="true">
-            <ul>
-              {principles.map((principle) => (
-                <li key={principle}>{principle}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </div>
-
+    <section
+      ref={scope}
+      id="features"
+      aria-labelledby="features-title"
+      className="landing-features"
+    >
       <div className="landing-section-shell">
         <header className="landing-section-heading">
           <h2 id="features-title">İşi görünür kılan üç davranış.</h2>
-          <p>İşi görünür kılan üç davranış. Fazladan görünüm veya süreç yükü olmadan.</p>
         </header>
 
         <div
           data-testid="feature-bento"
-          className="landing-bento grid grid-cols-1 grid-flow-dense lg:grid-cols-12 lg:grid-rows-2"
+          className="landing-bento grid grid-cols-1 grid-flow-dense md:grid-cols-2 lg:grid-cols-12 lg:grid-rows-2"
         >
           <article
             data-grid-cells="14"
-            className="landing-bento-card landing-bento-card--kanban lg:col-span-7 lg:row-span-2"
+            className="landing-bento-card landing-bento-card--kanban md:col-span-2 lg:col-span-7 lg:row-span-2"
           >
             <div className="landing-bento-card__copy">
               <h3>Akış sabit, ilerleme görünür.</h3>
@@ -82,6 +57,7 @@ export function FeaturesSection() {
           </article>
 
           <article
+            data-feature-reveal
             data-grid-cells="5"
             className="landing-bento-card landing-bento-card--message lg:col-span-5"
           >
@@ -96,6 +72,7 @@ export function FeaturesSection() {
           </article>
 
           <article
+            data-feature-reveal
             data-grid-cells="5"
             className="landing-bento-card landing-bento-card--permissions lg:col-span-5"
           >
@@ -109,33 +86,6 @@ export function FeaturesSection() {
               <span>Görev</span>
             </div>
           </article>
-        </div>
-
-        <div className="landing-role-accordion" aria-label="Rol sınırları">
-          {roles.map((role) => {
-            const active = activeRole === role.id;
-            const triggerId = `role-trigger-${role.id}`;
-            const panelId = `role-panel-${role.id}`;
-
-            return (
-              <div key={role.id} className="landing-role-panel" data-active={active}>
-                <button
-                  id={triggerId}
-                  type="button"
-                  aria-expanded={active}
-                  aria-controls={panelId}
-                  onFocus={() => setActiveRole(role.id)}
-                  onMouseEnter={() => setActiveRole(role.id)}
-                  onClick={() => setActiveRole(role.id)}
-                >
-                  {role.label}
-                </button>
-                <div id={panelId} role="region" aria-labelledby={triggerId} hidden={!active}>
-                  <p>{role.copy}</p>
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
     </section>

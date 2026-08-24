@@ -180,7 +180,10 @@ describe('LandingPage', () => {
     renderLanding();
     const footer = screen.getByRole('contentinfo');
 
-    expect(within(footer).getByText('İş görünür. Sorumluluk net. Akış bozulmaz.')).toBeVisible();
+    expect(within(footer).getByText('Ekipte neyin sırada olduğu açık kalsın.')).toBeVisible();
+    expect(within(footer).getByText('Görev')).toBeVisible();
+    expect(within(footer).getByText('Takım')).toBeVisible();
+    expect(within(footer).getByText('Yetki')).toBeVisible();
     expect(within(footer).getByRole('link', { name: 'Ücretsiz başla' })).toHaveAttribute(
       'href',
       '/register',
