@@ -2331,3 +2331,18 @@
   font-size: 0.8125rem;
   line-height: 1.35;
 }
+
+/* Compact bento content flow */
+.theme-landing .landing-bento-card {
+  justify-content: flex-start;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.theme-landing .landing-mini-board {
+  min-height: 11rem;
+}
+
+.theme-landing .landing-mini-board > div {
+  justify-content: flex-start;
+  gap: 1.25rem;
+}

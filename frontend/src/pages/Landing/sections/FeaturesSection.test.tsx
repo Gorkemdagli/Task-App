@@ -28,6 +28,7 @@ describe('FeaturesSection', () => {
 
     expect(grid).toHaveClass('grid-flow-dense');
     expect(grid).toHaveClass('md:grid-cols-2', 'lg:grid-cols-12');
+    expect(grid).not.toHaveClass('lg:grid-rows-2');
     expect(cards).toHaveLength(3);
     expect(cards[0]).toHaveClass('md:col-span-2', 'lg:col-span-7', 'lg:row-span-2');
     expect(cards[0]).toHaveAttribute('data-grid-cells', '14');

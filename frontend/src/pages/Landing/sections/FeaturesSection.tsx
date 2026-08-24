@@ -30,7 +30,7 @@ export function FeaturesSection() {
 
         <div
           data-testid="feature-bento"
-          className="landing-bento grid grid-cols-1 grid-flow-dense md:grid-cols-2 lg:grid-cols-12 lg:grid-rows-2"
+          className="landing-bento grid grid-cols-1 grid-flow-dense md:grid-cols-2 lg:grid-cols-12"
         >
           <article
             data-grid-cells="14"
