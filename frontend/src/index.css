@@ -597,6 +597,103 @@
   }
 }
 
+/* Scroll-driven workflow */
+.theme-landing .landing-motion {
+  min-height: 220dvh;
+  padding-block: clamp(8rem, 14vw, 14rem);
+  background: var(--landing-bg-alt);
+}
+
+.theme-landing .landing-motion__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(3rem, 8vw, 9rem);
+}
+
+.theme-landing .landing-motion__copy h2 {
+  max-width: 10ch;
+  font-size: clamp(3rem, 6vw, 6.5rem);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+}
+
+.theme-landing .landing-motion__copy > p {
+  max-width: 34ch;
+  margin-top: 3rem;
+  font-size: clamp(1.25rem, 2.2vw, 2rem);
+  line-height: 1.45;
+}
+
+.theme-landing [data-motion-word] {
+  opacity: 0.12;
+}
+
+.theme-landing .landing-motion__frames {
+  display: grid;
+  gap: 20vh;
+  padding-block: 20vh;
+}
+
+.theme-landing [data-motion-frame] {
+  display: flex;
+  min-height: 22rem;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(2rem, 4vw, 4rem);
+  border-top: 1px solid var(--landing-border);
+  background: var(--landing-card);
+  opacity: 0.55;
+}
+
+.theme-landing [data-motion-frame] h3 {
+  max-width: 12ch;
+  font-size: clamp(2rem, 4vw, 4.5rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.theme-landing [data-motion-frame] p {
+  max-width: 40ch;
+  margin-top: 1.5rem;
+  color: var(--landing-text-muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 63.9375rem) {
+  .theme-landing .landing-motion {
+    min-height: auto;
+  }
+
+  .theme-landing .landing-motion__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-landing .landing-motion__copy h2 {
+    max-width: 14ch;
+  }
+
+  .theme-landing .landing-motion__frames {
+    gap: 1px;
+    padding-block: 0;
+  }
+
+  .theme-landing [data-motion-word],
+  .theme-landing [data-motion-frame] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-landing [data-motion-word],
+  .theme-landing [data-motion-frame] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* === LANDING PAGE TOKENS ===
    Scoped to .theme-landing so the rest of the app keeps its amber tokens.
    Within this scope, Button's `bg-primary` resolves to the landing orange

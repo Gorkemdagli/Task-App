@@ -49,7 +49,7 @@ export function FeaturesSection() {
 
       <div className="landing-section-shell">
         <header className="landing-section-heading">
-          <h2 id="features-title">Özellikler</h2>
+          <h2 id="features-title">İşi görünür kılan üç davranış.</h2>
           <p>İşi görünür kılan üç davranış. Fazladan görünüm veya süreç yükü olmadan.</p>
         </header>
 

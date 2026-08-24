@@ -2,7 +2,7 @@ import { NavSection } from './sections/NavSection';
 import { HeroSection } from './sections/HeroSection';
 import { InteractivePreviewSection } from './sections/InteractivePreviewSection';
 import { FeaturesSection } from './sections/FeaturesSection';
-import { WorkflowSection } from './sections/WorkflowSection';
+import { MotionSection } from './sections/MotionSection';
 import { FooterSection } from './sections/FooterSection';
 
 /**
@@ -20,7 +20,7 @@ export function LandingPage() {
       <main>
         <HeroSection />
         <FeaturesSection />
-        <WorkflowSection />
+        <MotionSection />
         <InteractivePreviewSection />
       </main>
 

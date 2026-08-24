@@ -170,8 +170,8 @@ describe('LandingPage', () => {
 
     expect(sectionTitles).toEqual([
       'İşin nerede kaldığını herkes görsün.',
-      'Özellikler',
-      'İş akışı',
+      'İşi görünür kılan üç davranış.',
+      'Görev ilerlerken bağlam kaybolmaz.',
       'TaskFlow’u 30 saniyede deneyin.',
     ]);
   });
