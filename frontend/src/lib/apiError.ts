@@ -1,5 +1,5 @@
 export function getApiErrorMessage(error: unknown, fallback: string): string {
-  return (
-    (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
-  );
+  const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+    ?.message;
+  return typeof message === 'string' ? message : fallback;
 }

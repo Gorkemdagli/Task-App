@@ -1,4 +1,4 @@
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import { assertCanManageTeam, isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import type { TenantDb } from '../db/types';
 import type { CreateTeamInput, UpdateTeamMemberRoleInput } from '../schemas/teams.schema';

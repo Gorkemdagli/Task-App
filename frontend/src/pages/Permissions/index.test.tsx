@@ -19,7 +19,6 @@ const user = {
 
 vi.mock('@/hooks/queries/useCompanyUsers', () => ({
   useCompanyUsers: () => ({ data: [user], isLoading: false, isError: false }),
-  useUpdateCompanyRole: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
   useUpdateCompanyPermissions: () => ({
     mutateAsync,
     isPending: false,

@@ -15,7 +15,6 @@ import { AppError } from '../lib/appError';
 import { runTenantRequest } from '../http/runTenantRequest';
 import {
   updateCompanyPermissionsSchema,
-  updateCompanyRoleSchema,
   updateCurrentUserSchema,
   updateCompanySettingsSchema,
 } from '../schemas/users.schema';
@@ -140,22 +139,6 @@ usersRouter.get('/company/users', authenticatedReadLimiter, async (req, res, nex
     next(error);
   }
 });
-
-usersRouter.patch(
-  '/users/:id/role',
-  writeLimiter,
-  validateBody(updateCompanyRoleSchema),
-  async (req, res, next) => {
-    try {
-      const user = await runTenantRequest(req, (db, actor) =>
-        companyUsersService.updateCompanyRole(db, req.params.id, req.body, actor),
-      );
-      res.json(user);
-    } catch (error) {
-      next(error);
-    }
-  },
-);
 
 usersRouter.patch(
   '/users/:id/permissions',

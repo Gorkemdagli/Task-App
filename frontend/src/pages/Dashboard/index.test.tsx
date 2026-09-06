@@ -53,7 +53,6 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useCancelTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateComment: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
-    useTriggerArchive: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
   };
 });
 

@@ -12,23 +12,6 @@ export function useCompanyUsers(enabled = true) {
   });
 }
 
-export function useUpdateCompanyRole() {
-  const queryClient = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  return useMutation({
-    mutationFn: ({
-      userId,
-      role,
-    }: {
-      userId: string;
-      role: companyUsersService.CompanyUser['role'];
-    }) => companyUsersService.updateCompanyRole(userId, role),
-    onSuccess: () => {
-      if (tenantId) queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(tenantId) });
-    },
-  });
-}
-
 export function useUpdateCompanyPermissions() {
   const queryClient = useQueryClient();
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);

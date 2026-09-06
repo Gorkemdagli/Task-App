@@ -1,6 +1,6 @@
 import type { TaskStatus, TaskPriority } from '@prisma/client';
 import type { TenantDb } from '../db/types';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import {
   assertCanAckTaskStatus,
   assertCanCancelTaskStatus,
@@ -153,10 +153,7 @@ export async function listTasks(
   query: ListTasksQuery,
   actor: Actor,
 ): Promise<{ tasks: TaskWithRelations[]; total: number }> {
-  const tenantId = (() => {
-    if (actor.tenantId === null) return null;
-    return actor.tenantId;
-  })();
+  const tenantId = actor.tenantId;
   if (tenantId === null) return { tasks: [], total: 0 };
 
   const isAdmin = actor.role === 'companyAdmin';

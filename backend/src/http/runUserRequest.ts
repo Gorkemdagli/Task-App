@@ -3,7 +3,7 @@ import { withUserContext } from '../db/withUser';
 import type { TenantTransactionOptions } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
 import type { Actor } from '../lib/permissions';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 
 export async function runUserRequest<T>(
   req: Request,

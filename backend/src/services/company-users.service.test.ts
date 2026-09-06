@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
-import {
-  listCompanyUsers,
-  updateCompanyRole,
-  updateCompanyPermissions,
-} from './company-users.service';
+import { listCompanyUsers, updateCompanyPermissions } from './company-users.service';
 
 function mockDb() {
   return {
@@ -46,38 +42,6 @@ describe('company users service', () => {
         },
       },
       orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
-    });
-  });
-
-  it('blocks non-admin role updates', async () => {
-    const db = mockDb();
-    await expect(
-      updateCompanyRole(db, 'user-b', { role: 'companyAdmin' }, { ...admin, role: 'member' }),
-    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
-  });
-
-  it('blocks self role updates before target lookup', async () => {
-    const db = mockDb();
-    await expect(updateCompanyRole(db, 'admin', { role: 'member' }, admin)).rejects.toMatchObject({
-      statusCode: 403,
-      code: 'SELF_ROLE_CHANGE_FORBIDDEN',
-    });
-    expect(db.user.findFirst).not.toHaveBeenCalled();
-  });
-
-  it('scopes target lookup to actor tenant', async () => {
-    const db = mockDb();
-    vi.mocked(db.user.findFirst).mockResolvedValue(null);
-
-    await expect(
-      updateCompanyRole(db, 'user-b', { role: 'companyAdmin' }, admin),
-    ).rejects.toMatchObject({
-      statusCode: 404,
-      code: 'NOT_FOUND',
-    });
-    expect(db.user.findFirst).toHaveBeenCalledWith({
-      where: { id: 'user-b', tenantId: 'tenant-a' },
-      select: { id: true },
     });
   });
 

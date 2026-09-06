@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
 import { addCompanyInvitationSchema } from '../schemas/company-invitations.schema';
 import {
@@ -73,6 +73,15 @@ describe('company invitation schema', () => {
 });
 
 describe('company invitations service', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('uses the same not-found error for missing and foreign targets', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst).mockResolvedValue(null);
@@ -131,8 +140,6 @@ describe('company invitations service', () => {
   });
 
   it('creates invitations with an exact seven-day lifetime', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
     const db = mockDb();
     vi.mocked(db.user.findFirst)
       .mockResolvedValueOnce({
@@ -145,16 +152,12 @@ describe('company invitations service', () => {
     vi.mocked(db.tenant.findFirst).mockResolvedValue({ name: 'Acme' } as never);
     vi.mocked(db.companyInvitation.create).mockResolvedValue(invitation() as never);
 
-    try {
-      await createInvitation(db, admin, { displayId: 'KMU24' });
-      expect(db.companyInvitation.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ expiresAt: new Date('2026-08-26T12:00:00.000Z') }),
-        }),
-      );
-    } finally {
-      vi.useRealTimers();
-    }
+    await createInvitation(db, admin, { displayId: 'KMU24' });
+    expect(db.companyInvitation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ expiresAt: new Date('2026-08-26T12:00:00.000Z') }),
+      }),
+    );
   });
 
   it('expires a stale pending invitation before creating a replacement', async () => {

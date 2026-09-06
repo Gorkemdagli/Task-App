@@ -6,7 +6,7 @@ describe('company users service', () => {
     vi.restoreAllMocks();
   });
 
-  it('removes obsolete direct company-user claim method', () => {
-    expect(companyUsersService).not.toHaveProperty('addCompanyUser');
+  it('does not expose the obsolete direct role mutation', () => {
+    expect(companyUsersService).not.toHaveProperty('updateCompanyRole');
   });
 });

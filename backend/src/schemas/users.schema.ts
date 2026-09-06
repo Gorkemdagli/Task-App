@@ -40,12 +40,6 @@ export const updateCurrentUserSchema = z
 
 export type UpdateCurrentUserInput = z.infer<typeof updateCurrentUserSchema>;
 
-export const updateCompanyRoleSchema = z.object({
-  role: z.enum(['member', 'companyAdmin']),
-});
-
-export type UpdateCompanyRoleInput = z.infer<typeof updateCompanyRoleSchema>;
-
 export const companyTeamRoleSchema = z.object({
   teamId: z.string().uuid(),
   role: z.enum(['member', 'teamAdmin']),

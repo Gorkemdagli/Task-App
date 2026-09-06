@@ -2,7 +2,7 @@ import type { Request } from 'express';
 import { withTenantContext, type TenantTransactionOptions } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
 import { type Actor, requireTenant } from '../lib/permissions';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 
 export async function runTenantRequest<T>(
   req: Request,

@@ -12,8 +12,6 @@ export const RATE_LIMIT_PROFILES = {
   upload: { windowMs: 60_000, max: 10, keyPrefix: 'rl:upload:' },
 } as const;
 
-export type RateLimitProfileName = keyof typeof RATE_LIMIT_PROFILES;
-
 const publicKey = (req: Request): string => `ip:${ipKeyGenerator(req.ip ?? '127.0.0.1')}`;
 
 const actorKey = (req: Request): string => (req.user?.id ? `user:${req.user.id}` : publicKey(req));

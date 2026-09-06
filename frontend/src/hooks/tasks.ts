@@ -381,17 +381,3 @@ export function useCreateComment(taskId: string) {
     },
   });
 }
-
-export function useTriggerArchive() {
-  const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  return useMutation({
-    mutationFn: async () => {
-      const r = await api.post<{ archivedCount: number }>('/admin/tasks/archive-expired');
-      return r.data;
-    },
-    onSuccess: () => {
-      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.tenant(tenantId) });
-    },
-  });
-}

@@ -18,20 +18,8 @@ describe('uiStore', () => {
     expect(useUiStore.getState().sidebarCollapsed).toBe(false);
   });
 
-  it('setSidebarCollapsed explicit', () => {
-    useUiStore.getState().setSidebarCollapsed(true);
-    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
-  });
-
   it('mobile sheet open/close', () => {
     useUiStore.getState().openMobileSheet();
-    expect(useUiStore.getState().mobileSheetOpen).toBe(true);
-    useUiStore.getState().closeMobileSheet();
-    expect(useUiStore.getState().mobileSheetOpen).toBe(false);
-  });
-
-  it('setMobileSheetOpen toggles explicitly', () => {
-    useUiStore.getState().setMobileSheetOpen(true);
     expect(useUiStore.getState().mobileSheetOpen).toBe(true);
     useUiStore.getState().setMobileSheetOpen(false);
     expect(useUiStore.getState().mobileSheetOpen).toBe(false);

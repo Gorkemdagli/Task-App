@@ -1,6 +1,6 @@
 import type { TaskComment } from '@prisma/client';
 import type { TenantDb } from '../db/types';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import { assertCanCommentOnTask, requireTenant, type Actor } from '../lib/permissions';
 import { notifyTaskCommented } from '../lib/notifications';
 import type { CreateCommentInput } from '../schemas/comments.schema';

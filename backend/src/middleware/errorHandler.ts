@@ -3,8 +3,6 @@ import { ZodError } from 'zod';
 import { toRlsError } from '../db/rlsError';
 import { AppError } from '../lib/appError';
 
-export { AppError } from '../lib/appError';
-
 export class ValidationError extends AppError {
   constructor(public issues: { path: (string | number)[]; message: string }[]) {
     super(400, 'Geçersiz istek', 'BAD_REQUEST');

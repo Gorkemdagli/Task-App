@@ -9,7 +9,7 @@ import {
 } from '../middleware/rateLimitProfiles';
 import * as authService from '../services/auth.service';
 import { setRefreshCookie, clearRefreshCookie } from '../lib/cookie';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 
 export const authRouter = Router();
 

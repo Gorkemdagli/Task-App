@@ -5,7 +5,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './components/layout/AppShell';
 import { RouteFallback } from './components/layout/RouteFallback';
 import { useAuthStore } from './stores/authStore';
-import { HelloTaskFlow } from './components/HelloTaskFlow';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
 
@@ -128,5 +127,3 @@ export default function App() {
     </AuthBootstrap>
   );
 }
-
-export { HelloTaskFlow };

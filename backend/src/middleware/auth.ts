@@ -3,7 +3,7 @@ import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { isTokenBlacklisted } from '../services/auth.service';
 import { hasAccessSession } from '../lib/sessionStore';
-import { AppError } from './errorHandler';
+import { AppError } from '../lib/appError';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

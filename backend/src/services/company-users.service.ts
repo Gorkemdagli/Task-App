@@ -1,10 +1,7 @@
 import type { TenantDb } from '../db/types';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import { isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
-import type {
-  UpdateCompanyPermissionsInput,
-  UpdateCompanyRoleInput,
-} from '../schemas/users.schema';
+import type { UpdateCompanyPermissionsInput } from '../schemas/users.schema';
 
 export type CompanyUser = {
   id: string;
@@ -78,31 +75,6 @@ export async function listCompanyUsers(db: TenantDb, actor: Actor): Promise<Comp
     orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
   });
   return users.map(toCompanyUser);
-}
-
-export async function updateCompanyRole(
-  db: TenantDb,
-  userId: string,
-  input: UpdateCompanyRoleInput,
-  actor: Actor,
-): Promise<CompanyUser> {
-  const tenantId = assertCompanyAdmin(actor);
-  if (actor.id === userId) {
-    throw new AppError(403, 'Kendi rolünüz değiştirilemez', 'SELF_ROLE_CHANGE_FORBIDDEN');
-  }
-
-  const target = await db.user.findFirst({
-    where: { id: userId, tenantId },
-    select: { id: true },
-  });
-  if (!target) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
-
-  const updated = await db.user.update({
-    where: { id: target.id },
-    data: { role: input.role },
-    select: companyUserSelect(tenantId),
-  });
-  return toCompanyUser(updated);
 }
 
 export async function updateCompanyPermissions(

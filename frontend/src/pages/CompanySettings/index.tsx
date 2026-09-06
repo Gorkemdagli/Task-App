@@ -22,6 +22,7 @@ import {
   useCreateCompanyInvitation,
 } from '@/hooks/queries/useCompanyInvitations';
 import { useAuth } from '@/hooks/useAuth';
+import { getApiErrorMessage } from '@/lib/apiError';
 import type { CompanyInvitationAdminDTO } from '@/services/companyInvitations';
 import type { CompanySettings } from '@/services/companySettings';
 
@@ -32,12 +33,6 @@ function getErrorCode(error: unknown) {
   if (!error || typeof error !== 'object') return undefined;
   const response = (error as { response?: { data?: { error?: unknown } } }).response;
   return typeof response?.data?.error === 'string' ? response.data.error : undefined;
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  if (!error || typeof error !== 'object') return fallback;
-  const response = (error as { response?: { data?: { message?: unknown } } }).response;
-  return typeof response?.data?.message === 'string' ? response.data.message : fallback;
 }
 
 type CompanySettingsContentProps = {
@@ -129,7 +124,7 @@ function CompanySettingsContent({
       } else if (code === 'INVITATION_ALREADY_PENDING') {
         message = 'Bu kullanıcıya zaten bekleyen davet var.';
       } else {
-        message = getErrorMessage(error, message);
+        message = getApiErrorMessage(error, message);
       }
       setUserFeedback({ type: 'error', message });
     }
@@ -144,7 +139,7 @@ function CompanySettingsContent({
     } catch (error) {
       setUserFeedback({
         type: 'error',
-        message: getErrorMessage(error, 'Davet iptal edilemedi.'),
+        message: getApiErrorMessage(error, 'Davet iptal edilemedi.'),
       });
     }
   };

@@ -13,7 +13,7 @@ import {
   REFRESH_TOKEN_IDLE_TTL_SECONDS,
 } from '../lib/jwt';
 import { companyNameKey, slugify } from './tenant.service';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
 import {
   accessSessionKey,

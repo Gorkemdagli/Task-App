@@ -74,7 +74,6 @@ vi.mock('@/hooks/queries/useCompanyDashboard', () => ({
 
 vi.mock('@/hooks/queries/useCompanyUsers', () => ({
   useCompanyUsers: () => ({ data: [], isLoading: false, isError: false }),
-  useUpdateCompanyRole: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateCompanyPermissions: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
@@ -129,7 +128,6 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateComment: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
-    useTriggerArchive: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
   };
 });
 

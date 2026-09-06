@@ -1,6 +1,6 @@
 import type { TaskStatus, UserRole, TeamMemberRole } from '@prisma/client';
 import type { TenantDb } from '../db/types';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from './appError';
 
 export type Actor = {
   id: string;

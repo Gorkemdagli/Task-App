@@ -10,7 +10,7 @@ import {
   removeMember as removeMemberService,
 } from '../services/teams.service';
 import { register } from '../services/auth.service';
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../lib/appError';
 import { withTenantContext } from '../db/withTenant';
 
 async function cleanDb() {

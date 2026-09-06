@@ -21,14 +21,6 @@ export async function listCompanyUsers(): Promise<CompanyUser[]> {
   return response.data;
 }
 
-export async function updateCompanyRole(
-  userId: string,
-  role: CompanyUser['role'],
-): Promise<CompanyUser> {
-  const response = await api.patch<CompanyUser>(`/users/${userId}/role`, { role });
-  return response.data;
-}
-
 export async function updateCompanyPermissions(
   input: UpdateCompanyPermissionsInput,
 ): Promise<CompanyUser> {
