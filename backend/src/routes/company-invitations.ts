@@ -58,7 +58,7 @@ companyInvitationsRouter.delete(
   async (req, res, next) => {
     try {
       const invitation = await runTenantRequest(req, (db, actor) =>
-        companyInvitationsService.cancelInvitation(db, actor, req.params.id),
+        companyInvitationsService.cancelInvitation(db, actor, (req.params as { id: string }).id),
       );
       res.json(invitation);
     } catch (error) {
@@ -90,7 +90,7 @@ companyInvitationsRouter.post(
   async (req, res, next) => {
     try {
       const result = await runUserRequest(req, (db, actor) =>
-        companyInvitationsService.acceptInvitation(db, actor, req.params.id),
+        companyInvitationsService.acceptInvitation(db, actor, (req.params as { id: string }).id),
       );
       res.json(result);
     } catch (error) {
@@ -106,7 +106,7 @@ companyInvitationsRouter.post(
   async (req, res, next) => {
     try {
       const invitation = await runUserRequest(req, (db, actor) =>
-        companyInvitationsService.rejectInvitation(db, actor, req.params.id),
+        companyInvitationsService.rejectInvitation(db, actor, (req.params as { id: string }).id),
       );
       res.json(invitation);
     } catch (error) {

@@ -10,10 +10,9 @@ import { scrollToLandingSection } from '../landingScroll';
 const sectionLinks = [
   { href: '#features', label: 'Özellikler' },
   { href: '#workflow', label: 'İş akışı' },
-  { href: '#interactive-app-preview', label: 'Demo' },
 ] as const;
 
-type LandingSectionId = 'hero' | 'features' | 'workflow' | 'interactive-app-preview';
+type LandingSectionId = 'hero' | 'features' | 'workflow';
 
 export function NavSection() {
   const { isAuthenticated } = useAuth();
@@ -35,7 +34,7 @@ export function NavSection() {
       { rootMargin: '-20% 0px -65% 0px', threshold: [0, 0.25, 0.5, 0.75] },
     );
 
-    (['hero', 'features', 'workflow', 'interactive-app-preview'] as const).forEach((id) => {
+    (['hero', 'features', 'workflow'] as const).forEach((id) => {
       const section = document.getElementById(id);
       if (section) observer.observe(section);
     });
@@ -85,17 +84,12 @@ export function NavSection() {
               Panoya git
             </Link>
           ) : (
-            <>
-              <Link
-                to="/login"
-                className={`${buttonVariants({ variant: 'ghost', size: 'md' })} text-landing-text`}
-              >
-                Giriş yap
-              </Link>
-              <Link to="/register" className={buttonVariants({ variant: 'primary', size: 'md' })}>
-                Ücretsiz başla
-              </Link>
-            </>
+            <Link
+              to="/login"
+              className={`${buttonVariants({ variant: 'ghost', size: 'md' })} text-landing-text`}
+            >
+              Giriş yap
+            </Link>
           )}
         </div>
 
@@ -138,24 +132,14 @@ export function NavSection() {
                   </Link>
                 </SheetClose>
               ) : (
-                <>
-                  <SheetClose asChild>
-                    <Link
-                      to="/login"
-                      className={`${buttonVariants({ variant: 'secondary', size: 'md' })} text-landing-text`}
-                    >
-                      Giriş yap
-                    </Link>
-                  </SheetClose>
-                  <SheetClose asChild>
-                    <Link
-                      to="/register"
-                      className={buttonVariants({ variant: 'primary', size: 'md' })}
-                    >
-                      Ücretsiz başla
-                    </Link>
-                  </SheetClose>
-                </>
+                <SheetClose asChild>
+                  <Link
+                    to="/login"
+                    className={`${buttonVariants({ variant: 'secondary', size: 'md' })} text-landing-text`}
+                  >
+                    Giriş yap
+                  </Link>
+                </SheetClose>
               )}
             </div>
           </SheetContent>

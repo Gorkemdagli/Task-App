@@ -6,9 +6,14 @@ type StatusBreakdown = CompanyDashboard['statusBreakdown'];
 type PriorityBreakdown = CompanyDashboard['priorityBreakdown'];
 
 const STATUS_SEGMENTS = [
-  { key: 'todo', label: 'Yapılacak', color: 'text-status-todo' },
-  { key: 'inProgress', label: 'Yapılıyor', color: 'text-status-inprogress' },
-  { key: 'done', label: 'Yapıldı', color: 'text-status-done' },
+  { key: 'todo', label: 'Yapılacak', color: 'text-status-todo', marker: 'bg-status-todo' },
+  {
+    key: 'inProgress',
+    label: 'Yapılıyor',
+    color: 'text-status-inprogress',
+    marker: 'bg-status-inprogress',
+  },
+  { key: 'done', label: 'Yapıldı', color: 'text-status-done', marker: 'bg-status-done' },
 ] as const;
 
 const PRIORITY_SEGMENTS = [
@@ -45,7 +50,7 @@ export function StatusDonut({
   return (
     <section
       aria-labelledby="company-status-heading"
-      className="rounded-lg border border-border bg-card p-5"
+      className="rounded-lg border border-border bg-card p-4 md:p-5"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -56,8 +61,8 @@ export function StatusDonut({
         </div>
         <span className="text-sm text-secondary-foreground">{breakdown.total} görev</span>
       </div>
-      <div className="flex flex-col items-center gap-5 sm:flex-row">
-        <div className="relative h-40 w-40 shrink-0">
+      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+        <div className="relative h-36 w-36 shrink-0">
           <svg
             viewBox="0 0 100 100"
             role="img"
@@ -89,11 +94,11 @@ export function StatusDonut({
             ))}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold">{breakdown.total}</span>
-            <span className="text-xs text-secondary-foreground">toplam</span>
+            <span className="text-2xl font-semibold tabular-nums">{breakdown.total}</span>
+            <span className="text-xs text-secondary-foreground">toplam görev</span>
           </div>
         </div>
-        <div className="grid w-full gap-2">
+        <div className="grid w-full gap-1.5">
           {circles.map((segment) => (
             <Link
               key={segment.key}
@@ -101,10 +106,11 @@ export function StatusDonut({
                 segment.key === 'inProgress' ? 'in_progress' : segment.key,
                 teamId,
               )}
-              className="rounded-md border border-transparent px-2 py-1 text-sm hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-xs hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               aria-label={`${segment.label}: ${segment.value.count} görev, %${segment.value.percentage}; görevleri aç`}
             >
-              <span>
+              <span className={`h-2.5 w-2.5 rounded-sm ${segment.marker}`} aria-hidden="true" />
+              <span className="col-span-3">
                 {segment.label}: {segment.value.count} görev, %{segment.value.percentage}
               </span>
             </Link>
@@ -125,7 +131,7 @@ export function PriorityDistribution({
   return (
     <section
       aria-labelledby="company-priority-heading"
-      className="rounded-lg border border-border bg-card p-5"
+      className="rounded-lg border border-border bg-card p-4 md:p-5"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -137,7 +143,7 @@ export function PriorityDistribution({
         <span className="text-sm text-secondary-foreground">{breakdown.total} görev</span>
       </div>
       <div
-        className="flex h-4 w-full overflow-hidden rounded-full bg-secondary"
+        className="flex h-3 w-full overflow-hidden rounded-sm bg-secondary"
         aria-label="Öncelik dağılımı"
       >
         {PRIORITY_SEGMENTS.map((segment) => {
@@ -166,7 +172,10 @@ export function PriorityDistribution({
             </>
           );
           return (
-            <div key={segment.key} className="flex items-center gap-2 px-2 py-1 text-sm">
+            <div
+              key={segment.key}
+              className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 px-2 py-1 text-xs"
+            >
               {content}
             </div>
           );

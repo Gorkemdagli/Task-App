@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -50,7 +50,7 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   const client = qc ?? new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <Topbar />
         <LocationProbe />
       </MemoryRouter>
@@ -88,6 +88,7 @@ describe('Topbar', () => {
     renderTopbar(member);
     expect(screen.getByRole('link', { name: 'TaskFlow' })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: 'Ana Pano' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Şirket' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Takımlar' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Görevler' })).toBeInTheDocument();
   });
@@ -105,6 +106,21 @@ describe('Topbar', () => {
   it('shows /permissions link for companyAdmin role', () => {
     renderTopbar(admin);
     expect(screen.getByRole('link', { name: 'Yetkiler' })).toBeInTheDocument();
+  });
+
+  it('shows the company link after dashboard for companyAdmin role', () => {
+    renderTopbar(admin);
+
+    const primaryNav = screen.getByRole('navigation', { name: 'Birincil gezinme' });
+    expect(
+      within(primaryNav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Ana Pano', 'Şirket', 'Takımlar', 'Görevler', 'Yetkiler']);
+    expect(within(primaryNav).getByRole('link', { name: 'Şirket' })).toHaveAttribute(
+      'href',
+      '/company',
+    );
   });
 
   it('shows company management link for companyAdmin role', async () => {
@@ -158,7 +174,7 @@ describe('Topbar', () => {
 
     await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
     expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
-    expect(screen.getByTestId('location')).toHaveTextContent('/login');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'));
   });
 });
 
@@ -249,7 +265,7 @@ describe('Topbar notification bell', () => {
     await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
-    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1'));
   });
 
   it('navigates read task notification without single-read PATCH', async () => {
@@ -274,7 +290,7 @@ describe('Topbar notification bell', () => {
     await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).not.toHaveBeenCalledWith('/notifications/n1/read');
-    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1'));
   });
 
   it('marks all notifications read from panel action', async () => {
@@ -364,7 +380,7 @@ describe('Topbar notification bell', () => {
     });
     view.rerender(
       <QueryClientProvider client={qc}>
-        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MemoryRouter>
           <Topbar />
         </MemoryRouter>
       </QueryClientProvider>,

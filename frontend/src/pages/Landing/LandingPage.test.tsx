@@ -12,7 +12,7 @@ function renderLanding(authenticated = false) {
   });
 
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <LandingPage />
     </MemoryRouter>,
   );
@@ -48,15 +48,29 @@ describe('LandingPage', () => {
       'href',
       '/register',
     );
-    expect(within(hero).getByRole('link', { name: 'Demo’yu dene' })).toHaveAttribute(
+    expect(within(hero).getByRole('link', { name: 'İş akışını gör' })).toHaveAttribute(
       'href',
-      '#interactive-app-preview',
+      '#workflow',
     );
 
     expect(screen.queryByText('Fiyatlandırma')).not.toBeInTheDocument();
     expect(screen.queryByText('Entegrasyonlar')).not.toBeInTheDocument();
     expect(document.querySelector('a[href="/privacy"]')).not.toBeInTheDocument();
     expect(document.querySelector('a[href="/terms"]')).not.toBeInTheDocument();
+  });
+
+  it('keeps repeated marketing CTAs out of navigation and content sections', () => {
+    const { container } = renderLanding();
+    const hero = screen.getByRole('region', { name: 'İşin nerede kaldığını herkes görsün.' });
+    const header = container.querySelector<HTMLElement>('.landing-nav')!;
+    const footer = screen.getByRole('contentinfo');
+
+    expect(within(hero).getByRole('link', { name: 'Ücretsiz başla' })).toBeInTheDocument();
+    expect(within(hero).getByRole('link', { name: 'İş akışını gör' })).toBeInTheDocument();
+    expect(within(header).queryByRole('link', { name: 'Ücretsiz başla' })).not.toBeInTheDocument();
+    expect(within(footer).getByRole('link', { name: 'Ücretsiz başla' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Ücretsiz başla' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'İş akışını gör' })).toHaveLength(1);
   });
 
   it('points the authenticated hero action to the dashboard', () => {
@@ -73,12 +87,12 @@ describe('LandingPage', () => {
     renderLanding();
     const hero = screen.getByRole('region', { name: 'İşin nerede kaldığını herkes görsün.' });
     const register = within(hero).getByRole('link', { name: 'Ücretsiz başla' });
-    const demo = within(hero).getByRole('link', { name: 'Demo’yu dene' });
+    const workflow = within(hero).getByRole('link', { name: 'İş akışını gör' });
 
     expect(register).toHaveAttribute('href', '/register');
-    expect(demo).toHaveAttribute('href', '#interactive-app-preview');
+    expect(workflow).toHaveAttribute('href', '#workflow');
     expect(register).toHaveClass('landing-hero-cta');
-    expect(demo).toHaveClass('landing-hero-cta');
+    expect(workflow).toHaveClass('landing-hero-cta');
     expect(within(hero).queryByTestId('hero-inline-product')).not.toBeInTheDocument();
   });
 
@@ -88,7 +102,7 @@ describe('LandingPage', () => {
     const copy = hero.querySelector('.landing-hero__copy');
 
     expect(copy).toContainElement(within(hero).getByRole('heading', { level: 1 }));
-    expect(copy).toContainElement(within(hero).getByText(/Görev, sorumluluk ve yetki/));
+    expect(copy).toContainElement(within(hero).getByText(/Görev, sorumluluk ve konuşma/));
     expect(copy).toContainElement(within(hero).getByRole('link', { name: 'Ücretsiz başla' }));
   });
 
@@ -110,7 +124,6 @@ describe('LandingPage', () => {
     );
 
     for (const [label, href] of [
-      ['Demo', '#interactive-app-preview'],
       ['Özellikler', '#features'],
       ['İş akışı', '#workflow'],
     ]) {
@@ -121,7 +134,6 @@ describe('LandingPage', () => {
     const mobileMenu = screen.getByRole('dialog');
 
     for (const [label, href] of [
-      ['Demo', '#interactive-app-preview'],
       ['Özellikler', '#features'],
       ['İş akışı', '#workflow'],
     ]) {
@@ -147,14 +159,21 @@ describe('LandingPage', () => {
     }
   });
 
-  it('uses a product teaser that leads to the interactive demo', () => {
+  it('uses a static product teaser beside the hero actions', () => {
     renderLanding();
     const hero = screen.getByRole('region', { name: 'İşin nerede kaldığını herkes görsün.' });
-    const teaser = within(hero).getByRole('link', { name: 'Etkileşimli TaskFlow demosuna git' });
+    const teaser = within(hero).getByRole('img', {
+      name: 'TaskFlow çalışma alanı önizlemesi',
+    });
 
-    expect(teaser).toHaveAttribute('href', '#interactive-app-preview');
+    expect(teaser).toBeVisible();
+    expect(
+      within(hero).queryByRole('link', { name: 'Etkileşimli TaskFlow demosuna git' }),
+    ).not.toBeInTheDocument();
     expect(within(teaser).getByText('Yapılacak')).toBeInTheDocument();
-    expect(within(teaser).getByText('Yapılıyor')).toBeInTheDocument();
+    expect(within(teaser).getAllByText('Yapılıyor')).not.toHaveLength(0);
+    expect(within(teaser).getByText('Görev ayrıntısı')).toBeInTheDocument();
+    expect(within(teaser).getByText('Konuşma')).toBeInTheDocument();
     expect(
       within(hero).queryByRole('group', { name: 'İş akışının ilerleyişi' }),
     ).not.toBeInTheDocument();
@@ -180,9 +199,8 @@ describe('LandingPage', () => {
 
     expect(sectionTitles).toEqual([
       'İşin nerede kaldığını herkes görsün.',
-      'İşi görünür kılan üç davranış.',
-      'Görev ilerlerken bağlam kaybolmaz.',
-      'TaskFlow’u 30 saniyede deneyin.',
+      'İş ilerler. Bağlam yanında kalır.',
+      'Bir görev açılır. Herkes ne olacağını bilir.',
     ]);
   });
 

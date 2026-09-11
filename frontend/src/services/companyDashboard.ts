@@ -5,6 +5,15 @@ export type CountAndPercentage = {
   percentage: number;
 };
 
+export type CompanyRiskTask = {
+  id: string;
+  title: string;
+  team: { id: string; name: string };
+  assignee: { id: string; fullName: string } | null;
+  deadline: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+};
+
 export type CompanyDashboard = {
   scope: { teamId: string | null; teamName: string | null };
   summary: {
@@ -20,6 +29,12 @@ export type CompanyDashboard = {
     dueNextSevenDaysTaskCount: number;
     pendingApprovalTaskCount: number;
     expiredTaskCount: number;
+  };
+  riskTasks: {
+    overdue: CompanyRiskTask[];
+    dueNextSevenDays: CompanyRiskTask[];
+    pendingApproval: CompanyRiskTask[];
+    expired: CompanyRiskTask[];
   };
   statusBreakdown: {
     total: number;

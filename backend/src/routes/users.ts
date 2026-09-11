@@ -147,7 +147,12 @@ usersRouter.patch(
   async (req, res, next) => {
     try {
       const user = await runTenantRequest(req, (db, actor) =>
-        companyUsersService.updateCompanyPermissions(db, req.params.id, req.body, actor),
+        companyUsersService.updateCompanyPermissions(
+          db,
+          (req.params as { id: string }).id,
+          req.body,
+          actor,
+        ),
       );
       res.json(user);
     } catch (error) {

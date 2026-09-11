@@ -173,10 +173,7 @@ function renderTaskDetail() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        initialEntries={['/tasks/t1']}
-      >
+      <MemoryRouter initialEntries={['/tasks/t1']}>
         <Routes>
           <Route path="/tasks/:id" element={<TaskDetailPage />} />
         </Routes>

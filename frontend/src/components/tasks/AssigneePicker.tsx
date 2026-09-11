@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { cn } from '@/lib/utils';
+import { AvatarStack } from './AssigneeAvatarStack';
 
 export interface AssigneeOption {
   id: string;
@@ -100,13 +101,7 @@ export function AssigneePicker({
             )}
           >
             {selectedMembers.length > 0 ? (
-              <span className="flex -space-x-2">
-                {selectedMembers.slice(0, 2).map((m) => (
-                  <span key={m.id} className="ring-2 ring-background rounded-full">
-                    <Avatar member={m} size="sm" />
-                  </span>
-                ))}
-              </span>
+              <AvatarStack members={selectedMembers} max={2} size="sm" />
             ) : null}
             <span className="truncate text-foreground">{triggerLabel}</span>
             <span className="ml-auto text-xs text-muted-foreground">▾</span>

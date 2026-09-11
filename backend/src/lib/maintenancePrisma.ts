@@ -1,3 +1,4 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
 const maintenanceDatabaseUrl =
@@ -7,6 +8,6 @@ if (!maintenanceDatabaseUrl) {
   throw new Error('MAINTENANCE_DATABASE_URL is required for the archive worker');
 }
 
-export const maintenancePrisma = new PrismaClient({
-  datasources: { db: { url: maintenanceDatabaseUrl } },
-});
+const adapter = new PrismaPg({ connectionString: maintenanceDatabaseUrl });
+
+export const maintenancePrisma = new PrismaClient({ adapter });

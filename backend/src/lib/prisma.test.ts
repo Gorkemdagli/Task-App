@@ -17,12 +17,15 @@ vi.mock('../env', () => ({ env: state.env }));
 vi.mock('./logger', () => ({
   logger: { debug: state.debug, warn: state.warn, error: state.error },
 }));
+vi.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: class MockPrismaPg {
+    constructor(options: { connectionString: string }) {
+      state.urls.push(options.connectionString);
+    }
+  },
+}));
 vi.mock('@prisma/client', () => ({
   PrismaClient: class MockPrismaClient {
-    constructor(options: { datasources: { db: { url: string } } }) {
-      state.urls.push(options.datasources.db.url);
-    }
-
     $on(event: string, handler: (payload: unknown) => void) {
       state.handlers[event] = handler;
     }

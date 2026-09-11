@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTeams } from '@/hooks/queries/useTeams';
 import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
 import { PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
-import { MemberWorkloadTable, TeamComparisonTable } from './CompanyDashboardTables';
+import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
 
 function KpiCard({
   label,
@@ -14,9 +14,9 @@ function KpiCard({
   ariaLabel: string;
 }) {
   return (
-    <article aria-label={ariaLabel} className="rounded-lg border border-border bg-card p-4">
+    <article aria-label={ariaLabel} className="border-l border-border px-3 first:border-l-0">
       <p className="text-xs text-secondary-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </article>
   );
 }
@@ -31,9 +31,9 @@ function RiskCard({
   ariaLabel: string;
 }) {
   return (
-    <article aria-label={ariaLabel} className="rounded-lg border border-border bg-card/60 p-4">
+    <article aria-label={ariaLabel} className="border-l border-border px-4 first:border-l-0">
       <p className="text-xs text-secondary-foreground">{label}</p>
-      <p className="mt-2 text-xl font-semibold">{value}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
     </article>
   );
 }
@@ -96,8 +96,8 @@ export function CompanyDashboard() {
   const teamId = data.scope.teamId;
 
   return (
-    <div data-testid="company-dashboard" className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div data-testid="company-dashboard" className="space-y-4 md:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Şirket Dashboardu</h1>
           <p className="mt-1 text-sm text-secondary-foreground">
@@ -118,7 +118,7 @@ export function CompanyDashboard() {
             onChange={(event) =>
               setSelectedTeamId(event.target.value === 'all' ? null : event.target.value)
             }
-            className="h-10 min-w-44 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:min-w-44"
           >
             <option value="all">Tümü</option>
             {sortedTeams.map((team) => (
@@ -136,7 +136,7 @@ export function CompanyDashboard() {
         </p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           label="Toplam kullanıcı"
           value={data.summary.totalUserCount}
@@ -165,31 +165,39 @@ export function CompanyDashboard() {
         />
       </div>
 
-      <section aria-labelledby="company-risk-heading">
-        <h2 id="company-risk-heading" className="mb-3 text-lg font-semibold">
-          Risk özeti
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <RiskCard
-            label="Geciken görev"
-            value={data.risk.overdueTaskCount}
-            ariaLabel="Geciken görev riski"
-          />
-          <RiskCard
-            label="Yedi gün içinde"
-            value={data.risk.dueNextSevenDaysTaskCount}
-            ariaLabel="Yedi gün içinde riski"
-          />
-          <RiskCard
-            label="Onay bekleyen"
-            value={data.risk.pendingApprovalTaskCount}
-            ariaLabel="Onay bekleyen risk"
-          />
-          <RiskCard
-            label="Süresi dolan"
-            value={data.risk.expiredTaskCount}
-            ariaLabel="Süresi dolan risk"
-          />
+      <section
+        aria-labelledby="company-risk-heading"
+        className="overflow-hidden rounded-lg border border-border bg-card"
+      >
+        <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 lg:flex lg:min-w-[680px] lg:items-center">
+          <div className="col-span-2 min-w-0 lg:col-span-1 lg:w-[28%] lg:shrink-0 lg:pr-4">
+            <h2 id="company-risk-heading" className="text-lg font-semibold">
+              Risk özeti
+            </h2>
+            <p className="mt-1 text-sm text-secondary-foreground">Tüm takımların görev durumu</p>
+          </div>
+          <div className="col-span-2 grid min-w-0 grid-cols-2 gap-y-4 sm:grid-cols-4 lg:flex-1 lg:gap-y-0">
+            <RiskCard
+              label="Geciken görev"
+              value={data.risk.overdueTaskCount}
+              ariaLabel="Geciken görev riski"
+            />
+            <RiskCard
+              label="Yedi gün içinde"
+              value={data.risk.dueNextSevenDaysTaskCount}
+              ariaLabel="Yedi gün içinde riski"
+            />
+            <RiskCard
+              label="Onay bekleyen"
+              value={data.risk.pendingApprovalTaskCount}
+              ariaLabel="Onay bekleyen risk"
+            />
+            <RiskCard
+              label="Süresi dolan"
+              value={data.risk.expiredTaskCount}
+              ariaLabel="Süresi dolan risk"
+            />
+          </div>
         </div>
       </section>
 
@@ -202,13 +210,18 @@ export function CompanyDashboard() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <StatusDonut breakdown={data.statusBreakdown} teamId={teamId} />
-        <PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamId} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,.9fr)]">
+        <RiskLedger risk={data.risk} riskTasks={data.riskTasks} teamId={teamId} />
+        <div className="space-y-4">
+          <StatusDonut breakdown={data.statusBreakdown} teamId={teamId} />
+          <MemberWorkloadTable members={data.members} teamId={teamId} />
+        </div>
       </div>
 
-      <MemberWorkloadTable members={data.members} teamId={teamId} />
-      {teamId === null && <TeamComparisonTable teams={data.teams} />}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamId} />
+        {teamId === null && <TeamComparisonTable teams={data.teams} />}
+      </div>
     </div>
   );
 }

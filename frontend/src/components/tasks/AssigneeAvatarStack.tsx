@@ -1,3 +1,4 @@
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { TaskAssignee } from '@/hooks/tasks';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +9,20 @@ interface AssigneeAvatarStackProps {
   withNames?: boolean;
   /** Yalnız taşma rozetini göster (avatar yok); default false */
   overflowOnly?: boolean;
+  className?: string;
+}
+
+export interface AvatarStackMember {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+interface AvatarStackProps {
+  members: AvatarStackMember[];
+  max?: number;
+  size?: 'xs' | 'sm' | 'md';
+  withNames?: boolean;
   className?: string;
 }
 
@@ -26,38 +41,67 @@ function avatarInitial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?';
 }
 
-function Avatar({
-  assignee,
-  size,
-}: {
-  assignee: TaskAssignee;
-  size: NonNullable<AssigneeAvatarStackProps['size']>;
-}) {
-  const { user } = assignee;
-  if (user.avatarUrl) {
-    return (
-      <img
-        src={user.avatarUrl}
-        alt={user.fullName}
-        title={user.fullName}
-        loading="lazy"
-        decoding="async"
-        width={SIZE_PX[size]}
-        height={SIZE_PX[size]}
-        className={cn(SIZE_CLASS[size], 'rounded-full object-cover')}
-      />
-    );
-  }
+function AvatarMember({ member, size }: { member: AvatarStackMember; size: 'xs' | 'sm' | 'md' }) {
   return (
-    <span
-      aria-hidden
-      title={user.fullName}
+    <Avatar
       className={cn(
         SIZE_CLASS[size],
-        'inline-flex items-center justify-center rounded-full bg-secondary font-semibold text-secondary-foreground',
+        'border-2 border-background transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-lg',
       )}
     >
-      {avatarInitial(user.fullName)}
+      {member.avatarUrl && (
+        <AvatarImage
+          src={member.avatarUrl}
+          alt={member.fullName}
+          width={SIZE_PX[size]}
+          height={SIZE_PX[size]}
+        />
+      )}
+      <AvatarFallback className="bg-secondary font-semibold text-secondary-foreground">
+        {avatarInitial(member.fullName)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+export function AvatarStack({
+  members,
+  max = 2,
+  size = 'sm',
+  withNames = false,
+  className,
+}: AvatarStackProps) {
+  const visible = members.slice(0, max);
+  const overflow = members.length - visible.length;
+
+  return (
+    <span className={cn('inline-flex items-center gap-1', className)}>
+      <span className="relative flex items-center rounded-full border border-border bg-background p-1">
+        {visible.map((member, index) => (
+          <span
+            key={member.id}
+            title={member.fullName}
+            className={cn('relative hover:z-10', index > 0 && '-ml-2')}
+          >
+            <AvatarMember member={member} size={size} />
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span
+            aria-label={`+${overflow} kişi daha`}
+            title={`+${overflow} kişi daha`}
+            className={cn(
+              SIZE_CLASS[size],
+              'relative inline-flex items-center justify-center rounded-full border-2 border-background bg-secondary font-semibold text-secondary-foreground transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-lg',
+            )}
+          >
+            +{overflow}
+          </span>
+        )}
+      </span>
+      {withNames && visible.length === 1 && (
+        <span className="truncate text-xs text-muted-foreground">{visible[0].fullName}</span>
+      )}
     </span>
   );
 }
@@ -69,33 +113,17 @@ export function AssigneeAvatarStack({
   withNames = false,
   className,
 }: AssigneeAvatarStackProps) {
-  const visible = assignees.slice(0, max);
-  const overflow = assignees.length - visible.length;
-
   return (
-    <span className={cn('inline-flex items-center gap-1', className)}>
-      <span className="flex -space-x-2">
-        {visible.map((a) => (
-          <span key={a.userId} className="ring-2 ring-card rounded-full">
-            <Avatar assignee={a} size={size} />
-          </span>
-        ))}
-        {overflow > 0 && (
-          <span
-            aria-label={`+${overflow} kişi daha`}
-            title={`+${overflow} kişi daha`}
-            className={cn(
-              SIZE_CLASS[size],
-              'inline-flex items-center justify-center rounded-full bg-secondary font-semibold text-secondary-foreground ring-2 ring-card',
-            )}
-          >
-            +{overflow}
-          </span>
-        )}
-      </span>
-      {withNames && visible.length === 1 && (
-        <span className="truncate text-xs text-muted-foreground">{visible[0].user.fullName}</span>
-      )}
-    </span>
+    <AvatarStack
+      members={assignees.map(({ userId, user }) => ({
+        id: userId,
+        fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
+      }))}
+      max={max}
+      size={size}
+      withNames={withNames}
+      className={className}
+    />
   );
 }

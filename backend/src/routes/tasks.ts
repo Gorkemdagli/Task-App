@@ -55,7 +55,7 @@ tasksRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
 tasksRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const task = await runTenantRequest(req, (db, actor) =>
-      tasksService.getTask(db, req.params.id, actor),
+      tasksService.getTask(db, (req.params as { id: string }).id, actor),
     );
     res.json(toTaskDto(task));
   } catch (e) {
@@ -70,7 +70,7 @@ tasksRouter.post(
   async (req, res, next) => {
     try {
       const task = await runTenantRequest(req, (db, actor) =>
-        tasksService.restoreTask(db, req.params.id, req.body, actor),
+        tasksService.restoreTask(db, (req.params as { id: string }).id, req.body, actor),
       );
       res.json(toTaskDto(task));
     } catch (e) {
@@ -87,7 +87,8 @@ tasksRouter.patch(
     try {
       const task = await runTenantRequest(
         req,
-        (db, actor) => tasksService.updateTaskStatus(db, req.params.id, req.body, actor),
+        (db, actor) =>
+          tasksService.updateTaskStatus(db, (req.params as { id: string }).id, req.body, actor),
         statusTransactionOptions,
       );
       res.json(toTaskDto(task));
@@ -105,7 +106,8 @@ tasksRouter.post(
     try {
       const task = await runTenantRequest(
         req,
-        (db, actor) => tasksService.proposeTaskStatus(db, req.params.id, req.body, actor),
+        (db, actor) =>
+          tasksService.proposeTaskStatus(db, (req.params as { id: string }).id, req.body, actor),
         statusTransactionOptions,
       );
       res.json(toTaskDto(task));
@@ -123,7 +125,8 @@ tasksRouter.post(
     try {
       const result = await runTenantRequest(
         req,
-        (db, actor) => tasksService.ackTaskStatus(db, req.params.id, req.body, actor),
+        (db, actor) =>
+          tasksService.ackTaskStatus(db, (req.params as { id: string }).id, req.body, actor),
         statusTransactionOptions,
       );
       res.json({ ...result, task: toTaskDto(result.task) });
@@ -137,7 +140,7 @@ tasksRouter.post('/:id/status/cancel', writeLimiter, async (req, res, next) => {
   try {
     const task = await runTenantRequest(
       req,
-      (db, actor) => tasksService.cancelTaskStatus(db, req.params.id, actor),
+      (db, actor) => tasksService.cancelTaskStatus(db, (req.params as { id: string }).id, actor),
       statusTransactionOptions,
     );
     res.json(toTaskDto(task));
@@ -153,7 +156,7 @@ tasksRouter.patch(
   async (req, res, next) => {
     try {
       const task = await runTenantRequest(req, (db, actor) =>
-        tasksService.updateTaskPriority(db, req.params.id, req.body, actor),
+        tasksService.updateTaskPriority(db, (req.params as { id: string }).id, req.body, actor),
       );
       res.json(toTaskDto(task));
     } catch (e) {
@@ -169,7 +172,7 @@ tasksRouter.patch(
   async (req, res, next) => {
     try {
       const task = await runTenantRequest(req, (db, actor) =>
-        tasksService.updateTaskFields(db, req.params.id, req.body, actor),
+        tasksService.updateTaskFields(db, (req.params as { id: string }).id, req.body, actor),
       );
       res.json(toTaskDto(task));
     } catch (e) {
@@ -180,7 +183,9 @@ tasksRouter.patch(
 
 tasksRouter.delete('/:id', writeLimiter, async (req, res, next) => {
   try {
-    await runTenantRequest(req, (db, actor) => tasksService.deleteTask(db, req.params.id, actor));
+    await runTenantRequest(req, (db, actor) =>
+      tasksService.deleteTask(db, (req.params as { id: string }).id, actor),
+    );
     res.status(204).end();
   } catch (e) {
     next(e);

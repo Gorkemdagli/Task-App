@@ -1,8 +1,17 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeaturesSection } from './FeaturesSection';
 
 describe('FeaturesSection', () => {
+  function renderFeatures() {
+    return render(
+      <MemoryRouter>
+        <FeaturesSection />
+      </MemoryRouter>,
+    );
+  }
+
   beforeEach(() => {
     vi.stubGlobal(
       'matchMedia',
@@ -21,54 +30,74 @@ describe('FeaturesSection', () => {
     vi.unstubAllGlobals();
   });
 
-  it('fills the approved 12 by 2 bento without an empty cell', () => {
-    render(<FeaturesSection />);
-    const grid = screen.getByTestId('feature-bento');
-    const cards = within(grid).getAllByRole('article');
+  it('builds the central task context composition from design1', () => {
+    renderFeatures();
+    const map = screen.getByTestId('context-tether');
 
-    expect(grid).toHaveClass('grid-flow-dense');
-    expect(grid).toHaveClass('md:grid-cols-2', 'lg:grid-cols-12');
-    expect(grid).not.toHaveClass('lg:grid-rows-2');
-    expect(cards).toHaveLength(3);
-    expect(cards[0]).toHaveClass('md:col-span-2', 'lg:col-span-7', 'lg:row-span-2');
-    expect(cards[0]).toHaveAttribute('data-grid-cells', '14');
-    expect(cards[1]).toHaveAttribute('data-grid-cells', '5');
-    expect(cards[2]).toHaveAttribute('data-grid-cells', '5');
-    expect(cards.reduce((sum, card) => sum + Number(card.dataset.gridCells), 0)).toBe(24);
-  });
-
-  it('keeps the editorial heading focused and removes the redundant principle and role blocks', () => {
-    render(<FeaturesSection />);
-    expect(screen.queryByText('Üç sabit durum')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Üye' })).not.toBeInTheDocument();
     expect(
-      screen.queryByText(
-        'İşi görünür kılan üç davranış. Fazladan görünüm veya süreç yükü olmadan.',
+      screen.getByRole('heading', { name: /İş ilerler\. Bağlam yanında kalır\./ }),
+    ).toBeVisible();
+    expect(map).toHaveClass('landing-context-tether');
+    expect(map.querySelector('.landing-context-task')).toHaveTextContent(
+      'Bildirim akışını sadeleştir',
+    );
+    expect(map.querySelectorAll('[data-context-node]')).toHaveLength(4);
+    expect(map.querySelector('.landing-context-conversation')).toHaveTextContent('Konuşma');
+    expect(map.querySelector('.landing-context-permission')).toHaveTextContent('Yetki');
+  });
+
+  it('keeps the selected composition free of invented proof claims', () => {
+    renderFeatures();
+    expect(screen.queryByText(/müşteri|kullanıcı sayısı|%/i)).not.toBeInTheDocument();
+  });
+
+  it('marks context nodes for sequential scroll reveals', () => {
+    renderFeatures();
+    expect(
+      screen.getByTestId('feature-bento').querySelectorAll('[data-feature-reveal]'),
+    ).toHaveLength(4);
+  });
+
+  it('keeps the task context tethered to its working details', () => {
+    renderFeatures();
+    const tether = screen.getByTestId('context-tether');
+
+    expect(tether).toHaveClass('landing-context-tether');
+    expect(tether).toHaveTextContent('Bildirim akışını sadeleştir');
+    expect(tether).toHaveTextContent('Sorumlu');
+    expect(tether).toHaveTextContent('Takım');
+    expect(tether).toHaveTextContent('Yetki');
+    expect(tether).toHaveTextContent('Termin');
+  });
+
+  it('connects the central task to every surrounding context node', () => {
+    renderFeatures();
+    const connectors = screen.getByTestId('context-connectors');
+
+    expect(
+      Array.from(connectors.querySelectorAll('[data-connection]')).map((path) =>
+        path.getAttribute('data-connection'),
       ),
-    ).not.toBeInTheDocument();
+    ).toEqual(['owner', 'team', 'conversation', 'permission', 'deadline', 'annotation']);
   });
 
-  it('marks the two right-side cards for sequential scroll reveals', () => {
-    render(<FeaturesSection />);
-    const grid = screen.getByTestId('feature-bento');
-    expect(grid.querySelectorAll('[data-feature-reveal]')).toHaveLength(2);
-  });
+  it('routes every desktop connector beneath the cards without visible gaps', () => {
+    renderFeatures();
+    const connectors = screen.getByTestId('context-connectors');
 
-  it('centers and emphasizes the tenant, team, and task scope labels', () => {
-    const { container } = render(<FeaturesSection />);
-    const scopeLabels = container.querySelector('.landing-permission-lines');
-
-    expect(scopeLabels).toHaveClass('landing-permission-lines--centered');
-    expect(scopeLabels?.querySelectorAll('span')).toHaveLength(3);
-  });
-
-  it('presents task updates inside a recognizable compact chatbox', () => {
-    const { container } = render(<FeaturesSection />);
-    const chatbox = container.querySelector('.landing-chatbox');
-
-    expect(chatbox).toHaveTextContent('Görev sohbeti');
-    expect(chatbox?.querySelectorAll('.landing-message-bubble')).toHaveLength(2);
-    expect(chatbox).toHaveTextContent('Termin netleşti.');
-    expect(chatbox).toHaveTextContent('Bağımlılık çözüldü.');
+    expect(
+      Object.fromEntries(
+        Array.from(connectors.querySelectorAll('[data-connection]')).map((path) => [
+          path.getAttribute('data-connection'),
+          path.getAttribute('d'),
+        ]),
+      ),
+    ).toMatchObject({
+      owner: 'M232 88 H252 Q272 88 272 108 V170',
+      team: 'M448 170 V112 Q448 88 472 88 H520',
+      conversation: 'M504 288 H520 Q536 288 544 304 Q548 312 560 312',
+      permission: 'M164 340 V402 Q164 422 144 422 H122 Q102 422 102 442 V480',
+      deadline: 'M384 340 V402 Q384 422 404 422 H428 Q448 422 448 442 V480',
+    });
   });
 });

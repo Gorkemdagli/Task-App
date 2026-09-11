@@ -104,6 +104,11 @@ function TopbarContent() {
   const visibleNav = PRIMARY_NAV.filter(
     (item) => item.path !== '/profile' && canSeeNavItem(item, user?.role),
   );
+  const topbarNav = visibleNav.flatMap((item) =>
+    item.path === '/dashboard' && isCompanyAdmin
+      ? [item, { ...item, path: '/company', label: 'Şirket' }]
+      : [item],
+  );
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-4 md:px-6">
@@ -126,7 +131,7 @@ function TopbarContent() {
         </Link>
 
         <nav className="hidden items-center md:flex" aria-label="Birincil gezinme">
-          {visibleNav.map((item) => (
+          {topbarNav.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
