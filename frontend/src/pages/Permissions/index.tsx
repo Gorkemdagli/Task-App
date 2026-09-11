@@ -132,7 +132,7 @@ export function PermissionsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl space-y-6 p-8" data-testid="permissions-page">
+    <section className="mx-auto w-full max-w-6xl space-y-6" data-testid="permissions-page">
       <header>
         <h1 className="text-2xl font-semibold">Yetkiler</h1>
         <p className="mt-1 text-sm text-muted-foreground">

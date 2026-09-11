@@ -14,10 +14,10 @@
     "declaration": false,
     "sourceMap": true,
     "removeComments": false,
+    "ignoreDeprecations": "6.0",
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "ignoreDeprecations": "6.0",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "types": ["node", "vitest/globals"]

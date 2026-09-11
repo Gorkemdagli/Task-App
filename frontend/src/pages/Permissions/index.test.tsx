@@ -67,6 +67,18 @@ describe('PermissionsPage', () => {
     });
   });
 
+  it('uses the centered content container shared by Teams and Tasks', () => {
+    renderPage();
+
+    expect(screen.getByTestId('permissions-page')).toHaveClass(
+      'mx-auto',
+      'w-full',
+      'max-w-6xl',
+      'space-y-6',
+    );
+    expect(screen.getByTestId('permissions-page')).not.toHaveClass('p-8');
+  });
+
   it('shows row actions only after a draft change and confirms before saving', async () => {
     const u = userEvent.setup();
     renderPage();

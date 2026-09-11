@@ -1,3 +1,4 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { env } from '../env';
 import { logger } from './logger';
@@ -20,10 +21,12 @@ if (!datasourceUrl) {
 
 // Event mode → stdout'a yazmak yerine $on ile logger'a yönlendir.
 // LOG_LEVEL filtresi pino üzerinden geçerli olur.
+const adapter = new PrismaPg({ connectionString: datasourceUrl });
+
 const client =
   global.prismaClient ??
   new PrismaClient({
-    datasources: { db: { url: datasourceUrl } },
+    adapter,
     log: [
       { emit: 'event', level: 'query' },
       { emit: 'event', level: 'warn' },
@@ -34,8 +37,8 @@ const client =
 // $on overload'ları generated client'ın literal log config'inden çıkar.
 // global cache literal type'ı ezdiği için açıkça aynı şekilde typed instance üret.
 type EventClient = Omit<typeof client, '$on'> & {
-  $on(event: 'query', handler: (e: Prisma.QueryEvent) => void): void;
-  $on(event: 'warn' | 'error', handler: (e: Prisma.LogEvent) => void): void;
+  $on(event: 'query', handler: (e: Prisma.QueryEvent) => void): PrismaClient;
+  $on(event: 'warn' | 'error', handler: (e: Prisma.LogEvent) => void): PrismaClient;
 };
 
 export const prisma = client as EventClient;

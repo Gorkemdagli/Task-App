@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ urls: [] as string[] }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: class MockPrismaClient {
-    constructor(options: { datasources: { db: { url: string } } }) {
-      state.urls.push(options.datasources.db.url);
+vi.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: class MockPrismaPg {
+    constructor(options: { connectionString: string }) {
+      state.urls.push(options.connectionString);
     }
   },
+}));
+vi.mock('@prisma/client', () => ({
+  PrismaClient: class MockPrismaClient {},
 }));
 
 describe('maintenance Prisma client', () => {

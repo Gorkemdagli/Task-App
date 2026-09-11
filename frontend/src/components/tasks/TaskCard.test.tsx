@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TaskCard } from './TaskCard';
@@ -35,11 +35,7 @@ const baseTask: Task = {
 };
 
 function Wrap({ children }: { children: React.ReactNode }) {
-  return (
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      {children}
-    </MemoryRouter>
-  );
+  return <MemoryRouter>{children}</MemoryRouter>;
 }
 
 describe('TaskCard', () => {
@@ -62,26 +58,59 @@ describe('TaskCard', () => {
     expect(screen.getByText('Selin Demir')).toBeInTheDocument();
   });
 
-  it('dimension lazy-loaded assignee avatar', () => {
-    render(
+  it('uses the shared overlapping avatar stack treatment', () => {
+    const { container } = render(
       <Wrap>
-        <TaskCard
-          task={{
-            ...baseTask,
-            assignees: [
-              {
-                ...baseTask.assignees[0],
-                user: { ...baseTask.assignees[0].user, avatarUrl: '/avatar.png' },
-              },
-            ],
-          }}
-        />
+        <TaskCard task={baseTask} />
       </Wrap>,
     );
-    expect(screen.getByRole('img')).toHaveAttribute('loading', 'lazy');
-    expect(screen.getByRole('img')).toHaveAttribute('decoding', 'async');
-    expect(screen.getByRole('img')).toHaveAttribute('width', '24');
-    expect(screen.getByRole('img')).toHaveAttribute('height', '24');
+
+    const avatarTrigger = container.querySelector('[title="Selin Demir"]');
+    expect(avatarTrigger).toHaveClass('relative', 'hover:z-10');
+    expect(avatarTrigger?.firstElementChild).toHaveClass(
+      'border-2',
+      'border-background',
+      'transition-all',
+      'hover:scale-105',
+      'hover:-translate-y-1',
+    );
+  });
+
+  it('dimension lazy-loaded assignee avatar', () => {
+    const originalImage = window.Image;
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class MockImage {
+        complete = true;
+        naturalWidth = 1;
+        addEventListener = vi.fn();
+        removeEventListener = vi.fn();
+      },
+    });
+
+    try {
+      render(
+        <Wrap>
+          <TaskCard
+            task={{
+              ...baseTask,
+              assignees: [
+                {
+                  ...baseTask.assignees[0],
+                  user: { ...baseTask.assignees[0].user, avatarUrl: '/avatar.png' },
+                },
+              ],
+            }}
+          />
+        </Wrap>,
+      );
+      expect(screen.getByRole('img')).toHaveAttribute('loading', 'lazy');
+      expect(screen.getByRole('img')).toHaveAttribute('decoding', 'async');
+      expect(screen.getByRole('img')).toHaveAttribute('width', '24');
+      expect(screen.getByRole('img')).toHaveAttribute('height', '24');
+    } finally {
+      Object.defineProperty(window, 'Image', { configurable: true, value: originalImage });
+    }
   });
 
   it('uses priority border class for high', () => {

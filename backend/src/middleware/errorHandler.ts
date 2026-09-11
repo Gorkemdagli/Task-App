@@ -10,6 +10,15 @@ export class ValidationError extends AppError {
   }
 }
 
+export function toValidationIssues(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): { path: (string | number)[]; message: string }[] {
+  return issues.map((issue) => ({
+    path: issue.path.map((segment) => (typeof segment === 'symbol' ? segment.toString() : segment)),
+    message: issue.message,
+  }));
+}
+
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof ValidationError) {
     res.status(400).json({ error: 'Bad Request', message: err.message, issues: err.issues });
@@ -23,7 +32,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     res.status(400).json({
       error: 'Bad Request',
       message: 'Geçersiz istek',
-      issues: err.issues.map((i) => ({ path: i.path, message: i.message })),
+      issues: toValidationIssues(err.issues),
     });
     return;
   }

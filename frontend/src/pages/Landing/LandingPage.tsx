@@ -1,6 +1,5 @@
 import { NavSection } from './sections/NavSection';
 import { HeroSection } from './sections/HeroSection';
-import { InteractivePreviewSection } from './sections/InteractivePreviewSection';
 import { FeaturesSection } from './sections/FeaturesSection';
 import { MotionSection } from './sections/MotionSection';
 import { FooterSection } from './sections/FooterSection';
@@ -21,7 +20,6 @@ export function LandingPage() {
         <HeroSection />
         <FeaturesSection />
         <MotionSection />
-        <InteractivePreviewSection />
       </main>
 
       <FooterSection />

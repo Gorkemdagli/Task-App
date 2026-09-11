@@ -97,7 +97,7 @@ function RootRoute() {
 export default function App() {
   return (
     <AuthBootstrap>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<RootRoute />} />

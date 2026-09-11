@@ -5,11 +5,21 @@ import { isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import { startOfUtcToday } from '../lib/calendarDate';
 
 const MEMBER_LIMIT = 100;
+const RISK_TASK_LIMIT = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type CountAndPercentage = {
   count: number;
   percentage: number;
+};
+
+export type CompanyRiskTask = {
+  id: string;
+  title: string;
+  team: { id: string; name: string };
+  assignee: { id: string; fullName: string } | null;
+  deadline: string | null;
+  status: 'todo' | 'in_progress' | 'done';
 };
 
 export type CompanyDashboard = {
@@ -27,6 +37,12 @@ export type CompanyDashboard = {
     dueNextSevenDaysTaskCount: number;
     pendingApprovalTaskCount: number;
     expiredTaskCount: number;
+  };
+  riskTasks: {
+    overdue: CompanyRiskTask[];
+    dueNextSevenDays: CompanyRiskTask[];
+    pendingApproval: CompanyRiskTask[];
+    expired: CompanyRiskTask[];
   };
   statusBreakdown: {
     total: number;
@@ -104,6 +120,18 @@ type TeamRow = {
   open_task_count: Numeric;
   completed_task_count: Numeric;
   expired_task_count: Numeric;
+};
+
+type RiskTaskRow = {
+  risk_type: 'overdue' | 'due_next_seven_days' | 'pending_approval' | 'expired';
+  id: string;
+  title: string;
+  team_id: string;
+  team_name: string;
+  assignee_id: string | null;
+  assignee_full_name: string | null;
+  deadline: Date | null;
+  status: 'todo' | 'in_progress' | 'done';
 };
 
 function asNumber(value: Numeric): number {
@@ -267,6 +295,97 @@ const teamQuery = (tenantId: string, archiveCutoff: Date) => Prisma.sql`
   ORDER BY team.name ASC, team.id ASC
 `;
 
+const riskTaskQuery = (
+  tenantId: string,
+  teamId: string | null,
+  archiveCutoff: Date,
+  today: Date,
+  dueSoonExclusiveEnd: Date,
+) => Prisma.sql`
+  WITH scoped_tasks AS (
+    SELECT
+      task.id,
+      task.title,
+      task.deadline,
+      task.status,
+      task.archived_at,
+      task.pending_status,
+      team.id AS team_id,
+      team.name AS team_name,
+      assignee.id AS assignee_id,
+      assignee.full_name AS assignee_full_name
+    FROM tasks task
+    JOIN teams team ON team.id = task.team_id
+    LEFT JOIN LATERAL (
+      SELECT u.id, u.full_name
+      FROM task_assignees assignment
+      JOIN users u ON u.id = assignment.user_id
+      WHERE assignment.task_id = task.id
+      ORDER BY assignment.assigned_at ASC, u.id ASC
+      LIMIT 1
+    ) assignee ON TRUE
+    WHERE team.tenant_id = ${tenantId}::uuid
+      AND (${teamId}::uuid IS NULL OR team.id = ${teamId}::uuid)
+  ),
+  risk_tasks AS (
+    SELECT *, 'overdue'::text AS risk_type
+    FROM scoped_tasks
+    WHERE archived_at IS NULL AND status <> 'done' AND deadline < ${today}
+    UNION ALL
+    SELECT *, 'due_next_seven_days'::text AS risk_type
+    FROM scoped_tasks
+    WHERE archived_at IS NULL
+      AND status <> 'done'
+      AND deadline >= ${today}
+      AND deadline < ${dueSoonExclusiveEnd}
+    UNION ALL
+    SELECT *, 'pending_approval'::text AS risk_type
+    FROM scoped_tasks
+    WHERE archived_at IS NULL AND pending_status IS NOT NULL
+    UNION ALL
+    SELECT *, 'expired'::text AS risk_type
+    FROM scoped_tasks
+    WHERE archived_at IS NOT NULL
+      AND status IN ('todo', 'in_progress')
+      AND deadline <= ${archiveCutoff}
+  ),
+  ranked_tasks AS (
+    SELECT
+      risk_tasks.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY risk_type
+        ORDER BY deadline ASC NULLS LAST, id ASC
+      ) AS risk_rank
+    FROM risk_tasks
+  )
+  SELECT
+    risk_type,
+    id,
+    title,
+    team_id,
+    team_name,
+    assignee_id,
+    assignee_full_name,
+    deadline,
+    status
+  FROM ranked_tasks
+  WHERE risk_rank <= ${RISK_TASK_LIMIT}
+  ORDER BY risk_type, deadline ASC NULLS LAST, id ASC
+`;
+
+function mapRiskTask(row: RiskTaskRow): CompanyRiskTask {
+  return {
+    id: row.id,
+    title: row.title,
+    team: { id: row.team_id, name: row.team_name },
+    assignee: row.assignee_id
+      ? { id: row.assignee_id, fullName: row.assignee_full_name ?? 'Atanmamış' }
+      : null,
+    deadline: row.deadline ? row.deadline.toISOString().slice(0, 10) : null,
+    status: row.status,
+  };
+}
+
 export async function getCompanyDashboard(
   db: TenantDb,
   actor: Actor,
@@ -295,11 +414,14 @@ export async function getCompanyDashboard(
   const taskScope = team ? Prisma.sql`AND task.team_id = ${team.id}::uuid` : Prisma.empty;
   const teamId = team?.id ?? null;
 
-  const [summaryRows, memberRows] = await Promise.all([
+  const [summaryRows, memberRows, riskTaskRows] = await Promise.all([
     db.$queryRaw<SummaryRow[]>(
       summaryQuery(tenantId, taskScope, archiveCutoff, today, dueSoonExclusiveEnd),
     ),
     db.$queryRaw<MemberRow[]>(memberQuery(tenantId, teamId, archiveCutoff)),
+    db.$queryRaw<RiskTaskRow[]>(
+      riskTaskQuery(tenantId, teamId, archiveCutoff, today, dueSoonExclusiveEnd),
+    ),
   ]);
 
   const summary = summaryRows[0];
@@ -313,6 +435,19 @@ export async function getCompanyDashboard(
   const completedTaskCount = asNumber(summary.completed_task_count);
   const statusTotal = asNumber(summary.status_total);
   const priorityTotal = asNumber(summary.priority_total);
+  const riskTasks: CompanyDashboard['riskTasks'] = {
+    overdue: [],
+    dueNextSevenDays: [],
+    pendingApproval: [],
+    expired: [],
+  };
+  for (const row of riskTaskRows) {
+    const task = mapRiskTask(row);
+    if (row.risk_type === 'overdue') riskTasks.overdue.push(task);
+    if (row.risk_type === 'due_next_seven_days') riskTasks.dueNextSevenDays.push(task);
+    if (row.risk_type === 'pending_approval') riskTasks.pendingApproval.push(task);
+    if (row.risk_type === 'expired') riskTasks.expired.push(task);
+  }
 
   let teams: CompanyDashboard['teams'] = [];
   if (!filters.teamId) {
@@ -348,6 +483,7 @@ export async function getCompanyDashboard(
       pendingApprovalTaskCount: asNumber(summary.pending_approval_task_count),
       expiredTaskCount: asNumber(summary.expired_task_count),
     },
+    riskTasks,
     statusBreakdown: {
       total: statusTotal,
       todo: countAndPercentage(summary.status_todo, statusTotal),

@@ -47,7 +47,7 @@ teamsRouter.get('/:id/member-candidates', authenticatedReadLimiter, async (req, 
   try {
     const query = parseQuery<{ q: string }>(searchMemberCandidatesQuerySchema, req.query);
     const candidates = await runTenantRequest(req, (db, actor) =>
-      teamsService.searchMemberCandidates(db, req.params.id, query.q, actor),
+      teamsService.searchMemberCandidates(db, (req.params as { id: string }).id, query.q, actor),
     );
     res.json(candidates);
   } catch (e) {
@@ -58,7 +58,7 @@ teamsRouter.get('/:id/member-candidates', authenticatedReadLimiter, async (req, 
 teamsRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const team = await runTenantRequest(req, (db, actor) =>
-      teamsService.getTeam(db, req.params.id, actor),
+      teamsService.getTeam(db, (req.params as { id: string }).id, actor),
     );
     res.json(team);
   } catch (e) {
@@ -73,7 +73,12 @@ teamsRouter.post(
   async (req, res, next) => {
     try {
       const member = await runTenantRequest(req, (db, actor) =>
-        teamsService.addMemberByDisplayId(db, req.params.id, req.body.displayId, actor),
+        teamsService.addMemberByDisplayId(
+          db,
+          (req.params as { id: string }).id,
+          req.body.displayId,
+          actor,
+        ),
       );
       res.status(201).json(member);
     } catch (e) {
@@ -85,7 +90,12 @@ teamsRouter.post(
 teamsRouter.delete('/:id/members/:userId', writeLimiter, async (req, res, next) => {
   try {
     await runTenantRequest(req, (db, actor) =>
-      teamsService.removeMember(db, req.params.id, req.params.userId, actor),
+      teamsService.removeMember(
+        db,
+        (req.params as { id: string; userId: string }).id,
+        (req.params as { id: string; userId: string }).userId,
+        actor,
+      ),
     );
     res.status(204).end();
   } catch (e) {
@@ -100,7 +110,13 @@ teamsRouter.patch(
   async (req, res, next) => {
     try {
       const member = await runTenantRequest(req, (db, actor) =>
-        teamsService.updateTeamMemberRole(db, req.params.id, req.params.userId, req.body, actor),
+        teamsService.updateTeamMemberRole(
+          db,
+          (req.params as { id: string; userId: string }).id,
+          (req.params as { id: string; userId: string }).userId,
+          req.body,
+          actor,
+        ),
       );
       res.json(member);
     } catch (error) {

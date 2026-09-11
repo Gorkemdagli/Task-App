@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,21 @@ const allDashboard: CompanyDashboardData = {
     dueNextSevenDaysTaskCount: 3,
     pendingApprovalTaskCount: 1,
     expiredTaskCount: 4,
+  },
+  riskTasks: {
+    overdue: [
+      {
+        id: 'task-overdue',
+        title: 'Veri yedekleme prosedürünün güncellenmesi',
+        team: { id: 'team-a', name: 'BT Altyapı' },
+        assignee: { id: 'user-a', fullName: 'Ada Member' },
+        deadline: '2026-08-19',
+        status: 'in_progress',
+      },
+    ],
+    dueNextSevenDays: [],
+    pendingApproval: [],
+    expired: [],
   },
   statusBreakdown: {
     total: 20,
@@ -101,7 +116,7 @@ function LocationProbe() {
 
 function renderDashboard() {
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <CompanyDashboard />
       <LocationProbe />
     </MemoryRouter>,
@@ -248,9 +263,174 @@ describe('CompanyDashboard', () => {
       'href',
       '/tasks?assigneeIds=user-a',
     );
-    expect(screen.getByRole('link', { name: 'Alpha takım görevlerini aç' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Alpha takım detayını aç' })).toHaveAttribute(
       'href',
-      '/tasks?teamId=team-a',
+      '/teams/team-a',
+    );
+  });
+
+  it('uses a mobile two-by-two team comparison grid with an inline team label', () => {
+    renderDashboard();
+
+    const teamTable = screen.getByRole('table', { name: 'Takım karşılaştırması' });
+    expect(within(teamTable).getByText('Takım:')).toHaveClass('sm:hidden');
+    expect(within(teamTable).getByText('%30').closest('td')).not.toHaveClass('col-span-2');
+  });
+
+  it('renders the risk ledger with task links and category tabs', () => {
+    renderDashboard();
+
+    expect(screen.getByRole('tab', { name: 'Geciken görevler (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Risk kategorileri' })).toHaveClass('grid-cols-2');
+    expect(screen.getByRole('tablist', { name: 'Risk kategorileri' })).not.toHaveClass(
+      'overflow-x-auto',
+    );
+    expect(screen.getByRole('table', { name: 'Riskli görevler' })).toHaveTextContent(
+      'Veri yedekleme prosedürünün güncellenmesi',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Veri yedekleme prosedürünün güncellenmesi' }),
+    ).toHaveAttribute('href', '/tasks/task-overdue');
+
+    const riskLedger = screen.getByRole('region', { name: 'Riskli görevler' });
+    const riskPanel = within(riskLedger).getByRole('tabpanel', { name: 'Geciken görevler' });
+    const pagination = within(riskPanel).getByRole('navigation', { name: 'Risk sayfalama' });
+    expect(riskPanel.lastElementChild).toBe(pagination);
+  });
+
+  it('links expired risk tasks to the archived task view', async () => {
+    const user = userEvent.setup();
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        riskTasks: { ...allDashboard.riskTasks, expired: allDashboard.riskTasks.overdue },
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    await user.click(screen.getByRole('tab', { name: 'Süresi dolmuş (4)' }));
+
+    expect(screen.getByRole('link', { name: 'Tümünü görüntüle' })).toHaveAttribute(
+      'href',
+      '/tasks?deadline=overdue&includeArchived=true',
+    );
+  });
+
+  it('paginates mobile member workload by four and aligns completed counts', async () => {
+    const user = userEvent.setup();
+    const manyMembers = Array.from({ length: 5 }, (_, index) => ({
+      ...allDashboard.members.items[0],
+      userId: `user-${index}`,
+      fullName: `Member ${index + 1}`,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        members: { ...allDashboard.members, items: manyMembers, totalCount: 5, returnedCount: 5 },
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    const memberTable = screen.getByRole('table', { name: 'Üye görev yükü' });
+    expect(within(memberTable).getAllByText('Tamamlanan', { selector: 'span' })[0]).toHaveClass(
+      'text-right',
+    );
+    expect(screen.getByRole('navigation', { name: 'Üye sayfalama' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Member 1 görevlerini aç' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Member 5 görevlerini aç' }).closest('tr')).toHaveClass(
+      'hidden',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Sonraki üye sayfası' }));
+
+    expect(screen.getByRole('link', { name: 'Member 1 görevlerini aç' }).closest('tr')).toHaveClass(
+      'hidden',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Member 5 görevlerini aç' }).closest('tr'),
+    ).not.toHaveClass('hidden');
+  });
+
+  it('paginates mobile team comparison by three', async () => {
+    const user = userEvent.setup();
+    const manyTeams = Array.from({ length: 4 }, (_, index) => ({
+      ...allDashboard.teams[0],
+      teamId: `team-${index}`,
+      teamName: `Team ${index + 1}`,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: { ...allDashboard, teams: manyTeams },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(screen.getByRole('navigation', { name: 'Takım sayfalama' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Team 4 takım detayını aç' }).closest('tr'),
+    ).toHaveClass('hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Sonraki takım sayfası' }));
+
+    expect(
+      screen.getByRole('link', { name: 'Team 1 takım detayını aç' }).closest('tr'),
+    ).toHaveClass('hidden');
+    expect(
+      screen.getByRole('link', { name: 'Team 4 takım detayını aç' }).closest('tr'),
+    ).not.toHaveClass('hidden');
+  });
+
+  it('adds desktop-only inner scroll when member or team lists exceed their limits', () => {
+    const baseView = renderDashboard();
+    expect(screen.getByRole('table', { name: 'Üye görev yükü' }).parentElement).not.toHaveClass(
+      'lg:max-h-64',
+      'lg:overflow-y-auto',
+    );
+    expect(
+      screen.getByRole('table', { name: 'Takım karşılaştırması' }).parentElement,
+    ).not.toHaveClass('lg:max-h-64', 'lg:overflow-y-auto');
+    baseView.unmount();
+
+    const manyMembers = Array.from({ length: 5 }, (_, index) => ({
+      ...allDashboard.members.items[0],
+      userId: `user-${index}`,
+      fullName: `Member ${index + 1}`,
+    }));
+    const manyTeams = Array.from({ length: 4 }, (_, index) => ({
+      ...allDashboard.teams[0],
+      teamId: `team-${index}`,
+      teamName: `Team ${index + 1}`,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        members: { ...allDashboard.members, items: manyMembers, totalCount: 5, returnedCount: 5 },
+        teams: manyTeams,
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(screen.getByRole('table', { name: 'Üye görev yükü' }).parentElement).toHaveClass(
+      'lg:max-h-64',
+      'lg:overflow-y-auto',
+    );
+    expect(screen.getByRole('table', { name: 'Takım karşılaştırması' }).parentElement).toHaveClass(
+      'lg:max-h-52',
+      'lg:overflow-y-auto',
     );
   });
 });

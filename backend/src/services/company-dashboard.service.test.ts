@@ -43,6 +43,18 @@ const summaryRow = {
   priority_high: 3n,
 };
 
+const riskTaskRow = {
+  risk_type: 'overdue',
+  id: 'task-a',
+  title: 'Fix backup procedure',
+  team_id: 'team-a',
+  team_name: 'Alpha',
+  assignee_id: 'user-0',
+  assignee_full_name: 'User 000',
+  deadline: new Date('2026-08-19T00:00:00.000Z'),
+  status: 'in_progress',
+};
+
 describe('getCompanyDashboard', () => {
   beforeEach(() => {
     vi.mocked(db.team.findFirst).mockReset();
@@ -71,6 +83,7 @@ describe('getCompanyDashboard', () => {
     vi.mocked(db.$queryRaw)
       .mockResolvedValueOnce([summaryRow])
       .mockResolvedValueOnce(Array.from({ length: 101 }, (_, index) => memberRow(index)))
+      .mockResolvedValueOnce([riskTaskRow])
       .mockResolvedValueOnce([
         {
           team_id: 'team-a',
@@ -107,6 +120,16 @@ describe('getCompanyDashboard', () => {
       pendingApprovalTaskCount: 1,
       expiredTaskCount: 2,
     });
+    expect(result.riskTasks.overdue).toEqual([
+      {
+        id: 'task-a',
+        title: 'Fix backup procedure',
+        team: { id: 'team-a', name: 'Alpha' },
+        assignee: { id: 'user-0', fullName: 'User 000' },
+        deadline: '2026-08-19',
+        status: 'in_progress',
+      },
+    ]);
     expect(result.statusBreakdown).toEqual({
       total: 8,
       todo: { count: 2, percentage: 25 },
@@ -175,7 +198,8 @@ describe('getCompanyDashboard', () => {
           expired_task_count: 0n,
           total_user_count: 1n,
         },
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
 
     const result = await getCompanyDashboard(db, admin, { teamId: TEAM_ID }, now);
 

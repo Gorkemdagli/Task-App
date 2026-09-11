@@ -1,19 +1,28 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { DashboardPage } from './index';
 import type { Task } from '@/hooks/tasks';
+import { utcTodayCalendarDate } from '@/lib/calendarDate';
 
-const { useDroppableMock } = vi.hoisted(() => ({
+const { useDroppableMock, useSensorMock, useSensorsMock } = vi.hoisted(() => ({
   useDroppableMock: vi.fn(() => ({ setNodeRef: vi.fn(), isOver: false })),
+  useSensorMock: vi.fn((sensor: unknown, options: unknown) => ({ sensor, options })),
+  useSensorsMock: vi.fn((...sensors: unknown[]) => sensors),
 }));
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, useDroppable: useDroppableMock };
+  return {
+    ...actual,
+    useDroppable: useDroppableMock,
+    useSensor: useSensorMock,
+    useSensors: useSensorsMock,
+  };
 });
 
 // Hook stub'ları: drag-drop simülasyonu yapmadan sayfa seviyesinde
@@ -24,6 +33,9 @@ const mocks = {
 };
 void mocks; // referans korunsun (gelecek drag-drop testleri için yer tutucu)
 
+let lastTaskFilters: unknown;
+let mockSelectedTask: Task | undefined;
+
 vi.mock('@/hooks/queries/useTeams', () => ({
   useTeams: () => ({ data: mockTeams, isLoading: false, isError: false }),
   useTeam: () => ({ data: mockTeamDetail, isLoading: false, isError: false }),
@@ -33,11 +45,16 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    useTasks: () => ({
-      data: { tasks: mockTasks, total: mockTasks.length },
-      isLoading: false,
-      isError: false,
-    }),
+    useTasks: (filters: unknown) => {
+      lastTaskFilters = filters;
+      return {
+        data: { tasks: mockTasks, total: mockTasks.length },
+        isLoading: false,
+        isError: false,
+      };
+    },
+    useTask: () => ({ data: mockSelectedTask, isLoading: false, isError: false }),
+    useTaskComments: () => ({ data: { comments: [] }, isLoading: false, isError: false }),
     useUpdateTaskStatus: () => ({
       mutate: mocks.useUpdateTaskStatus,
       mutateAsync: mocks.useUpdateTaskStatus,
@@ -112,20 +129,36 @@ function makeTask(overrides: Partial<Task>): Task {
   };
 }
 
+function calendarDateOffset(offset: number): string {
+  const [year, month, day] = utcTodayCalendarDate().split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + offset));
+  return date.toISOString().slice(0, 10);
+}
+
 let mockTasks: Task[] = [];
 
 function renderDashboard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <DashboardPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.pathname}</span>;
+}
+
 describe('DashboardPage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockTeams = [{ id: 'team-1', name: 'UX' }];
@@ -136,6 +169,8 @@ describe('DashboardPage', () => {
     };
     useTeamStore.setState({ activeTeamId: null });
     mockTasks = [];
+    lastTaskFilters = undefined;
+    mockSelectedTask = undefined;
   });
 
   it('renders three status columns', () => {
@@ -149,6 +184,19 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yapıldı')).toBeInTheDocument();
   });
 
+  it('stacks workflow and kanban columns on mobile', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderDashboard();
+
+    expect(screen.getByTestId('workflow-strip')).toHaveClass('grid', 'md:flex');
+
+    const board = screen.getByTestId('column-todo').parentElement;
+    expect(board).toHaveClass('grid', 'grid-cols-1', 'md:grid-cols-3');
+    expect(screen.getByTestId('column-todo')).not.toHaveClass('w-[85vw]', 'shrink-0');
+    expect(screen.getByTestId('column-in_progress')).not.toHaveClass('w-[85vw]', 'shrink-0');
+    expect(screen.getByTestId('column-done')).not.toHaveClass('w-[85vw]', 'shrink-0');
+  });
+
   it('registers each status column as a drop target', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     renderDashboard();
@@ -158,6 +206,45 @@ describe('DashboardPage', () => {
       { id: 'in_progress' },
       { id: 'done' },
     ]);
+  });
+
+  it('configures mouse and touch sensors for drag and drop', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderDashboard();
+
+    const calls = useSensorMock.mock.calls as unknown as Array<[typeof MouseSensor, unknown]>;
+    expect(calls.map(([sensor]) => sensor)).toEqual([MouseSensor, TouchSensor]);
+    expect(calls[1][1]).toEqual({ activationConstraint: { delay: 180, tolerance: 8 } });
+  });
+
+  it('shows one-card mobile carousel controls when a column has multiple tasks', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = [makeTask({ id: 'todo-1' }), makeTask({ id: 'todo-2' })];
+    renderDashboard();
+
+    const carousel = screen.getByTestId('task-carousel-todo');
+    expect(carousel).toHaveClass('flex', 'snap-x', 'overflow-x-auto');
+    const previousButton = screen.getByRole('button', { name: 'Yapılacak önceki görev' });
+    const nextButton = screen.getByRole('button', { name: 'Yapılacak sonraki görev' });
+    const controls = previousButton.parentElement;
+    expect(previousButton).not.toHaveClass('absolute');
+    expect(nextButton).not.toHaveClass('absolute');
+    expect(controls).toHaveClass('mt-3', 'flex', 'justify-between', 'md:hidden');
+    expect(carousel.compareDocumentPosition(controls!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId('task-card-todo-1').parentElement).toHaveClass(
+      'min-w-full',
+      'snap-start',
+    );
+    expect(screen.getByTestId('task-card-todo-2').parentElement).toHaveClass(
+      'min-w-full',
+      'snap-start',
+    );
+
+    const scrollBy = vi.fn();
+    Object.defineProperty(carousel, 'clientWidth', { configurable: true, value: 320 });
+    Object.defineProperty(carousel, 'scrollBy', { configurable: true, value: scrollBy });
+    fireEvent.click(screen.getByRole('button', { name: 'Yapılacak sonraki görev' }));
+    expect(scrollBy).toHaveBeenCalledWith({ left: 320, behavior: 'smooth' });
   });
 
   it('shows selected team name as heading', () => {
@@ -313,7 +400,7 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('team-tab-team-2')).toBeInTheDocument();
   });
 
-  it('uses the store-selected team for the Dashboard', () => {
+  it('starts company admin dashboards on all teams', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     mockTeams = [
       { id: 'team-1', name: 'UX' },
@@ -323,8 +410,8 @@ describe('DashboardPage', () => {
 
     renderDashboard();
 
-    expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
-    expect(screen.getByTestId('team-tab-team-2').className).toContain('border-primary');
+    expect(screen.getByRole('heading', { name: 'Tüm Takımlar' })).toBeInTheDocument();
+    expect(screen.getByTestId('team-tab-all').className).toContain('border-primary');
   });
 
   it('writes Dashboard tab selection to the shared team store', () => {
@@ -338,6 +425,145 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByTestId('team-tab-team-2'));
 
     expect(useTeamStore.getState().activeTeamId).toBe('team-2');
+  });
+
+  it('shows risk counts and filters admin tasks by upcoming deadlines', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = [
+      makeTask({ id: 'overdue', deadline: calendarDateOffset(-1) }),
+      makeTask({ id: 'today', deadline: utcTodayCalendarDate(), status: 'in_progress' }),
+      makeTask({ id: 'pending', pendingStatus: 'in_progress' }),
+      makeTask({ id: 'upcoming', deadline: calendarDateOffset(1), status: 'done' }),
+      makeTask({ id: 'far-upcoming', deadline: calendarDateOffset(30) }),
+    ];
+
+    renderDashboard();
+
+    expect(screen.getByTestId('workflow-strip')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-count-overdue')).toHaveTextContent('1');
+    expect(screen.getByTestId('workflow-count-today')).toHaveTextContent('1');
+    expect(screen.getByTestId('workflow-count-pending')).toHaveTextContent('1');
+    expect(screen.getByTestId('workflow-count-upcoming')).toHaveTextContent('2');
+
+    fireEvent.click(screen.getByTestId('workflow-filter-upcoming'));
+
+    expect(screen.getByTestId('task-card-upcoming')).toBeInTheDocument();
+    expect(screen.getByTestId('task-card-far-upcoming')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-card-overdue')).toBeNull();
+  });
+
+  it('shows archived tasks from the final workflow filter without drag affordance', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = [
+      makeTask({ id: 'active-task' }),
+      makeTask({ id: 'archived-task', archivedAt: '2026-08-01T00:00:00.000Z', status: 'done' }),
+    ];
+
+    renderDashboard();
+
+    expect(lastTaskFilters).toMatchObject({ includeArchived: true });
+    expect(screen.getByTestId('workflow-filter-archived')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-count-archived')).toHaveTextContent('1');
+
+    fireEvent.click(screen.getByTestId('workflow-filter-archived'));
+
+    expect(screen.getByTestId('task-card-archived-task')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-card-active-task')).toBeNull();
+    expect(screen.getByTestId('task-card-archived-task')).not.toHaveAttribute('role', 'button');
+  });
+
+  it('loads all teams for a company admin until a team is selected', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTeams = [
+      { id: 'team-1', name: 'UX' },
+      { id: 'team-2', name: 'Backend' },
+    ];
+    mockTeamDetail = { id: 'team-1', name: 'UX', members: [] };
+    renderDashboard();
+
+    expect(screen.getByTestId('team-tab-all')).toBeInTheDocument();
+    expect(lastTaskFilters).toMatchObject({ includeArchived: true });
+
+    fireEvent.click(screen.getByTestId('team-tab-team-2'));
+
+    expect(lastTaskFilters).toMatchObject({ teamId: 'team-2' });
+  });
+
+  it('requests only the current member tasks', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    renderDashboard();
+
+    expect(lastTaskFilters).toMatchObject({ assigneeIds: ['u1'] });
+    expect(screen.queryByTestId('workflow-strip')).toBeNull();
+  });
+
+  it('opens the selected member task in the dashboard detail panel', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'selected-task',
+      title: 'Seçilen görev',
+      status: 'in_progress',
+      priority: 'high',
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-selected-task').querySelector('a')!);
+
+    const panel = screen.getByTestId('member-task-detail-panel');
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveTextContent('Seçilen görev');
+    expect(screen.getByTestId('task-card-selected-task').className).toContain('ring-primary');
+    expect(within(panel).getByText('Yapılıyor')).toHaveClass(
+      'border-status-inprogress/40',
+      'bg-status-inprogress/10',
+      'text-status-inprogress',
+    );
+    expect(within(panel).getByText('Yüksek')).toHaveClass(
+      'border-priority-high/40',
+      'bg-priority-high/10',
+      'text-priority-high',
+    );
+    expect(screen.getByTestId('dashboard-page')).toHaveClass('lg:pr-[min(38vw,32rem)]');
+    expect(screen.getByTestId('member-task-detail-panel')).toHaveClass(
+      'lg:fixed',
+      'lg:right-0',
+      'lg:top-14',
+      'lg:bottom-0',
+      'lg:w-[min(38vw,32rem)]',
+    );
+    expect(screen.getByRole('link', { name: 'Göreve git' })).toHaveAttribute(
+      'href',
+      '/tasks/selected-task',
+    );
+    expect(screen.getByRole('link', { name: 'Seçilen görev' })).toHaveAttribute(
+      'href',
+      '/tasks/selected-task',
+    );
+  });
+
+  it('opens the dashboard detail panel for admin task cards on desktop', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockSelectedTask = makeTask({ id: 'admin-task', title: 'Yönetici görevi' });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-admin-task').querySelector('a')!);
+
+    expect(screen.getByTestId('member-task-detail-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('member-task-detail-panel')).toHaveTextContent('Yönetici görevi');
+  });
+
+  it('navigates directly to the task on responsive viewports', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockTasks = [makeTask({ id: 'mobile-task', title: 'Mobil görev' })];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-mobile-task').querySelector('a')!);
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/mobile-task');
+    expect(screen.queryByTestId('member-task-detail-panel')).toBeNull();
   });
 });
 

@@ -10,7 +10,7 @@ import { authApi } from '../../lib/api';
 describe('RegisterPage', () => {
   it('renders fields', () => {
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );
@@ -22,7 +22,7 @@ describe('RegisterPage', () => {
   it('disabled on weak', async () => {
     const u = userEvent.setup();
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );
@@ -34,7 +34,7 @@ describe('RegisterPage', () => {
   it('enabled on medium', async () => {
     const u = userEvent.setup();
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );
@@ -46,7 +46,7 @@ describe('RegisterPage', () => {
   it('shows strength label', async () => {
     const u = userEvent.setup();
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );
@@ -59,7 +59,7 @@ describe('RegisterPage', () => {
     });
     const u = userEvent.setup();
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );
@@ -71,7 +71,7 @@ describe('RegisterPage', () => {
   });
   it('link to /login', () => {
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <RegisterPage />
       </MemoryRouter>,
     );

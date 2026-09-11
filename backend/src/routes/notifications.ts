@@ -31,7 +31,9 @@ notificationsRouter.get('/', authenticatedReadLimiter, async (req, res, next) =>
 // PATCH /api/v1/notifications/:id/read
 notificationsRouter.patch('/:id/read', writeLimiter, async (req, res, next) => {
   try {
-    await runTenantRequest(req, (db, actor) => markNotificationRead(db, actor, req.params.id));
+    await runTenantRequest(req, (db, actor) =>
+      markNotificationRead(db, actor, (req.params as { id: string }).id),
+    );
     res.status(204).send();
   } catch (err) {
     next(err);

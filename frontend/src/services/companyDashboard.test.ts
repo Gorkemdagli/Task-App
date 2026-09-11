@@ -19,6 +19,12 @@ const dashboard: CompanyDashboard = {
     pendingApprovalTaskCount: 0,
     expiredTaskCount: 0,
   },
+  riskTasks: {
+    overdue: [],
+    dueNextSevenDays: [],
+    pendingApproval: [],
+    expired: [],
+  },
   statusBreakdown: {
     total: 2,
     todo: { count: 1, percentage: 50 },

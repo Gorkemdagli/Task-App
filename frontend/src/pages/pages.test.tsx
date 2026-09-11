@@ -147,10 +147,7 @@ function renderAt(path: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        initialEntries={[path]}
-      >
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/teams" element={<TeamsPage />} />
@@ -202,7 +199,26 @@ describe('placeholder pages', () => {
     expect(screen.getByRole('heading', { name: 'Görevlerim' })).toBeInTheDocument();
   });
 
-  it('maps task page two to a twenty-item offset and renders total pages', () => {
+  it('keeps the desktop task workspace fixed with independently scrolling panels', () => {
+    renderAt('/tasks');
+
+    expect(screen.getByTestId('tasks-page')).toHaveClass(
+      'mx-auto',
+      'w-full',
+      'max-w-6xl',
+      'lg:flex',
+      'lg:h-full',
+      'lg:min-h-0',
+      'lg:overflow-hidden',
+    );
+    expect(screen.getByTestId('task-filter-rail')).toHaveClass('lg:h-full', 'lg:overflow-y-auto');
+    expect(screen.getByRole('region', { name: 'Görev sonuçları' })).toHaveClass(
+      'lg:min-h-0',
+      'lg:overflow-y-auto',
+    );
+  });
+
+  it('maps task page two to a fifteen-item offset and renders total pages', () => {
     useTasksMock.mockReturnValue({
       data: { tasks: [], total: 45 },
       isLoading: false,
@@ -211,7 +227,7 @@ describe('placeholder pages', () => {
 
     renderAt('/tasks?page=2');
 
-    expect(useTasksMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 20, offset: 20 }));
+    expect(useTasksMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 15, offset: 15 }));
     expect(screen.getByRole('button', { name: 'Sayfa 3' })).toBeInTheDocument();
   });
 

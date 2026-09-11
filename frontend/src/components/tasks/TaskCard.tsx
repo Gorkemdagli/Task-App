@@ -49,6 +49,9 @@ interface TaskCardProps {
   disabled?: boolean;
   /** Pending badge + sarı border yalnız non-proposer için görünür. */
   currentUserId?: string;
+  showTeam?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
 }
 
 export function TaskCard({
@@ -56,6 +59,9 @@ export function TaskCard({
   draggable = false,
   disabled = false,
   currentUserId,
+  showTeam = false,
+  selected = false,
+  onSelect,
 }: TaskCardProps) {
   const isPending = task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
 
@@ -89,6 +95,7 @@ export function TaskCard({
         disabled && 'cursor-not-allowed opacity-60',
         dragEnabled && 'cursor-grab active:cursor-grabbing',
         isPending && 'border-yellow-500/60 bg-yellow-500/5',
+        selected && 'ring-1 ring-primary',
       )}
     >
       <Link
@@ -96,8 +103,10 @@ export function TaskCard({
         className="block p-3"
         draggable={false}
         onClick={(e) => {
-          if (isDragging) e.preventDefault();
+          if (isDragging || onSelect) e.preventDefault();
+          if (onSelect && !isDragging) onSelect();
         }}
+        aria-current={selected ? 'true' : undefined}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
           <span
@@ -108,7 +117,17 @@ export function TaskCard({
           >
             {PRIORITY_LABEL[task.priority]}
           </span>
-          {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
+          <span className="flex min-w-0 items-center gap-2">
+            {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
+            {showTeam && (
+              <span
+                data-testid={`task-team-${task.id}`}
+                className="truncate rounded-sm border border-border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+              >
+                {task.team.name}
+              </span>
+            )}
+          </span>
         </div>
         <h3 className="mb-1 line-clamp-2 text-sm font-medium text-foreground">{task.title}</h3>
         {task.description && (

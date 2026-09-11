@@ -26,4 +26,10 @@ describe('TaskPagination', () => {
     expect(onPageChange).toHaveBeenCalledWith(6);
     expect(screen.getAllByText('…')).toHaveLength(2);
   });
+
+  it('shows the fixed fifteen-task range when total is provided', () => {
+    render(<TaskPagination page={1} totalPages={3} total={42} onPageChange={vi.fn()} />);
+
+    expect(screen.getByText('1–15 / 42 görev')).toBeInTheDocument();
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -57,7 +57,7 @@ function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <NotificationsPage />
         <LocationProbe />
       </MemoryRouter>
@@ -117,7 +117,7 @@ describe('NotificationsPage', () => {
 
     await userEvent.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
-    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1'));
   });
 
   it('keeps read task navigation without single-read PATCH', async () => {
@@ -132,7 +132,7 @@ describe('NotificationsPage', () => {
 
     await userEvent.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).not.toHaveBeenCalledWith('/notifications/n1/read');
-    expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1'));
   });
 
   it('keeps message_received passive', async () => {
