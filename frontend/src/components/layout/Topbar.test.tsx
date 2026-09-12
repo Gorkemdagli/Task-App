@@ -58,6 +58,11 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   );
 }
 
+async function closeMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <output data-testid="location">{location.pathname}</output>;
@@ -124,12 +129,14 @@ describe('Topbar', () => {
   });
 
   it('shows company management link for companyAdmin role', async () => {
+    const user = userEvent.setup();
     renderTopbar(admin);
-    await userEvent.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
     expect(screen.getByRole('menuitem', { name: 'Şirket Yönetimi' })).toHaveAttribute(
       'href',
       '/company',
     );
+    await closeMenu(user);
   });
 
   it('shows avatar with initials from full name', () => {
@@ -239,8 +246,10 @@ describe('Topbar notification bell', () => {
     patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
     renderTopbar(member);
 
-    await userEvent.click(await screen.findByTestId('notification-bell'));
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('notification-bell'));
     expect(patchSpy).not.toHaveBeenCalledWith('/notifications/read-all');
+    await closeMenu(user);
   });
 
   it('marks unread task notification read then navigates to task', async () => {
@@ -262,8 +271,9 @@ describe('Topbar notification bell', () => {
     patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
     renderTopbar(member);
 
-    await userEvent.click(await screen.findByTestId('notification-bell'));
-    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('notification-bell'));
+    await user.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1'));
   });
@@ -287,8 +297,9 @@ describe('Topbar notification bell', () => {
     patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
     renderTopbar(member);
 
-    await userEvent.click(await screen.findByTestId('notification-bell'));
-    await userEvent.click(await screen.findByTestId('notification-item-n1'));
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('notification-bell'));
+    await user.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).not.toHaveBeenCalledWith('/notifications/n1/read');
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1'));
   });
@@ -312,9 +323,11 @@ describe('Topbar notification bell', () => {
     patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
     renderTopbar(member);
 
-    await userEvent.click(await screen.findByTestId('notification-bell'));
-    await userEvent.click(screen.getByTestId('mark-all-read'));
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('notification-bell'));
+    await user.click(screen.getByTestId('mark-all-read'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/read-all');
+    await closeMenu(user);
   });
 
   it('adds pending invitations to bell badge and panel', async () => {
@@ -326,8 +339,10 @@ describe('Topbar notification bell', () => {
     renderTopbar(tenantless, qc);
 
     await waitFor(() => expect(screen.getByTestId('notification-badge')).toHaveTextContent('1'));
-    await userEvent.click(screen.getByTestId('notification-bell'));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('notification-bell'));
     expect(await screen.findByTestId('company-invitation-card-invitation-1')).toBeInTheDocument();
+    await closeMenu(user);
   });
 
   it('drops previous user notifications when auth user changes', async () => {
@@ -370,6 +385,7 @@ describe('Topbar notification bell', () => {
     await user.click(await screen.findByTestId('notification-bell'));
     expect(await screen.findByText(/Eski Kullanıcı/)).toBeInTheDocument();
     await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
 
     act(() => {
       useAuthStore.setState({
@@ -389,5 +405,6 @@ describe('Topbar notification bell', () => {
     await user.click(screen.getByTestId('notification-bell'));
     expect(await screen.findByText(/Yeni Kullanıcı/)).toBeInTheDocument();
     expect(screen.queryByText(/Eski Kullanıcı/)).not.toBeInTheDocument();
+    await closeMenu(user);
   });
 });
