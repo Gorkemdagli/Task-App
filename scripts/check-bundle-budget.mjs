@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-export const INITIAL_BUDGET = 200 * 1024;
+export const INITIAL_BUDGET = 140 * 1024;
 export const ASYNC_BUDGET = 100 * 1024;
 
 export function collectInitialFiles(manifest) {

@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthLayout } from './pages/Auth/AuthLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { AppShell } from './components/layout/AppShell';
 import { RouteFallback } from './components/layout/RouteFallback';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
@@ -16,6 +15,9 @@ const LoginPage = lazy(() =>
 );
 const RegisterPage = lazy(() =>
   import('./pages/Auth/RegisterPage').then((module) => ({ default: module.RegisterPage })),
+);
+const AppShell = lazy(() =>
+  import('./components/layout/AppShell').then((module) => ({ default: module.AppShell })),
 );
 const DashboardPage = lazy(() =>
   import('./pages/Dashboard').then((module) => ({ default: module.DashboardPage })),
