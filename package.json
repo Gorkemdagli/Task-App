@@ -29,8 +29,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\"",
     "test": "npm run test --workspaces --if-present",
-    "ci:check": "npm run lint && npm run build:frontend && npm run build:backend && npm test",
-    "prepare": "husky install"
+    "ci:check": "npm run lint && npm run build:frontend && npm run build:backend && npm test"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -45,8 +44,6 @@
     "concurrently": "^10.0.3",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.2",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.5.2",
     "prettier": "^3.9.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

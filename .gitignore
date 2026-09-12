@@ -102,11 +102,6 @@ artifacts/
 .claude/
 .fallow
 
-# Husky internal hooks (real .husky/ hooks tracked via pre-commit)
-.husky/*
-!.husky/pre-commit
-.husky
-
 # Project documentation (kept local, not on remote)
 
 CLAUDE.md
