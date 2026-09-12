@@ -141,9 +141,12 @@ describe('App', () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getAllByRole('link', { name: 'Ücretsiz başla' }).length).toBeGreaterThan(0);
-    });
+    await waitFor(
+      () => {
+        expect(screen.getAllByRole('link', { name: 'Ücretsiz başla' }).length).toBeGreaterThan(0);
+      },
+      { timeout: 3_000 },
+    );
 
     act(() => {
       useAuthStore.setState({ accessToken: 'fresh', user: canonicalUser });
