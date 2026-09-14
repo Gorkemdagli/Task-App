@@ -16,7 +16,7 @@ describe('RegisterPage', () => {
     );
     expect(screen.getByLabelText(/ad soyad/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/e-posta/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/şifre/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Şifre')).toBeInTheDocument();
     expect(screen.getByLabelText(/şirket adı/i)).toBeInTheDocument();
   });
   it('disabled on weak', async () => {
@@ -28,7 +28,7 @@ describe('RegisterPage', () => {
     );
     await u.type(screen.getByLabelText(/ad soyad/i), 'Ali');
     await u.type(screen.getByLabelText(/e-posta/i), 'a@x.com');
-    await u.type(screen.getByLabelText(/şifre/i), 'weakpw');
+    await u.type(screen.getByLabelText('Şifre'), 'weakpw');
     expect(screen.getByRole('button', { name: /hesap oluştur/i })).toBeDisabled();
   });
   it('enabled on medium', async () => {
@@ -40,7 +40,7 @@ describe('RegisterPage', () => {
     );
     await u.type(screen.getByLabelText(/ad soyad/i), 'Ali');
     await u.type(screen.getByLabelText(/e-posta/i), 'a@x.com');
-    await u.type(screen.getByLabelText(/şifre/i), 'medium123');
+    await u.type(screen.getByLabelText('Şifre'), 'medium123');
     expect(screen.getByRole('button', { name: /hesap oluştur/i })).not.toBeDisabled();
   });
   it('shows strength label', async () => {
@@ -50,7 +50,7 @@ describe('RegisterPage', () => {
         <RegisterPage />
       </MemoryRouter>,
     );
-    await u.type(screen.getByLabelText(/şifre/i), 'medium123');
+    await u.type(screen.getByLabelText('Şifre'), 'medium123');
     expect(screen.getByText('Orta')).toBeInTheDocument();
   });
   it('form-top on 409', async () => {
@@ -65,7 +65,7 @@ describe('RegisterPage', () => {
     );
     await u.type(screen.getByLabelText(/ad soyad/i), 'Ali');
     await u.type(screen.getByLabelText(/e-posta/i), 'd@x.com');
-    await u.type(screen.getByLabelText(/şifre/i), 'medium123');
+    await u.type(screen.getByLabelText('Şifre'), 'medium123');
     await u.click(screen.getByRole('button', { name: /hesap oluştur/i }));
     expect(await screen.findByText(/bu e-posta zaten kullanılıyor/i)).toBeInTheDocument();
   });

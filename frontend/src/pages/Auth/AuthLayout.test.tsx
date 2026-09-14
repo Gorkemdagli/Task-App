@@ -15,6 +15,6 @@ describe('AuthLayout', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('Child')).toBeInTheDocument();
-    expect(screen.getByText('TaskFlow')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'TaskFlow' })).toBeInTheDocument();
   });
 });

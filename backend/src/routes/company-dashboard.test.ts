@@ -279,6 +279,19 @@ describe('company dashboard routes', () => {
       pendingApprovalTaskCount: 1,
       expiredTaskCount: 2,
     });
+    expect(allScope.body.riskTasks.overdue.map((task: { title: string }) => task.title)).toEqual([
+      'T1',
+    ]);
+    expect(
+      allScope.body.riskTasks.dueNextSevenDays.map((task: { title: string }) => task.title),
+    ).toEqual(['T2', 'T7']);
+    expect(
+      allScope.body.riskTasks.pendingApproval.map((task: { title: string }) => task.title),
+    ).toEqual(['T2']);
+    expect(allScope.body.riskTasks.expired.map((task: { title: string }) => task.title)).toEqual([
+      'T6',
+      'T5',
+    ]);
     expect(allScope.body.statusBreakdown).toEqual({
       total: 6,
       todo: { count: 3, percentage: 50 },
@@ -350,5 +363,58 @@ describe('company dashboard routes', () => {
     expect(teamScope.body.summary.totalTaskCount).toBe(7);
     expect(teamScope.body.summary.totalUserCount).toBe(4);
     expect(teamScope.body.teams).toEqual([]);
+  });
+
+  it('keeps the response contract stable for a tenant without tasks', async () => {
+    const admin = await register({
+      fullName: 'Empty Admin',
+      email: 'dashboard-empty@company.test',
+      password: PASSWORD,
+      companyName: 'Empty Company',
+    });
+
+    const response = await request(createApp())
+      .get('/api/v1/company/dashboard')
+      .set(auth(admin.accessToken));
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(response.body)).toEqual([
+      'scope',
+      'summary',
+      'risk',
+      'riskTasks',
+      'statusBreakdown',
+      'priorityBreakdown',
+      'members',
+      'teams',
+    ]);
+    expect(response.body.summary).toEqual({
+      totalUserCount: 1,
+      totalTaskCount: 0,
+      openTaskCount: 0,
+      completedTaskCount: 0,
+      expiredTaskCount: 0,
+      completionRate: 0,
+    });
+    expect(response.body.risk).toEqual({
+      overdueTaskCount: 0,
+      dueNextSevenDaysTaskCount: 0,
+      pendingApprovalTaskCount: 0,
+      expiredTaskCount: 0,
+    });
+    expect(response.body.riskTasks).toEqual({
+      overdue: [],
+      dueNextSevenDays: [],
+      pendingApproval: [],
+      expired: [],
+    });
+    expect(response.body.statusBreakdown.total).toBe(0);
+    expect(response.body.priorityBreakdown.total).toBe(0);
+    expect(response.body.members).toMatchObject({
+      totalCount: 1,
+      returnedCount: 1,
+      capped: false,
+    });
+    expect(response.body.teams).toEqual([]);
   });
 });

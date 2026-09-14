@@ -5,10 +5,13 @@ import { BrandPanel } from './BrandPanel';
 describe('BrandPanel', () => {
   it('logo + tagline + bullets', () => {
     render(<BrandPanel />);
-    expect(screen.getByText('TaskFlow')).toBeInTheDocument();
-    expect(screen.getByText(/Görevlerini tek panoda/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'TaskFlow' })).toBeInTheDocument();
+    expect(screen.getByText(/İşleri planlayın/i)).toBeInTheDocument();
     expect(screen.getByText(/Kanban/i)).toBeInTheDocument();
     expect(screen.getByText(/Mesajlaşma/i)).toBeInTheDocument();
     expect(screen.getByText(/Rol bazlı/i)).toBeInTheDocument();
+    expect(screen.getByText('Yapılacak')).toBeInTheDocument();
+    expect(screen.getByText('Yapılıyor')).toBeInTheDocument();
+    expect(screen.getByText('Yapıldı')).toBeInTheDocument();
   });
 });

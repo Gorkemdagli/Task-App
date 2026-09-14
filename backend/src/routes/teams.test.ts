@@ -8,10 +8,12 @@ import {
   addMemberByDisplayId as addMemberByDisplayIdService,
   searchMemberCandidates as searchMemberCandidatesService,
   removeMember as removeMemberService,
+  updateTeam as updateTeamService,
 } from '../services/teams.service';
 import { register } from '../services/auth.service';
 import { AppError } from '../lib/appError';
 import { withTenantContext } from '../db/withTenant';
+import { updateTeamSchema } from '../schemas/teams.schema';
 
 async function cleanDb() {
   await prisma.teamMember.deleteMany();
@@ -51,6 +53,11 @@ const searchMemberCandidates = (teamId: string, query: string, actor: Actor) =>
   inTenant(actor, (db) => searchMemberCandidatesService(db, teamId, query, actor));
 const removeMember = (teamId: string, userId: string, actor: Actor) =>
   inTenant(actor, (db) => removeMemberService(db, teamId, userId, actor));
+const updateTeam = (
+  teamId: string,
+  input: Parameters<typeof updateTeamService>[2],
+  actor: Actor,
+) => inTenant(actor, (db) => updateTeamService(db, teamId, input, actor));
 
 async function makeAdmin(email: string, tenantName?: string) {
   const r = await register({
@@ -380,6 +387,84 @@ describe('removeMember', () => {
       where: { teamId_userId: { teamId: t.id, userId: target.id } },
     });
     expect(after).toBeNull();
+  });
+});
+
+describe('updateTeam', () => {
+  beforeEach(cleanDb);
+
+  it('company admin updates name and description inside their tenant', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const team = await createTeam({ name: 'Old', description: 'Old desc' }, admin);
+
+    const updated = await updateTeam(team.id, { name: 'New', description: 'New desc' }, admin);
+
+    expect(updated).toMatchObject({
+      id: team.id,
+      name: 'New',
+      description: 'New desc',
+      tenantId: admin.tenantId,
+      memberCount: 0,
+    });
+  });
+
+  it('team admin can update their own team', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const teamAdmin = await makeMember('ta@a.com', admin.tenantId);
+    const team = await createTeam({ name: 'Old' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: team.id, userId: teamAdmin.id, role: 'teamAdmin' },
+    });
+
+    await expect(
+      updateTeam(team.id, { name: 'Updated', description: null }, teamAdmin),
+    ).resolves.toMatchObject({ name: 'Updated', description: null });
+  });
+
+  it('ordinary member cannot update a team', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const member = await makeMember('m@a.com', admin.tenantId);
+    const team = await createTeam({ name: 'Old' }, admin);
+
+    await expect(
+      updateTeam(team.id, { name: 'Blocked', description: null }, member),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
+  it('team admin cannot update another team', async () => {
+    const admin = await makeAdmin('admin@a.com', 'Acme');
+    const teamAdmin = await makeMember('ta@a.com', admin.tenantId);
+    const ownTeam = await createTeam({ name: 'Own' }, admin);
+    const otherTeam = await createTeam({ name: 'Other' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: ownTeam.id, userId: teamAdmin.id, role: 'teamAdmin' },
+    });
+
+    await expect(
+      updateTeam(otherTeam.id, { name: 'Blocked', description: null }, teamAdmin),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
+  it('cross-tenant team is inaccessible', async () => {
+    const owner = await makeAdmin('owner@a.com', 'Acme');
+    const outsider = await makeAdmin('outsider@b.com', 'Globex');
+    const team = await createTeam({ name: 'Private' }, owner);
+
+    await expect(
+      updateTeam(team.id, { name: 'Blocked', description: null }, outsider),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
+  });
+});
+
+describe('updateTeamSchema', () => {
+  it('requires valid name and rejects fields outside the edit scope', () => {
+    expect(updateTeamSchema.safeParse({ name: 'A', description: null }).success).toBe(false);
+    expect(
+      updateTeamSchema.safeParse({ name: 'Valid', description: null, tenantId: 'other' }).success,
+    ).toBe(false);
+    expect(updateTeamSchema.safeParse({ name: 'Valid', description: 'A description' }).success).toBe(
+      true,
+    );
   });
 });
 

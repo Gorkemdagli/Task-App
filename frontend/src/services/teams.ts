@@ -41,6 +41,11 @@ export type CreateTeamInput = {
   description?: string;
 };
 
+export type UpdateTeamInput = {
+  name: string;
+  description: string | null;
+};
+
 export type AddMemberInput = {
   displayId: string;
 };
@@ -68,6 +73,11 @@ export async function searchTeamMemberCandidates(
 
 export async function createTeam(input: CreateTeamInput): Promise<Team> {
   const r = await api.post<Team>('/teams', input);
+  return r.data;
+}
+
+export async function updateTeam(teamId: string, input: UpdateTeamInput): Promise<Team> {
+  const r = await api.patch<Team>(`/teams/${teamId}`, input);
   return r.data;
 }
 

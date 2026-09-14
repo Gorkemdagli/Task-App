@@ -39,6 +39,8 @@ export interface TaskWithRelations {
   status: TaskStatus;
   priority: TaskPriority;
   deadline: Date | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
   archivedAt: Date | null;
   teamId: string;
   assignerId: string;
@@ -219,6 +221,8 @@ async function loadTaskWithAssignees(
   id: string;
   title: string;
   status: TaskStatus;
+  startedAt: Date | null;
+  completedAt: Date | null;
   teamId: string;
   assignerId: string;
   assigneeIds: Set<string>;
@@ -241,6 +245,8 @@ async function loadTaskWithAssignees(
     id: task.id,
     title: task.title,
     status: task.status,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
     teamId: task.teamId,
     assignerId: task.assignerId,
     assigneeIds: new Set(task.assignees.map((a) => a.userId)),
@@ -266,9 +272,31 @@ async function applyStatusLocked(
   status: TaskStatus,
   actorId: string,
 ): Promise<TaskWithRelations> {
+  const transitionAt = new Date();
+  const lifecycleData =
+    task.status === status
+      ? {}
+      : {
+          ...(task.status === 'todo' &&
+          (status === 'in_progress' || status === 'done') &&
+          task.startedAt === null
+            ? { startedAt: transitionAt }
+            : {}),
+          ...(status === 'done'
+            ? { completedAt: transitionAt }
+            : task.status === 'done'
+              ? { completedAt: null }
+              : {}),
+        };
   const updated = await db.task.update({
     where: { id: task.id },
-    data: { status, pendingStatus: null, pendingProposedBy: null, pendingProposedAt: null },
+    data: {
+      status,
+      pendingStatus: null,
+      pendingProposedBy: null,
+      pendingProposedAt: null,
+      ...lifecycleData,
+    },
     include: TASK_INCLUDE,
   });
   await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });

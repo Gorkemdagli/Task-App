@@ -23,21 +23,32 @@ interface TaskPaginationProps {
   page: number;
   totalPages: number;
   total?: number;
+  pageSize?: number;
+  itemLabel?: string;
+  ariaLabel?: string;
   onPageChange: (page: number) => void;
 }
 
-export function TaskPagination({ page, totalPages, total, onPageChange }: TaskPaginationProps) {
-  const rangeStart = total === undefined || total === 0 ? 0 : (page - 1) * 15 + 1;
-  const rangeEnd = total === undefined ? 0 : Math.min(page * 15, total);
+export function TaskPagination({
+  page,
+  totalPages,
+  total,
+  pageSize = 15,
+  itemLabel = 'görev',
+  ariaLabel = 'Görev sayfaları',
+  onPageChange,
+}: TaskPaginationProps) {
+  const rangeStart = total === undefined || total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = total === undefined ? 0 : Math.min(page * pageSize, total);
 
   return (
     <nav
-      aria-label="Görev sayfaları"
+      aria-label={ariaLabel}
       className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4"
     >
       {total !== undefined && (
         <span className="text-xs text-secondary-foreground">
-          {rangeStart}–{rangeEnd} / {total} görev
+          {rangeStart}–{rangeEnd} / {total} {itemLabel}
         </span>
       )}
       <div className="ml-auto flex items-center gap-1">

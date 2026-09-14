@@ -17,6 +17,21 @@ export function useCreateTeam() {
   });
 }
 
+export function useUpdateTeam() {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: ({ teamId, ...input }: teamsService.UpdateTeamInput & { teamId: string }) =>
+      teamsService.updateTeam(teamId, input),
+    onSuccess: (_team, variables) => {
+      if (tenantId) {
+        qc.invalidateQueries({ queryKey: queryKeys.teams.list(tenantId) });
+        qc.invalidateQueries({ queryKey: queryKeys.team.detail(tenantId, variables.teamId) });
+      }
+    },
+  });
+}
+
 /**
  * POST /teams/:id/members. Başarıda takım detayını invalidate et.
  */
