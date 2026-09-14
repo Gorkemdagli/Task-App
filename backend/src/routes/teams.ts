@@ -6,6 +6,7 @@ import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitP
 import { parseQuery } from '../http/parseQuery';
 import {
   createTeamSchema,
+  updateTeamSchema,
   addMemberSchema,
   searchMemberCandidatesQuerySchema,
   updateTeamMemberRoleSchema,
@@ -65,6 +66,22 @@ teamsRouter.get('/:id', authenticatedReadLimiter, async (req, res, next) => {
     next(e);
   }
 });
+
+teamsRouter.patch(
+  '/:id',
+  writeLimiter,
+  validateBody(updateTeamSchema),
+  async (req, res, next) => {
+    try {
+      const team = await runTenantRequest(req, (db, actor) =>
+        teamsService.updateTeam(db, (req.params as { id: string }).id, req.body, actor),
+      );
+      res.json(team);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 teamsRouter.post(
   '/:id/members',

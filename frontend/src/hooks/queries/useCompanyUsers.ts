@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as companyUsersService from '../../services/companyUsers';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/authStore';
+import type { CompanyUser } from '@/services/companyUsers';
 
 export function useCompanyUsers(enabled = true) {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
@@ -17,9 +18,13 @@ export function useUpdateCompanyPermissions() {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: companyUsersService.updateCompanyPermissions,
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
       if (!tenantId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(tenantId) });
+      const companyUsersKey = queryKeys.companyUsers(tenantId);
+      queryClient.setQueryData<CompanyUser[]>(companyUsersKey, (current) =>
+        current?.map((candidate) => (candidate.id === updatedUser.id ? updatedUser : candidate)),
+      );
+      queryClient.invalidateQueries({ queryKey: companyUsersKey });
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.list(tenantId) });
     },
   });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { prisma } from '../lib/prisma';
 import { withTenantContext } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
@@ -509,3 +509,100 @@ describe('updateTaskStatus (admin direct apply)', () => {
     expect(updated.pendingStatus).toBe('in_progress');
   });
 });
+
+describe('task lifecycle timestamps', () => {
+  beforeEach(cleanDb);
+
+  it('sets first start once, resets completion on reopen, and records later completion', async () => {
+    const { b, task } = await makeSingleAssigneeTask();
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-14T10:00:00.000Z'));
+      const started = await tasksService.updateTaskStatus(task.id, { status: 'in_progress' }, b);
+      expect(started.startedAt).toEqual(new Date('2026-09-14T10:00:00.000Z'));
+      expect(started.completedAt).toBeNull();
+
+      vi.setSystemTime(new Date('2026-09-14T10:01:00.000Z'));
+      const noOp = await tasksService.updateTaskStatus(task.id, { status: 'in_progress' }, b);
+      expect(noOp.startedAt).toEqual(started.startedAt);
+
+      vi.setSystemTime(new Date('2026-09-14T10:02:00.000Z'));
+      const firstDone = await tasksService.updateTaskStatus(task.id, { status: 'done' }, b);
+      expect(firstDone.completedAt).toEqual(new Date('2026-09-14T10:02:00.000Z'));
+
+      vi.setSystemTime(new Date('2026-09-14T10:03:00.000Z'));
+      const doneNoOp = await tasksService.updateTaskStatus(task.id, { status: 'done' }, b);
+      expect(doneNoOp.completedAt).toEqual(firstDone.completedAt);
+
+      vi.setSystemTime(new Date('2026-09-14T10:04:00.000Z'));
+      const reopened = await tasksService.updateTaskStatus(task.id, { status: 'todo' }, b);
+      expect(reopened.startedAt).toEqual(started.startedAt);
+      expect(reopened.completedAt).toBeNull();
+
+      vi.setSystemTime(new Date('2026-09-14T10:05:00.000Z'));
+      const completedAgain = await tasksService.updateTaskStatus(task.id, { status: 'done' }, b);
+      expect(completedAgain.startedAt).toEqual(started.startedAt);
+      expect(completedAgain.completedAt).toEqual(new Date('2026-09-14T10:05:00.000Z'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records completion for a direct todo to done transition', async () => {
+    const { b, task } = await makeSingleAssigneeTask();
+
+    vi.useFakeTimers();
+    try {
+      const transitionAt = new Date('2026-09-14T10:00:00.000Z');
+      vi.setSystemTime(transitionAt);
+      const completed = await tasksService.updateTaskStatus(task.id, { status: 'done' }, b);
+
+      expect(completed.startedAt).toEqual(transitionAt);
+      expect(completed.completedAt).toEqual(transitionAt);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not write lifecycle timestamps for pending proposals or partial acknowledgements', async () => {
+    const { b, c, task } = await makeMultiAssigneeSetup3();
+
+    const proposed = await tasksService.proposeTaskStatus(task.id, { status: 'done' }, b);
+    expect(proposed.startedAt).toBeNull();
+    expect(proposed.completedAt).toBeNull();
+
+    const partial = await tasksService.ackTaskStatus(task.id, c);
+    expect(partial.applied).toBe(false);
+    expect(partial.task.startedAt).toBeNull();
+    expect(partial.task.completedAt).toBeNull();
+
+    const persisted = await prisma.task.findUnique({ where: { id: task.id } });
+    expect(persisted?.startedAt).toBeNull();
+    expect(persisted?.completedAt).toBeNull();
+  });
+
+  it('writes lifecycle timestamps when the final assignee acknowledgement commits', async () => {
+    const { b, c, task } = await makeMultiAssigneeTask();
+
+    await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
+    const result = await tasksService.ackTaskStatus(task.id, c);
+
+    expect(result.applied).toBe(true);
+    expect(result.task.status).toBe('in_progress');
+    expect(result.task.startedAt).toBeInstanceOf(Date);
+    expect(result.task.completedAt).toBeNull();
+  });
+});
+
+async function makeSingleAssigneeTask() {
+  const admin = await makeAdmin('single-admin@a.com', 'Single');
+  const b = await makeMember('single-member@a.com', admin.tenantId!);
+  const team = await createTeam({ name: 'Single team' }, admin);
+  await addMemberByDisplayId(team.id, b.displayId, admin);
+  const task = await tasksService.createTask(
+    { title: 'Single', priority: 'low', assigneeIds: [b.id], teamId: team.id },
+    admin,
+  );
+  return { admin, b, team, task };
+}

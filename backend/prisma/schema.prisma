@@ -148,6 +148,8 @@ model Task {
   status      TaskStatus   @default(todo)
   priority    TaskPriority @default(medium)
   deadline    DateTime?    @db.Timestamptz(6)
+  startedAt   DateTime?    @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime?    @map("completed_at") @db.Timestamptz(6)
   assignerId  String       @map("assigner_id") @db.Uuid
   archivedAt  DateTime?    @map("archived_at") @db.Timestamptz(6)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)

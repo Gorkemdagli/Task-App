@@ -15,7 +15,7 @@ describe('LoginPage', () => {
       </MemoryRouter>,
     );
     expect(screen.getByLabelText(/e-posta/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/şifre/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Şifre')).toBeInTheDocument();
   });
   it('field errors on empty submit', async () => {
     const u = userEvent.setup();
@@ -39,9 +39,25 @@ describe('LoginPage', () => {
       </MemoryRouter>,
     );
     await u.type(screen.getByLabelText(/e-posta/i), 'a@x.com');
-    await u.type(screen.getByLabelText(/şifre/i), 'wrong');
+    await u.type(screen.getByLabelText('Şifre'), 'wrong');
     await u.click(screen.getByRole('button', { name: /giriş yap/i }));
     expect(await screen.findByText(/e-posta veya şifre hatalı/i)).toBeInTheDocument();
+  });
+  it('password visibility toggle is keyboard accessible', async () => {
+    const u = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    const password = screen.getByLabelText('Şifre');
+    expect(password).toHaveAttribute('type', 'password');
+    await u.click(screen.getByRole('button', { name: 'Şifreyi göster' }));
+    expect(password).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: 'Şifreyi gizle' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
   it('link to /register', () => {
     render(
@@ -49,6 +65,6 @@ describe('LoginPage', () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/kayıt ol/i).closest('a')).toHaveAttribute('href', '/register');
+    expect(screen.getByText(/hesap oluştur/i).closest('a')).toHaveAttribute('href', '/register');
   });
 });

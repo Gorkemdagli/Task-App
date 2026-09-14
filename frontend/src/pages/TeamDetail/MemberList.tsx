@@ -19,9 +19,16 @@ interface MemberListProps {
   teamId: string;
   canManageMembers: boolean;
   canManageRoles: boolean;
+  compact?: boolean;
 }
 
-export function MemberList({ members, teamId, canManageMembers, canManageRoles }: MemberListProps) {
+export function MemberList({
+  members,
+  teamId,
+  canManageMembers,
+  canManageRoles,
+  compact = false,
+}: MemberListProps) {
   const [pendingRemove, setPendingRemove] = useState<TeamMember | null>(null);
   const removeMember = useRemoveMember(teamId);
   const updateRole = useUpdateMemberRole(teamId);
@@ -49,6 +56,7 @@ export function MemberList({ members, teamId, canManageMembers, canManageRoles }
     <>
       <TeamMemberList
         members={members}
+        compact={compact}
         renderAction={(member) =>
           canManageMembers ? (
             <div className="flex items-center gap-1">

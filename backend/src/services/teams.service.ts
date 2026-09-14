@@ -1,7 +1,11 @@
 import { AppError } from '../lib/appError';
 import { assertCanManageTeam, isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import type { TenantDb } from '../db/types';
-import type { CreateTeamInput, UpdateTeamMemberRoleInput } from '../schemas/teams.schema';
+import type {
+  CreateTeamInput,
+  UpdateTeamInput,
+  UpdateTeamMemberRoleInput,
+} from '../schemas/teams.schema';
 import type { TeamMemberRole } from '@prisma/client';
 
 export interface TeamSummary {
@@ -81,6 +85,28 @@ export async function listTeams(db: TenantDb, actor: Actor): Promise<TeamSummary
     orderBy: { createdAt: 'asc' },
   });
   return teams.map(toSummary);
+}
+
+export async function updateTeam(
+  db: TenantDb,
+  teamId: string,
+  input: UpdateTeamInput,
+  actor: Actor,
+): Promise<TeamSummary> {
+  await assertCanManageTeam(db, actor, teamId);
+  const tenantId = requireTenant(actor);
+  const result = await db.team.updateMany({
+    where: { id: teamId, tenantId },
+    data: { name: input.name, description: input.description },
+  });
+  if (result.count === 0) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
+
+  const updated = await db.team.findFirst({
+    where: { id: teamId, tenantId },
+    include: { _count: { select: { members: true } } },
+  });
+  if (!updated) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
+  return toSummary(updated);
 }
 
 export async function getTeam(db: TenantDb, teamId: string, actor: Actor): Promise<TeamDetail> {

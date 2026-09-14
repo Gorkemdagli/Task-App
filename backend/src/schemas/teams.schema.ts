@@ -7,6 +7,14 @@ export const createTeamSchema = z.object({
 });
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 
+export const updateTeamSchema = z
+  .object({
+    name: z.string().trim().min(2).max(60),
+    description: z.string().trim().max(300).nullable(),
+  })
+  .strict();
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
+
 export const addMemberSchema = z.object({
   // Hem çıplak 5-karakter (`A3X9K`) hem görsel prefix'li (`TF-A3X9K`) kabul edilir.
   // Prefix kabul edilebilir ama DB'de sadece 5-karakter saklanır.
