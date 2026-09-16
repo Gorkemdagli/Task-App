@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronLeft, Flag, ListChecks, Plus, Users } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTeam } from '@/hooks/queries/useTeams';
@@ -14,6 +14,7 @@ import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarD
 import { MemberList } from './MemberList';
 import { AddMemberModal } from './AddMemberModal';
 import { TeamEditModal } from './TeamEditModal';
+import { TeamDashboard } from './TeamDashboard';
 
 const PAGE_SIZE = 8;
 
@@ -93,43 +94,6 @@ function TeamTaskRow({ task }: { task: Task }) {
         {formatCalendarDateDisplay(task.deadline)}
       </span>
     </Link>
-  );
-}
-
-function TeamDashboard({ tasks, total }: { tasks: Task[]; total: number }) {
-  const counts = useMemo(
-    () =>
-      tasks.reduce(
-        (result, task) => ({ ...result, [task.status]: result[task.status] + 1 }),
-        { todo: 0, in_progress: 0, done: 0 },
-      ),
-    [tasks],
-  );
-
-  return (
-    <section
-      role="tabpanel"
-      aria-label="Dashboard"
-      className="rounded-lg border border-border bg-card p-5 md:p-6"
-    >
-      <h2 className="text-lg font-semibold text-foreground">Durum özeti</h2>
-      <dl className="mt-5 grid divide-y divide-border border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {(['todo', 'in_progress', 'done'] as const).map((status) => (
-          <div
-            key={status}
-            className="flex items-center justify-between gap-4 px-1 py-4 sm:block sm:px-4 sm:first:pl-1 sm:last:pr-1"
-          >
-            <dt className="text-sm text-secondary-foreground">{TASK_STATUS_LABEL[status]}</dt>
-            <dd className="text-xl font-semibold tabular-nums text-foreground">
-              {counts[status]}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <p className="mt-4 text-xs text-secondary-foreground">
-        {total} aktif görevden {tasks.length} tanesi yüklenmiş durumda.
-      </p>
-    </section>
   );
 }
 
@@ -319,18 +283,7 @@ export function TeamDetailPage() {
       </div>
 
       {visibleTab === 'dashboard' ? (
-        tasksLoading ? (
-          <Skeleton className="h-52 w-full rounded-lg" />
-        ) : tasksError ? (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive bg-card p-6 text-sm text-destructive"
-          >
-            Görev özeti yüklenemedi.
-          </p>
-        ) : (
-          <TeamDashboard tasks={tasks} total={taskTotal} />
-        )
+        <TeamDashboard teamId={team.id} enabled={canManageMembers} />
       ) : (
         <div data-testid="team-detail-panels" className="grid items-stretch gap-4 lg:grid-cols-2">
           <section className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card">

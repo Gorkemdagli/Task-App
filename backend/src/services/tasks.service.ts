@@ -26,6 +26,7 @@ import type {
   ListTasksQuery,
   UpdateTaskFieldsInput,
   UpdateTaskPriorityInput,
+  UpdateTaskBlockedInput,
   UpdateTaskStatusInput,
   AckTaskStatusInput,
   RestoreTaskInput,
@@ -38,6 +39,9 @@ export interface TaskWithRelations {
   description: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  isBlocked: boolean;
+  blockedSince: Date | null;
+  blockedReason: string | null;
   deadline: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -138,6 +142,13 @@ export async function createTask(
     },
     include: TASK_INCLUDE,
   });
+  await db.taskEvent.create({
+    data: {
+      taskId: task.id,
+      actorId: actor.id,
+      eventType: 'task_created',
+    },
+  });
 
   // Bildirim: tüm assignee'lere (actor hariç)
   const recipientIds = new Set(uniqueIds);
@@ -230,6 +241,9 @@ async function loadTaskWithAssignees(
   pendingVersion: number;
   pendingProposedBy: string | null;
   statusAcks: Array<{ userId: string; pendingVersion: number }>;
+  isBlocked: boolean;
+  blockedSince: Date | null;
+  blockedReason: string | null;
   tenantId: string;
 }> {
   const task = await db.task.findFirst({
@@ -245,6 +259,9 @@ async function loadTaskWithAssignees(
     id: task.id,
     title: task.title,
     status: task.status,
+    isBlocked: task.isBlocked,
+    blockedSince: task.blockedSince,
+    blockedReason: task.blockedReason,
     startedAt: task.startedAt,
     completedAt: task.completedAt,
     teamId: task.teamId,
@@ -259,8 +276,14 @@ async function loadTaskWithAssignees(
 }
 
 async function lockTask(db: TenantDb, taskId: string, actor: Actor) {
+  const tenantId = requireTenant(actor);
   const rows = await db.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE
+    SELECT task.id
+    FROM tasks task
+    JOIN teams team ON team.id = task.team_id
+    WHERE task.id = ${taskId}::uuid
+      AND team.tenant_id = ${tenantId}::uuid
+    FOR UPDATE OF task
   `;
   if (rows.length === 0) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
   return loadTaskWithAssignees(db, taskId, actor);
@@ -302,6 +325,15 @@ async function applyStatusLocked(
   await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
 
   if (task.status !== status) {
+    await db.taskEvent.create({
+      data: {
+        taskId: task.id,
+        actorId,
+        eventType: task.status === 'done' ? 'task_reopened' : 'status_changed',
+        fromStatus: task.status,
+        toStatus: status,
+      },
+    });
     await notifyTaskStatusChanged(
       db,
       updated.assignees.map((assignee) => assignee.userId),
@@ -482,6 +514,53 @@ export async function updateTaskPriority(
     data: { priority: input.priority },
     include: TASK_INCLUDE,
   });
+  return updated as TaskWithRelations;
+}
+
+export async function updateTaskBlocked(
+  db: TenantDb,
+  taskId: string,
+  input: UpdateTaskBlockedInput,
+  actor: Actor,
+): Promise<TaskWithRelations> {
+  const task = await lockTask(db, taskId, actor);
+  await assertCanUpdateTaskStatus(db, actor, taskPermissionInput(task));
+
+  const reasonChanged = input.blockedReason !== undefined && input.blockedReason !== task.blockedReason;
+  if (
+    task.isBlocked === input.isBlocked &&
+    !reasonChanged &&
+    (input.isBlocked || (task.blockedSince === null && task.blockedReason === null))
+  ) {
+    return getTask(db, taskId, actor);
+  }
+
+  const nextBlocked = input.isBlocked;
+  const updated = await db.task.update({
+    where: { id: taskId },
+    data: {
+      isBlocked: nextBlocked,
+      blockedSince: nextBlocked ? task.blockedSince ?? new Date() : null,
+      blockedReason: nextBlocked
+        ? input.blockedReason !== undefined
+          ? input.blockedReason
+          : task.blockedReason
+        : null,
+    },
+    include: TASK_INCLUDE,
+  });
+
+  if (task.isBlocked !== nextBlocked) {
+    await db.taskEvent.create({
+      data: {
+        taskId,
+        actorId: actor.id,
+        eventType: nextBlocked ? 'task_blocked' : 'task_unblocked',
+        metadata: nextBlocked ? { blockedReason: updated.blockedReason } : {},
+      },
+    });
+  }
+
   return updated as TaskWithRelations;
 }
 

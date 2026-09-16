@@ -41,6 +41,15 @@ export const updateTaskPrioritySchema = z.object({
 });
 export type UpdateTaskPriorityInput = z.infer<typeof updateTaskPrioritySchema>;
 
+export const updateTaskBlockedSchema = z.object({
+  isBlocked: z.boolean(),
+  blockedReason: z.string().trim().max(500).nullable().optional(),
+});
+export type UpdateTaskBlockedInput = z.infer<typeof updateTaskBlockedSchema>;
+
+export const taskIdParamsSchema = z.object({ id: z.string().uuid() }).strict();
+export type TaskIdParams = z.infer<typeof taskIdParamsSchema>;
+
 export const updateTaskFieldsSchema = z
   .object({
     title: z.string().trim().min(3).max(200).optional(),

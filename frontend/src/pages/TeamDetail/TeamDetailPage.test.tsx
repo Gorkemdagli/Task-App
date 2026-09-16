@@ -5,11 +5,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TeamDetail } from '@/services/teams';
 import type { Task } from '@/hooks/tasks';
+import type { TeamDashboard as TeamDashboardData } from '@/services/companyDashboard';
 import { TeamDetailPage } from './TeamDetailPage';
 
 const mocks = vi.hoisted(() => ({
   useTeam: vi.fn(),
   useTasks: vi.fn(),
+  useTeamDashboard: vi.fn(),
   useCreateTask: vi.fn(),
   useAuth: vi.fn(),
   updateTeam: vi.fn(),
@@ -19,6 +21,9 @@ vi.mock('@/hooks/queries/useTeams', () => ({ useTeam: mocks.useTeam }));
 vi.mock('@/hooks/tasks', () => ({
   useTasks: mocks.useTasks,
   useCreateTask: mocks.useCreateTask,
+}));
+vi.mock('@/hooks/queries/useTeamDashboard', () => ({
+  useTeamDashboard: mocks.useTeamDashboard,
 }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: mocks.useAuth }));
 vi.mock('@/hooks/queries/useTeamMutations', () => ({
@@ -79,6 +84,71 @@ const task = (id: string, status: Task['status']): Task =>
     assignees: [],
   }) as Task;
 
+const dashboard: TeamDashboardData = {
+  period: { range: '30d', start: '2025-01-01', end: '2025-01-31' },
+  createdInPeriod: { current: 0, previous: 0, delta: 0, deltaPercentage: 0 },
+  completedInPeriod: { current: 0, previous: 0, delta: 0, deltaPercentage: 0 },
+  cycleTime: { unit: 'days', median: 2, p85: 4, sampleSize: 2 },
+  leadTime: { unit: 'days', median: 5, sampleSize: 2 },
+  agingWip: {
+    unit: 'days',
+    buckets: { zeroToThree: 1, fourToSeven: 0, eightToFourteen: 0, fifteenToThirty: 0, overThirty: 0 },
+    measuredCount: 1,
+    unknownCount: 1,
+    totalCount: 2,
+  },
+  overdueRate: { current: 0, previous: 0, delta: 0, deltaPercentage: 0 },
+  onTimeDeliveryRate: { current: 0, previous: 0, delta: 0, deltaPercentage: 0 },
+  backlogChange: 0,
+  throughput: [],
+  createdVsCompleted: [],
+  scope: { teamId: team.id, teamName: team.name },
+  summary: {
+    totalUserCount: 2,
+    totalTaskCount: 2,
+    openTaskCount: 1,
+    completedTaskCount: 1,
+    expiredTaskCount: 0,
+    completionRate: 50,
+  },
+  risk: {
+    overdueTaskCount: 0,
+    dueNextSevenDaysTaskCount: 0,
+    pendingApprovalTaskCount: 0,
+    expiredTaskCount: 0,
+  },
+  riskTasks: { overdue: [], dueNextSevenDays: [], pendingApproval: [], expired: [] },
+  statusBreakdown: {
+    total: 2,
+    todo: { count: 1, percentage: 50 },
+    inProgress: { count: 0, percentage: 0 },
+    done: { count: 1, percentage: 50 },
+  },
+  priorityBreakdown: {
+    total: 1,
+    low: { count: 0, percentage: 0 },
+    medium: { count: 1, percentage: 100 },
+    high: { count: 0, percentage: 0 },
+  },
+  members: {
+    items: [
+      {
+        userId: 'user-1',
+        fullName: 'Ayşe Yılmaz',
+        assignedTaskCount: 1,
+        openTaskCount: 1,
+        completedTaskCount: 0,
+        expiredTaskCount: 0,
+        completionRate: 0,
+      },
+    ],
+    totalCount: 1,
+    returnedCount: 1,
+    capped: false,
+  },
+  teams: [],
+};
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -97,6 +167,13 @@ describe('TeamDetailPage', () => {
       data: { tasks: [task('1', 'todo'), task('2', 'done')], total: 2 },
       isLoading: false,
       isError: false,
+    });
+    mocks.useTeamDashboard.mockReturnValue({
+      data: dashboard,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
     });
     mocks.useCreateTask.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
     mocks.useAuth.mockReturnValue({
@@ -121,9 +198,57 @@ describe('TeamDetailPage', () => {
 
     expect(screen.getByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Dashboard' }));
-    expect(screen.getByText('Durum özeti')).toBeInTheDocument();
-    expect(screen.getByText('Yapılacak')).toBeInTheDocument();
-    expect(screen.getByText('Yapıldı')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Takım Dashboardu' })).toBeInTheDocument();
+    expect(screen.getByText('Toplam üye')).toBeInTheDocument();
+    expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
+    expect(screen.getByText('Lead time')).toBeInTheDocument();
+    expect(screen.getByText(/Ölçülemeyen/)).toBeInTheDocument();
+    expect(screen.getByText(/Yapılacak:/)).toBeInTheDocument();
+    expect(screen.getByText(/Yapıldı:/)).toBeInTheDocument();
+  });
+
+  it('replaces dashboard charts with an empty state for a team without tasks', async () => {
+    const user = userEvent.setup();
+    mocks.useTeamDashboard.mockReturnValueOnce({
+      data: {
+        ...dashboard,
+        createdVsCompleted: [],
+        throughput: [],
+        summary: {
+          ...dashboard.summary,
+          totalTaskCount: 0,
+          openTaskCount: 0,
+          completedTaskCount: 0,
+          expiredTaskCount: 0,
+          completionRate: 0,
+        },
+        statusBreakdown: {
+          total: 0,
+          todo: { count: 0, percentage: 0 },
+          inProgress: { count: 0, percentage: 0 },
+          done: { count: 0, percentage: 0 },
+        },
+        priorityBreakdown: {
+          total: 0,
+          low: { count: 0, percentage: 0 },
+          medium: { count: 0, percentage: 0 },
+          high: { count: 0, percentage: 0 },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+    renderPage();
+
+    await user.click(screen.getByRole('tab', { name: 'Dashboard' }));
+
+    expect(screen.getByTestId('team-dashboard-empty')).toHaveTextContent(
+      'Grafikler görev eklendiğinde burada görünecek.',
+    );
+    expect(screen.queryByTestId('company-trend-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('company-throughput-chart')).not.toBeInTheDocument();
   });
 
   it('hides dashboard and edit controls from a regular team member', () => {

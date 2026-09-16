@@ -33,6 +33,8 @@ const summaryRow = {
   overdue_task_count: 3n,
   due_next_seven_days_task_count: 4n,
   pending_approval_task_count: 1n,
+  blocked_task_count: 2n,
+  blocked_over_three_days_task_count: 1n,
   status_total: 8n,
   status_todo: 2n,
   status_in_progress: 3n,
@@ -41,6 +43,25 @@ const summaryRow = {
   priority_low: 1n,
   priority_medium: 1n,
   priority_high: 3n,
+  current_created_task_count: 2n,
+  previous_created_task_count: 1n,
+  current_completed_task_count: 3n,
+  previous_completed_task_count: 2n,
+  current_deadline_completed_task_count: 2n,
+  current_on_time_task_count: 1n,
+  previous_deadline_completed_task_count: 1n,
+  previous_on_time_task_count: 1n,
+  cycle_time_median: 2.5,
+  cycle_time_p85: 5.25,
+  cycle_time_sample_count: 4n,
+  lead_time_median: 6.5,
+  lead_time_sample_count: 5n,
+  aging_wip_0_3_count: 1n,
+  aging_wip_4_7_count: 2n,
+  aging_wip_8_14_count: 3n,
+  aging_wip_15_30_count: 4n,
+  aging_wip_30_plus_count: 5n,
+  aging_wip_unknown_count: 6n,
 };
 
 const riskTaskRow = {
@@ -79,11 +100,26 @@ describe('getCompanyDashboard', () => {
     expect(db.$queryRaw).not.toHaveBeenCalled();
   });
 
+  it('tenant-scopes the risk assignee lookup', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await getCompanyDashboard(db, admin, {}, now);
+
+    const riskQuery = vi.mocked(db.$queryRaw).mock.calls[2]?.[0] as { text: string };
+    expect(riskQuery.text).toMatch(/u\.tenant_id = \$\d+::uuid/);
+  });
+
   it('maps all-scope aggregates, rounds percentages, and caps members', async () => {
     vi.mocked(db.$queryRaw)
       .mockResolvedValueOnce([summaryRow])
       .mockResolvedValueOnce(Array.from({ length: 101 }, (_, index) => memberRow(index)))
       .mockResolvedValueOnce([riskTaskRow])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
           team_id: 'team-a',
@@ -119,6 +155,9 @@ describe('getCompanyDashboard', () => {
       dueNextSevenDaysTaskCount: 4,
       pendingApprovalTaskCount: 1,
       expiredTaskCount: 2,
+      blockedTaskCount: 2,
+      blockedOverThreeDaysTaskCount: 1,
+      blockedRate: 25,
     });
     expect(result.riskTasks.overdue).toEqual([
       {
@@ -199,6 +238,7 @@ describe('getCompanyDashboard', () => {
           total_user_count: 1n,
         },
       ])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     const result = await getCompanyDashboard(db, admin, { teamId: TEAM_ID }, now);
@@ -209,5 +249,160 @@ describe('getCompanyDashboard', () => {
     expect(result.priorityBreakdown.high.percentage).toBe(0);
     expect(result.members.items[0].completionRate).toBe(0);
     expect(result.teams).toEqual([]);
+  });
+
+  it('maps range metrics, comparisons, and empty-safe trend buckets', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([
+        {
+          ...summaryRow,
+          current_created_task_count: 4n,
+          previous_created_task_count: 2n,
+          current_completed_task_count: 3n,
+          previous_completed_task_count: 1n,
+          current_deadline_completed_task_count: 2n,
+          current_on_time_task_count: 1n,
+          previous_deadline_completed_task_count: 1n,
+          previous_on_time_task_count: 1n,
+        },
+      ])
+      .mockResolvedValueOnce([memberRow(0)])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { period: new Date('2026-08-14T00:00:00.000Z'), created_count: 0n, completed_count: 0n },
+        { period: new Date('2026-08-15T00:00:00.000Z'), created_count: 2n, completed_count: 1n },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const result = await getCompanyDashboard(db, admin, { range: '7d' }, now);
+
+    expect(result.period).toEqual({ range: '7d', start: '2026-08-14', end: '2026-08-21' });
+    expect(result.createdInPeriod).toEqual({
+      current: 4,
+      previous: 2,
+      delta: 2,
+      deltaPercentage: 100,
+    });
+    expect(result.completedInPeriod).toEqual({
+      current: 3,
+      previous: 1,
+      delta: 2,
+      deltaPercentage: 200,
+    });
+    expect(result.onTimeDeliveryRate).toEqual({
+      current: 50,
+      previous: 100,
+      delta: -50,
+      deltaPercentage: -50,
+    });
+    expect(result.overdueRate).toEqual({
+      current: 50,
+      previous: 0,
+      delta: 50,
+      deltaPercentage: 0,
+    });
+    expect(result.backlogChange).toBe(1);
+    expect(result.createdVsCompleted).toHaveLength(7);
+    expect(result.createdVsCompleted[0]).toEqual({
+      period: '2026-08-14',
+      created: 0,
+      completed: 0,
+    });
+    expect(result.throughput[1]).toEqual({ period: '2026-08-15', count: 1 });
+  });
+
+  it('maps flow metrics in days and keeps percentile samples deterministic', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await getCompanyDashboard(db, admin, {}, now);
+
+    expect(result.cycleTime).toEqual({
+      unit: 'days',
+      median: 2.5,
+      p85: 5.25,
+      sampleSize: 4,
+    });
+    expect(result.leadTime).toEqual({ unit: 'days', median: 6.5, sampleSize: 5 });
+    expect(result.agingWip).toEqual({
+      unit: 'days',
+      buckets: { zeroToThree: 1, fourToSeven: 2, eightToFourteen: 3, fifteenToThirty: 4, overThirty: 5 },
+      measuredCount: 15,
+      unknownCount: 6,
+      totalCount: 21,
+    });
+  });
+
+  it('returns null durations for empty samples and scopes flow SQL to the tenant and team', async () => {
+    vi.mocked(db.team.findFirst).mockResolvedValue({ id: TEAM_ID, name: 'Platform' });
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([
+        {
+          ...summaryRow,
+          cycle_time_median: null,
+          cycle_time_p85: null,
+          cycle_time_sample_count: 0n,
+          lead_time_median: null,
+          lead_time_sample_count: 0n,
+          aging_wip_0_3_count: 0n,
+          aging_wip_4_7_count: 0n,
+          aging_wip_8_14_count: 0n,
+          aging_wip_15_30_count: 0n,
+          aging_wip_30_plus_count: 0n,
+          aging_wip_unknown_count: 1n,
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await getCompanyDashboard(db, admin, { teamId: TEAM_ID }, now);
+    const summaryQuery = vi.mocked(db.$queryRaw).mock.calls[0]?.[0] as { text: string };
+
+    expect(result.cycleTime).toEqual({ unit: 'days', median: null, p85: null, sampleSize: 0 });
+    expect(result.leadTime).toEqual({ unit: 'days', median: null, sampleSize: 0 });
+    expect(result.agingWip).toEqual({
+      unit: 'days',
+      buckets: { zeroToThree: 0, fourToSeven: 0, eightToFourteen: 0, fifteenToThirty: 0, overThirty: 0 },
+      measuredCount: 0,
+      unknownCount: 1,
+      totalCount: 1,
+    });
+    expect(summaryQuery.text).toMatch(/percentile_cont/i);
+    expect(summaryQuery.text).toMatch(/team\.tenant_id = \$\d+::uuid/);
+    expect(summaryQuery.text).toMatch(/task\.team_id = \$\d+::uuid/);
+    expect(summaryQuery.text).toMatch(/task\.pending_status IS NULL/);
+  });
+
+  it('scopes blocked metrics to active tasks and uses an exact UTC three-day cutoff', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await getCompanyDashboard(db, admin, {}, now);
+    const summaryQuery = vi.mocked(db.$queryRaw).mock.calls[0]?.[0] as {
+      text: string;
+      values: unknown[];
+    };
+    const blockedCutoff = summaryQuery.values.find(
+      (value) => value instanceof Date && value.toISOString() === '2026-08-17T12:00:00.000Z',
+    );
+
+    expect(result.risk.blockedTaskCount).toBe(2);
+    expect(result.risk.blockedOverThreeDaysTaskCount).toBe(1);
+    expect(result.risk.blockedRate).toBe(25);
+    expect(summaryQuery.text).toMatch(
+      /WHERE task\.archived_at IS NULL\s+AND task\.is_blocked = true\s+\) AS blocked_task_count/i,
+    );
+    expect(summaryQuery.text).toMatch(/task\.blocked_since < \$\d+/);
+    expect(blockedCutoff).toEqual(new Date('2026-08-17T12:00:00.000Z'));
   });
 });

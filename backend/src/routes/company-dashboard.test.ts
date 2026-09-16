@@ -4,7 +4,10 @@ import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { startOfUtcToday } from '../lib/calendarDate';
+import { withTenantContext } from '../db/withTenant';
+import type { Actor } from '../lib/permissions';
 import { register, type AuthResult } from '../services/auth.service';
+import { getCompanyDashboard } from '../services/company-dashboard.service';
 
 const PASSWORD = 'hunter22';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -117,7 +120,7 @@ async function seedDashboardFixture() {
   await prisma.teamMember.createMany({
     data: [
       { teamId: teamA.id, userId: admin.user.id, role: 'member' },
-      { teamId: teamA.id, userId: memberA.user.id, role: 'member' },
+      { teamId: teamA.id, userId: memberA.user.id, role: 'teamAdmin' },
       { teamId: teamA.id, userId: memberB.id, role: 'member' },
       { teamId: teamA.id, userId: memberC.id, role: 'member' },
       { teamId: teamB.id, userId: memberC.id, role: 'member' },
@@ -231,7 +234,7 @@ async function seedDashboardFixture() {
     deadline: day(-1),
   });
 
-  return { admin, memberA, foreignAdmin, teamA, zeroTask };
+  return { admin, memberA, foreignAdmin, teamA, teamB, zeroTask };
 }
 
 describe('company dashboard routes', () => {
@@ -256,6 +259,11 @@ describe('company dashboard routes', () => {
       .set(auth(fixture.admin.accessToken));
     expect(malformedTeam.status).toBe(400);
 
+    const malformedRange = await request(app)
+      .get('/api/v1/company/dashboard?range=1d')
+      .set(auth(fixture.admin.accessToken));
+    expect(malformedRange.status).toBe(400);
+
     const foreignTeam = await request(app)
       .get(`/api/v1/company/dashboard?teamId=${fixture.teamA.id}`)
       .set(auth(fixture.foreignAdmin.accessToken));
@@ -265,6 +273,12 @@ describe('company dashboard routes', () => {
       .get('/api/v1/company/dashboard')
       .set(auth(fixture.admin.accessToken));
     expect(allScope.status).toBe(200);
+    expect(allScope.body.period).toMatchObject({ range: '30d' });
+    expect(allScope.body.createdInPeriod).toMatchObject({ current: 9, previous: 0 });
+    expect(allScope.body.completedInPeriod).toMatchObject({ current: 0, previous: 0 });
+    expect(allScope.body.backlogChange).toBe(9);
+    expect(allScope.body.createdVsCompleted).toHaveLength(30);
+    expect(allScope.body.throughput).toHaveLength(30);
     expect(allScope.body.summary).toEqual({
       totalUserCount: 105,
       totalTaskCount: 9,
@@ -278,6 +292,9 @@ describe('company dashboard routes', () => {
       dueNextSevenDaysTaskCount: 2,
       pendingApprovalTaskCount: 1,
       expiredTaskCount: 2,
+      blockedTaskCount: 0,
+      blockedOverThreeDaysTaskCount: 0,
+      blockedRate: 0,
     });
     expect(allScope.body.riskTasks.overdue.map((task: { title: string }) => task.title)).toEqual([
       'T1',
@@ -356,9 +373,10 @@ describe('company dashboard routes', () => {
     expect(JSON.stringify(allScope.body)).not.toContain('Tenant B Unique');
 
     const teamScope = await request(app)
-      .get(`/api/v1/company/dashboard?teamId=${fixture.teamA.id}`)
+      .get(`/api/v1/company/dashboard?teamId=${fixture.teamA.id}&range=7d`)
       .set(auth(fixture.admin.accessToken));
     expect(teamScope.status).toBe(200);
+    expect(teamScope.body.period.range).toBe('7d');
     expect(teamScope.body.scope).toEqual({ teamId: fixture.teamA.id, teamName: 'Alpha' });
     expect(teamScope.body.summary.totalTaskCount).toBe(7);
     expect(teamScope.body.summary.totalUserCount).toBe(4);
@@ -379,6 +397,17 @@ describe('company dashboard routes', () => {
 
     expect(response.status).toBe(200);
     expect(Object.keys(response.body)).toEqual([
+      'period',
+      'createdInPeriod',
+      'completedInPeriod',
+      'cycleTime',
+      'leadTime',
+      'agingWip',
+      'overdueRate',
+      'onTimeDeliveryRate',
+      'backlogChange',
+      'throughput',
+      'createdVsCompleted',
       'scope',
       'summary',
       'risk',
@@ -396,11 +425,28 @@ describe('company dashboard routes', () => {
       expiredTaskCount: 0,
       completionRate: 0,
     });
+    expect(response.body.cycleTime).toEqual({
+      unit: 'days',
+      median: null,
+      p85: null,
+      sampleSize: 0,
+    });
+    expect(response.body.leadTime).toEqual({ unit: 'days', median: null, sampleSize: 0 });
+    expect(response.body.agingWip).toEqual({
+      unit: 'days',
+      buckets: { zeroToThree: 0, fourToSeven: 0, eightToFourteen: 0, fifteenToThirty: 0, overThirty: 0 },
+      measuredCount: 0,
+      unknownCount: 0,
+      totalCount: 0,
+    });
     expect(response.body.risk).toEqual({
       overdueTaskCount: 0,
       dueNextSevenDaysTaskCount: 0,
       pendingApprovalTaskCount: 0,
       expiredTaskCount: 0,
+      blockedTaskCount: 0,
+      blockedOverThreeDaysTaskCount: 0,
+      blockedRate: 0,
     });
     expect(response.body.riskTasks).toEqual({
       overdue: [],
@@ -410,11 +456,209 @@ describe('company dashboard routes', () => {
     });
     expect(response.body.statusBreakdown.total).toBe(0);
     expect(response.body.priorityBreakdown.total).toBe(0);
+    expect(response.body.createdVsCompleted).toHaveLength(30);
+    expect(
+      response.body.createdVsCompleted.every(
+        (point: { created: number; completed: number }) =>
+          point.created === 0 && point.completed === 0,
+      ),
+    ).toBe(true);
     expect(response.body.members).toMatchObject({
       totalCount: 1,
       returnedCount: 1,
       capped: false,
     });
     expect(response.body.teams).toEqual([]);
+  });
+
+  it('uses completedAt and excludes deadline-less completions from on-time rate', async () => {
+    const admin = await register({
+      fullName: 'Analytics Admin',
+      email: 'dashboard-analytics@company.test',
+      password: PASSWORD,
+      companyName: 'Analytics Company',
+    });
+    const team = await prisma.team.create({
+      data: { tenantId: admin.user.tenantId!, name: 'Analytics' },
+    });
+    const today = startOfUtcToday();
+    const completedAt = new Date(today.getTime() + 12 * 60 * 60 * 1000);
+    const onTime = await createTask({
+      teamId: team.id,
+      title: 'On time',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'low',
+      deadline: new Date(today.getTime() + DAY_MS),
+    });
+    const late = await createTask({
+      teamId: team.id,
+      title: 'Late',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'low',
+      deadline: new Date(today.getTime() - DAY_MS),
+    });
+    const noDeadline = await createTask({
+      teamId: team.id,
+      title: 'No deadline',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'low',
+    });
+    await createTask({
+      teamId: team.id,
+      title: 'Status only',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'done',
+      priority: 'low',
+    });
+    await prisma.task.updateMany({
+      where: { id: { in: [onTime.id, late.id, noDeadline.id] } },
+      data: { completedAt },
+    });
+
+    const response = await request(createApp())
+      .get('/api/v1/company/dashboard?range=7d')
+      .set(auth(admin.accessToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.createdInPeriod.current).toBe(4);
+    expect(response.body.completedInPeriod.current).toBe(3);
+    expect(response.body.onTimeDeliveryRate.current).toBe(50);
+    expect(response.body.overdueRate.current).toBe(50);
+    expect(response.body.createdVsCompleted).toHaveLength(7);
+  });
+
+  it('excludes a task blocked exactly 72 hours from the strict over-three-day metric', async () => {
+    const admin = await register({
+      fullName: 'Blocking Boundary Admin',
+      email: 'dashboard-blocking-boundary@company.test',
+      password: PASSWORD,
+      companyName: 'Blocking Boundary Company',
+    });
+    const team = await prisma.team.create({
+      data: { tenantId: admin.user.tenantId!, name: 'Blocking Boundary Team' },
+    });
+    const now = new Date('2026-09-17T12:00:00.000Z');
+    const task = await createTask({
+      teamId: team.id,
+      title: 'Exactly three days blocked',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'low',
+    });
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { isBlocked: true, blockedSince: new Date(now.getTime() - 3 * DAY_MS) },
+    });
+
+    const dashboard = await withTenantContext(
+      admin.user.id,
+      admin.user.tenantId!,
+      (db) => getCompanyDashboard(db, admin.user as Actor, {}, now),
+    );
+
+    expect(dashboard.risk.blockedTaskCount).toBe(1);
+    expect(dashboard.risk.blockedOverThreeDaysTaskCount).toBe(0);
+  });
+
+  it('does not expose a cross-tenant assignee through risk tasks', async () => {
+    const adminA = await register({
+      fullName: 'Tenant A Admin',
+      email: 'dashboard-assignee-a@company.test',
+      password: PASSWORD,
+      companyName: 'Assignee Company A',
+    });
+    const adminB = await register({
+      fullName: 'Tenant B Admin',
+      email: 'dashboard-assignee-b@company.test',
+      password: PASSWORD,
+      companyName: 'Assignee Company B',
+    });
+    const teamA = await prisma.team.create({
+      data: { tenantId: adminA.user.tenantId!, name: 'Assignee Team A' },
+    });
+    const task = await createTask({
+      teamId: teamA.id,
+      title: 'Tenant-safe risk task',
+      assignerId: adminA.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'high',
+      deadline: new Date(startOfUtcToday().getTime() - DAY_MS),
+    });
+    await prisma.taskAssignee.create({
+      data: { taskId: task.id, userId: adminB.user.id },
+    });
+
+    const response = await request(createApp())
+      .get('/api/v1/company/dashboard')
+      .set(auth(adminA.accessToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.riskTasks.overdue).toContainEqual(
+      expect.objectContaining({ title: 'Tenant-safe risk task', assignee: null }),
+    );
+    expect(JSON.stringify(response.body)).not.toContain('Tenant B Admin');
+  });
+
+  it('scopes team dashboard access to company admins and team admins', async () => {
+    const fixture = await seedDashboardFixture();
+    const app = createApp();
+
+    const companyAdmin = await request(app)
+      .get(`/api/v1/teams/${fixture.teamA.id}/dashboard?range=7d`)
+      .set(auth(fixture.admin.accessToken));
+    expect(companyAdmin.status).toBe(200);
+    expect(companyAdmin.body.scope).toEqual({ teamId: fixture.teamA.id, teamName: 'Alpha' });
+    expect(companyAdmin.body.summary.totalTaskCount).toBe(7);
+    expect(companyAdmin.body.members.items).toContainEqual(
+      expect.objectContaining({ fullName: 'A Member', assignedTaskCount: 4 }),
+    );
+
+    const teamAdmin = await request(app)
+      .get(`/api/v1/teams/${fixture.teamA.id}/dashboard`)
+      .set(auth(fixture.memberA.accessToken));
+    expect(teamAdmin.status).toBe(200);
+    expect(teamAdmin.body.summary.totalTaskCount).toBe(7);
+
+    const regular = await createTenantMember(
+      'Regular',
+      'dashboard-regular@company.test',
+      fixture.admin.user.tenantId!,
+    );
+    await prisma.teamMember.create({
+      data: { teamId: fixture.teamA.id, userId: regular.user.id, role: 'member' },
+    });
+    const member = await request(app)
+      .get(`/api/v1/teams/${fixture.teamA.id}/dashboard`)
+      .set(auth(regular.accessToken));
+    expect(member.status).toBe(403);
+
+    const otherTeam = await request(app)
+      .get(`/api/v1/teams/${fixture.teamB.id}/dashboard`)
+      .set(auth(fixture.memberA.accessToken));
+    expect(otherTeam.status).toBe(403);
+
+    const foreignTeam = await request(app)
+      .get(`/api/v1/teams/${fixture.teamA.id}/dashboard`)
+      .set(auth(fixture.foreignAdmin.accessToken));
+    expect(foreignTeam.status).toBe(404);
+
+    const malformedRange = await request(app)
+      .get(`/api/v1/teams/${fixture.teamA.id}/dashboard?range=1d`)
+      .set(auth(fixture.admin.accessToken));
+    expect(malformedRange.status).toBe(400);
+
+    const malformedTeamId = await request(app)
+      .get('/api/v1/teams/not-a-uuid/dashboard')
+      .set(auth(fixture.admin.accessToken));
+    expect(malformedTeamId.status).toBe(400);
   });
 });

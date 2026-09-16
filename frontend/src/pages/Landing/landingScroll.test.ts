@@ -38,7 +38,7 @@ describe('scrollToLandingSection', () => {
 
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
       behavior: 'smooth',
-      block: 'start',
+      block: 'center',
     });
     expect(window.location.hash).toBe('');
   });
@@ -48,7 +48,7 @@ describe('scrollToLandingSection', () => {
 
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
       behavior: 'auto',
-      block: 'start',
+      block: 'center',
     });
   });
 });

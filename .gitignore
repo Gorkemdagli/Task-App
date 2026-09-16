@@ -134,3 +134,4 @@ frontend/DESIGN.md
 frontend/.impeccable/
 /PRODUCT.md
 .codex
+.playwright-mcp

@@ -2,22 +2,23 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { queryKeys } from '@/lib/queryKeys';
 import {
-  getCompanyDashboard,
-  type CompanyDashboard,
+  getTeamDashboard,
   type CompanyDashboardRange,
+  type TeamDashboard,
 } from '@/services/companyDashboard';
 
-export function useCompanyDashboard(
-  teamId: string | null,
+export function useTeamDashboard(
+  teamId: string | undefined,
   range: CompanyDashboardRange = '30d',
-): UseQueryResult<CompanyDashboard> {
+  enabled = true,
+): UseQueryResult<TeamDashboard> {
   const user = useAuthStore((state) => state.user);
   const tenantId = user?.tenantId ?? null;
 
   return useQuery({
-    queryKey: queryKeys.companyDashboard(tenantId ?? 'tenantless', teamId, range),
-    queryFn: () => getCompanyDashboard(teamId ?? undefined, range),
-    enabled: user?.role === 'companyAdmin' && Boolean(tenantId),
+    queryKey: queryKeys.team.dashboard(tenantId ?? 'tenantless', teamId ?? 'none', range),
+    queryFn: () => getTeamDashboard(teamId!, range),
+    enabled: enabled && Boolean(tenantId && teamId),
     refetchOnWindowFocus: true,
   });
 }

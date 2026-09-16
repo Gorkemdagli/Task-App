@@ -476,6 +476,24 @@
 }
 
 @media (min-width: 64rem) {
+  .theme-landing main > section.workflow-redesign {
+    position: relative;
+    scroll-snap-align: none;
+  }
+
+  .theme-landing .workflow-redesign .workflow-snap-anchor {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    transform: translateY(-50%);
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
   .theme-landing .workflow-redesign {
     min-height: calc(100svh - 5.25rem);
     padding-block: var(--spacing-6);

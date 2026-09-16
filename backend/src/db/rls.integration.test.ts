@@ -95,6 +95,12 @@ describe('RLS tenant isolation for task relations', () => {
         { taskId: taskBId, userId: userBId, proposedStatus: 'done', pendingVersion: 0 },
       ],
     });
+    await prisma.taskEvent.createMany({
+      data: [
+        { taskId: taskAId, actorId: userAId, eventType: 'task_created' },
+        { taskId: taskBId, actorId: userBId, eventType: 'task_created' },
+      ],
+    });
   });
 
   afterAll(async () => {
@@ -108,9 +114,13 @@ describe('RLS tenant isolation for task relations', () => {
     const acks = await asTenant(tenantAId, userAId, (db) =>
       db.taskStatusAck.findMany({ orderBy: { taskId: 'asc' } }),
     );
+    const events = await asTenant(tenantAId, userAId, (db) =>
+      db.taskEvent.findMany({ orderBy: { taskId: 'asc' } }),
+    );
 
     expect(assignees.map((row) => row.taskId)).toEqual([taskAId]);
     expect(acks.map((row) => row.taskId)).toEqual([taskAId]);
+    expect(events.map((row) => row.taskId)).toEqual([taskAId]);
 
     await expect(
       asTenant(tenantAId, userAId, (db) =>
@@ -124,6 +134,13 @@ describe('RLS tenant isolation for task relations', () => {
         }),
       ),
     ).rejects.toBeDefined();
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskEvent.create({
+          data: { taskId: taskBId, actorId: userAId, eventType: 'task_created' },
+        }),
+      ),
+    ).rejects.toBeDefined();
 
     const updateResult = await asTenant(tenantAId, userAId, (db) =>
       db.taskAssignee.updateMany({ where: { taskId: taskBId }, data: { userId: userAId } }),
@@ -131,8 +148,16 @@ describe('RLS tenant isolation for task relations', () => {
     const deleteResult = await asTenant(tenantAId, userAId, (db) =>
       db.taskStatusAck.deleteMany({ where: { taskId: taskBId } }),
     );
+    const eventUpdateResult = await asTenant(tenantAId, userAId, (db) =>
+      db.taskEvent.updateMany({ where: { taskId: taskBId }, data: { actorId: userAId } }),
+    );
+    const eventDeleteResult = await asTenant(tenantAId, userAId, (db) =>
+      db.taskEvent.deleteMany({ where: { taskId: taskBId } }),
+    );
     expect(updateResult.count).toBe(0);
     expect(deleteResult.count).toBe(0);
+    expect(eventUpdateResult.count).toBe(0);
+    expect(eventDeleteResult.count).toBe(0);
   });
 
   it('tenantless users can be claimed by the current tenant', async () => {

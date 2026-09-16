@@ -293,9 +293,11 @@ export function RiskLedger({
 export function MemberWorkloadTable({
   members,
   teamId,
+  showDetails = false,
 }: {
   members: Members;
   teamId: string | null;
+  showDetails?: boolean;
 }) {
   const [mobilePage, setMobilePage] = useState(1);
   const maxOpenTaskCount = Math.max(0, ...members.items.map((member) => member.openTaskCount));
@@ -324,6 +326,12 @@ export function MemberWorkloadTable({
               <th className="px-2 py-2 font-medium">Üye</th>
               <th className="px-2 py-2 font-medium">Açık görev</th>
               <th className="px-2 py-2 text-right font-medium">Tamamlanan</th>
+              {showDetails && (
+                <>
+                  <th className="px-2 py-2 text-right font-medium">Süresi dolan</th>
+                  <th className="px-2 py-2 text-right font-medium">Tamamlanma</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="block sm:table-row-group">
@@ -337,9 +345,9 @@ export function MemberWorkloadTable({
                   key={member.userId}
                   className={`${
                     index >= mobileStart && index < mobileEnd ? 'grid' : 'hidden sm:table-row'
-                  } grid-cols-2 gap-x-4 gap-y-2 border-b border-border p-3 last:border-b-0 sm:table-row sm:p-0`}
+                    } ${showDetails ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2'} gap-x-4 gap-y-2 border-b border-border p-3 last:border-b-0 sm:table-row sm:p-0`}
                 >
-                  <td className="col-span-2 min-w-0 px-2 py-2.5 sm:table-cell">
+                  <td className={`${showDetails ? 'sm:col-span-1' : ''} col-span-2 min-w-0 px-2 py-2.5 sm:table-cell`}>
                     <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
                       Üye
                     </span>
@@ -383,6 +391,22 @@ export function MemberWorkloadTable({
                     </span>
                     {member.completedTaskCount}
                   </td>
+                  {showDetails && (
+                    <>
+                      <td className="min-w-0 px-2 py-2.5 text-right tabular-nums sm:table-cell">
+                        <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
+                          Süresi dolan
+                        </span>
+                        {member.expiredTaskCount}
+                      </td>
+                      <td className="min-w-0 px-2 py-2.5 text-right tabular-nums sm:table-cell">
+                        <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
+                          Tamamlanma
+                        </span>
+                        %{member.completionRate}
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}

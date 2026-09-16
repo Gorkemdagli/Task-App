@@ -752,7 +752,7 @@
    Within this scope, Button's `bg-primary` resolves to the landing orange
    because --color-primary is overridden below. */
 :root {
-  --landing-nav-height: 4.5rem;
+  --landing-nav-height: 5.25rem;
 }
 
 .theme-landing {
@@ -3029,7 +3029,7 @@
   position: sticky;
   z-index: 30;
   top: 0;
-  height: 5.25rem;
+  height: var(--landing-nav-height);
   border-bottom: 1px solid var(--landing-border);
   background: color-mix(in srgb, var(--landing-bg) 94%, transparent);
   backdrop-filter: blur(14px);
@@ -4696,8 +4696,12 @@
 }
 
 @media (max-width: 47.9375rem) {
+  .theme-landing {
+    --landing-nav-height: 4.5rem;
+  }
+
   .theme-landing .landing-nav {
-    height: 4.5rem;
+    height: var(--landing-nav-height);
   }
 
   .theme-landing .landing-nav__links,
@@ -5636,11 +5640,11 @@
 
 @media (min-width: 64rem) {
   .theme-landing main > section {
-    scroll-margin-top: 5.25rem;
+    scroll-margin: 0;
   }
 
   .theme-landing .landing-features {
-    min-height: calc(100svh - 5.25rem);
+    min-height: calc(100svh - var(--landing-nav-height));
     padding-block: var(--spacing-12) var(--spacing-8);
   }
 
@@ -5662,8 +5666,25 @@
   .theme-landing main > section.landing-hero,
   .theme-landing main > section.landing-features,
   .theme-landing main > section.landing-motion,
+  .theme-landing main > section.landing-preview-section,
   .theme-landing .landing-footer {
-    min-height: 100svh;
+    padding-block: var(--spacing-8) var(--spacing-6);
+  }
+}
+
+@media (min-width: 64rem) {
+  .theme-landing main > section.landing-hero,
+  .theme-landing main > section.landing-features,
+  .theme-landing main > section.landing-motion {
+    min-height: calc(100svh - var(--landing-nav-height));
+  }
+
+  .theme-landing .landing-hero__split {
+    align-items: center;
+  }
+
+  .theme-landing .landing-hero__copy {
+    padding-top: 0;
   }
 }
 
@@ -5676,7 +5697,6 @@
   .theme-landing main > section {
     scroll-snap-align: center;
     scroll-snap-stop: always;
-    scroll-margin-top: 0;
   }
 
   .theme-landing .landing-footer {
@@ -5693,7 +5713,7 @@
 
 @media (max-width: 63.9375rem) {
   .theme-landing main > section {
-    scroll-margin-top: 4.5rem;
+    scroll-margin-top: var(--landing-nav-height);
   }
 }
 
@@ -5949,4 +5969,12 @@
 .theme-landing .landing-motion {
   content-visibility: auto;
   contain-intrinsic-size: auto 900px;
+}
+
+@media (min-width: 64rem) {
+  .theme-landing .landing-features,
+  .theme-landing .landing-motion {
+    content-visibility: visible;
+    contain-intrinsic-size: none;
+  }
 }

@@ -28,6 +28,14 @@ enum TaskPriority {
   high
 }
 
+enum TaskEventType {
+  task_created
+  status_changed
+  task_reopened
+  task_blocked
+  task_unblocked
+}
+
 enum ChannelType {
   team
   dm
@@ -147,6 +155,9 @@ model Task {
   description String?
   status      TaskStatus   @default(todo)
   priority    TaskPriority @default(medium)
+  isBlocked   Boolean      @default(false) @map("is_blocked")
+  blockedSince DateTime?   @map("blocked_since") @db.Timestamptz(6)
+  blockedReason String?     @map("blocked_reason")
   deadline    DateTime?    @db.Timestamptz(6)
   startedAt   DateTime?    @map("started_at") @db.Timestamptz(6)
   completedAt DateTime?    @map("completed_at") @db.Timestamptz(6)
@@ -161,6 +172,7 @@ model Task {
   assignees       TaskAssignee[]
   statusAcks      TaskStatusAck[]
   comments        TaskComment[]
+  events          TaskEvent[]
 
   pendingStatus     TaskStatus? @map("pending_status")
   pendingVersion    Int         @default(0) @map("pending_version")
@@ -168,10 +180,27 @@ model Task {
   pendingProposedAt DateTime?   @map("pending_proposed_at") @db.Timestamptz(6)
 
   @@index([teamId, status])
+  @@index([teamId, isBlocked])
   @@index([deadline])
   @@index([archivedAt])
   @@index([pendingStatus, deadline])
   @@map("tasks")
+}
+
+model TaskEvent {
+  id         String        @id @default(uuid()) @db.Uuid
+  taskId     String        @map("task_id") @db.Uuid
+  actorId    String?       @map("actor_id") @db.Uuid
+  eventType  TaskEventType @map("event_type")
+  fromStatus TaskStatus?   @map("from_status")
+  toStatus   TaskStatus?   @map("to_status")
+  metadata   Json          @default("{}")
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("task_events")
 }
 
 model TaskAssignee {

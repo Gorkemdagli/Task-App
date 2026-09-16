@@ -8,6 +8,7 @@ import {
   useAckTaskStatus,
   useCancelTaskStatus,
   useUpdateTaskPriority,
+  useUpdateTaskBlocked,
   useUpdateTaskFields,
   useRestoreTask,
   useDeleteTask,
@@ -46,6 +47,7 @@ export function TaskDetailPage() {
   const ackStatus = useAckTaskStatus();
   const cancelStatus = useCancelTaskStatus();
   const updatePriority = useUpdateTaskPriority();
+  const updateBlocked = useUpdateTaskBlocked();
   const updateFields = useUpdateTaskFields();
   const restoreTask = useRestoreTask();
   const deleteTask = useDeleteTask();
@@ -116,6 +118,16 @@ export function TaskDetailPage() {
     await deleteTask.mutateAsync(task.id);
   };
 
+  const handleBlockToggle = () => {
+    if (!id) return;
+    if (task.isBlocked) {
+      updateBlocked.mutate({ taskId: id, isBlocked: false });
+      return;
+    }
+    const blockedReason = window.prompt('Engel nedeni (isteğe bağlı)')?.trim() || null;
+    updateBlocked.mutate({ taskId: id, isBlocked: true, blockedReason });
+  };
+
   return (
     <div data-testid="task-detail-page" className="mx-auto max-w-3xl p-8">
       <Link
@@ -184,7 +196,32 @@ export function TaskDetailPage() {
           onChange={(priority) => id && updatePriority.mutate({ taskId: id, priority })}
           disabled={!allowedPriority}
         />
+        {allowedStatus && (
+          <button
+            type="button"
+            data-testid="task-block-toggle"
+            onClick={handleBlockToggle}
+            disabled={updateBlocked.isPending}
+            className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {updateBlocked.isPending
+              ? 'Güncelleniyor…'
+              : task.isBlocked
+                ? 'Engeli kaldır'
+                : 'Engelle'}
+          </button>
+        )}
       </div>
+
+      {task.isBlocked && (
+        <div
+          data-testid="task-blocked-banner"
+          className="mb-6 rounded-md border border-priority-high/40 bg-priority-high/10 p-3 text-sm"
+        >
+          <strong>Engellendi</strong>
+          {task.blockedReason ? ` · ${task.blockedReason}` : null}
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 rounded-md border border-border bg-card p-4 md:grid-cols-2">
         <div>

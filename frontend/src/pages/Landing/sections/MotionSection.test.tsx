@@ -35,4 +35,22 @@ describe('MotionSection', () => {
     );
     expect(region.querySelectorAll('[data-motion-word]').length).toBeGreaterThan(8);
   });
+
+  it('exposes one inert snap anchor at the workflow center', () => {
+    render(
+      <MemoryRouter>
+        <MotionSection />
+      </MemoryRouter>,
+    );
+
+    const region = screen.getByRole('region', {
+      name: /Bir görev açılır\. Herkes ne olacağını bilir\./,
+    });
+    const anchors = region.querySelectorAll('.workflow-snap-anchor');
+    const anchor = anchors[0];
+
+    expect(anchors).toHaveLength(1);
+    expect(anchor).toHaveAttribute('aria-hidden', 'true');
+    expect(anchor).toBeEmptyDOMElement();
+  });
 });

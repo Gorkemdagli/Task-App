@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createTaskSchema, listTasksQuerySchema, updateTaskFieldsSchema } from './tasks.schema';
+import {
+  createTaskSchema,
+  listTasksQuerySchema,
+  updateTaskBlockedSchema,
+  updateTaskFieldsSchema,
+} from './tasks.schema';
 
 const baseTask = {
   title: 'Calendar task',
@@ -27,5 +32,14 @@ describe('task calendar-date schema', () => {
     expect(() => createTaskSchema.parse({ ...baseTask, deadline: datetime })).toThrow();
     expect(() => updateTaskFieldsSchema.parse({ deadline: datetime })).toThrow();
     expect(() => listTasksQuerySchema.parse({ deadlineFrom: datetime })).toThrow();
+  });
+});
+
+describe('task blocking schema', () => {
+  it('accepts an optional trimmed reason and explicit state', () => {
+    expect(
+      updateTaskBlockedSchema.parse({ isBlocked: true, blockedReason: '  API bekleniyor  ' }),
+    ).toEqual({ isBlocked: true, blockedReason: 'API bekleniyor' });
+    expect(updateTaskBlockedSchema.parse({ isBlocked: false })).toEqual({ isBlocked: false });
   });
 });

@@ -11,6 +11,6 @@ export function scrollToLandingSection(event: MouseEvent<HTMLAnchorElement>, hre
   event.preventDefault();
   section.scrollIntoView({
     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start',
+    block: 'center',
   });
 }
