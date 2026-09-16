@@ -223,6 +223,10 @@ describe('ackTaskStatus', () => {
     // b propose. ackCount=1 (proposer auto-ack).
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
+    const proposalEvents = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(proposalEvents).toHaveLength(1);
+    expect(proposalEvents[0].eventType).toBe('task_created');
+
     const result = await tasksService.ackTaskStatus(task.id, c);
 
     expect(result.applied).toBe(false);
@@ -233,6 +237,10 @@ describe('ackTaskStatus', () => {
     expect(acks).toHaveLength(2);
     expect(acks.find((a) => a.userId === b.id)).toBeDefined();
     expect(acks.find((a) => a.userId === c.id)).toBeDefined();
+
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe('task_created');
   });
 
   it('tüm assignees ack → apply + notify + acks cleared', async () => {
@@ -265,6 +273,15 @@ describe('ackTaskStatus', () => {
     expect(notifs).toHaveLength(1);
     expect(notifs[0].userId).toBe(c.id);
     expect(notifs[0].payload).toMatchObject({ oldStatus: 'todo', newStatus: 'in_progress' });
+
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      actorId: b.id,
+      eventType: 'status_changed',
+      fromStatus: 'todo',
+      toStatus: 'in_progress',
+    });
   });
 
   it('no pending: 400 NO_PENDING', async () => {

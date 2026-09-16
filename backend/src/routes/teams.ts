@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
@@ -11,7 +12,14 @@ import {
   searchMemberCandidatesQuerySchema,
   updateTeamMemberRoleSchema,
 } from '../schemas/teams.schema';
+import {
+  teamDashboardParamsSchema,
+  teamDashboardQuerySchema,
+  type TeamDashboardParams,
+  type TeamDashboardQuery,
+} from '../schemas/company-dashboard.schema';
 import * as teamsService from '../services/teams.service';
+import { getTeamDashboard } from '../services/company-dashboard.service';
 import { runTenantRequest } from '../http/runTenantRequest';
 
 export const teamsRouter = Router();
@@ -51,6 +59,22 @@ teamsRouter.get('/:id/member-candidates', authenticatedReadLimiter, async (req, 
       teamsService.searchMemberCandidates(db, (req.params as { id: string }).id, query.q, actor),
     );
     res.json(candidates);
+  } catch (e) {
+    next(e);
+  }
+});
+
+teamsRouter.get('/:id/dashboard', authenticatedReadLimiter, async (req, res, next) => {
+  try {
+    const { id } = parseQuery<TeamDashboardParams>(teamDashboardParamsSchema, req.params);
+    const query = parseQuery<TeamDashboardQuery>(teamDashboardQuerySchema, req.query);
+    const dashboard = await runTenantRequest(
+      req,
+      (db, actor) =>
+        getTeamDashboard(db, id, actor, query),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    res.json(dashboard);
   } catch (e) {
     next(e);
   }

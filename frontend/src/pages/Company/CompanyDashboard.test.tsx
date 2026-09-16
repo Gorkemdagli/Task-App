@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,23 @@ const teams = [
 ];
 
 const allDashboard: CompanyDashboardData = {
+  period: { range: '30d', start: '2026-07-22', end: '2026-08-21' },
+  createdInPeriod: { current: 8, previous: 6, delta: 2, deltaPercentage: 33 },
+  completedInPeriod: { current: 5, previous: 4, delta: 1, deltaPercentage: 25 },
+  cycleTime: { unit: 'days', median: 2.5, p85: 5.25, sampleSize: 4 },
+  leadTime: { unit: 'days', median: 6.5, sampleSize: 5 },
+  agingWip: {
+    unit: 'days',
+    buckets: { zeroToThree: 1, fourToSeven: 2, eightToFourteen: 3, fifteenToThirty: 4, overThirty: 5 },
+    measuredCount: 15,
+    unknownCount: 1,
+    totalCount: 16,
+  },
+  overdueRate: { current: 20, previous: 25, delta: -5, deltaPercentage: -20 },
+  onTimeDeliveryRate: { current: 80, previous: 75, delta: 5, deltaPercentage: 7 },
+  backlogChange: 3,
+  throughput: [{ period: '2026-08-20', count: 2 }],
+  createdVsCompleted: [{ period: '2026-08-20', created: 3, completed: 2 }],
   scope: { teamId: null, teamName: null },
   summary: {
     totalUserCount: 103,
@@ -158,7 +175,7 @@ describe('CompanyDashboard', () => {
     expect(screen.getByRole('table', { name: 'Takım karşılaştırması' })).toBeInTheDocument();
 
     await user.selectOptions(filter, 'team-a');
-    expect(mocks.useCompanyDashboard).toHaveBeenLastCalledWith('team-a');
+    expect(mocks.useCompanyDashboard).toHaveBeenLastCalledWith('team-a', '30d');
     expect(screen.queryByRole('table', { name: 'Takım karşılaştırması' })).not.toBeInTheDocument();
   });
 
@@ -178,7 +195,16 @@ describe('CompanyDashboard', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: 'Takım filtresi' })).toHaveValue('all'),
     );
-    expect(mocks.useCompanyDashboard).toHaveBeenLastCalledWith(null);
+    expect(mocks.useCompanyDashboard).toHaveBeenLastCalledWith(null, '30d');
+  });
+
+  it('changes the analytics range without changing team scope', async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Dönem aralığı' }), '90d');
+
+    expect(mocks.useCompanyDashboard).toHaveBeenLastCalledWith(null, '90d');
   });
 
   it('renders loading, retry, empty, and stale-scope states', async () => {
@@ -242,6 +268,14 @@ describe('CompanyDashboard', () => {
     expect(screen.getByRole('article', { name: 'Süresi dolan KPI' })).toHaveTextContent('4');
     expect(screen.getByRole('article', { name: 'Tamamlanma oranı KPI' })).toHaveTextContent('%25');
     expect(screen.getByRole('article', { name: 'Onay bekleyen risk' })).toHaveTextContent('1');
+    expect(screen.getByRole('article', { name: 'Dönem tamamlanan görev KPI' })).toHaveTextContent(
+      '5',
+    );
+    expect(screen.getByRole('article', { name: 'Dönem tamamlanan görev KPI' })).toHaveTextContent(
+      'Önceki 4 · Δ 1 (25%)',
+    );
+    expect(screen.getByRole('region', { name: 'Oluşturulan ve tamamlanan' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Throughput' })).toBeInTheDocument();
     expect(screen.getByText('Yapılıyor: 8 görev, %40')).toBeInTheDocument();
     expect(screen.getByText('Yüksek: 5 görev, %25')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Üye görev yükü' })).toHaveTextContent(
@@ -267,6 +301,188 @@ describe('CompanyDashboard', () => {
       'href',
       '/teams/team-a',
     );
+  });
+
+  it('renders cycle-time rollups for the company scope', () => {
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: allDashboard,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
+    expect(screen.getByText('2.5 gün')).toBeInTheDocument();
+    expect(screen.getByText('P85 çevrim süresi')).toBeInTheDocument();
+    expect(screen.getByText('5.25 gün')).toBeInTheDocument();
+  });
+
+  it('reveals flow metric definitions on hover and keyboard focus', () => {
+    renderDashboard();
+
+    const medianInfo = screen.getByRole('button', { name: 'Median çevrim süresi açıklaması' });
+    fireEvent.mouseEnter(medianInfo);
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Tamamlanan görevlerin yarısının bu süreden kısa, yarısının uzun sürdüğünü gösterir.',
+    );
+
+    fireEvent.mouseLeave(medianInfo);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    fireEvent.focus(
+      screen.getByRole('button', { name: 'P85 çevrim süresi açıklaması' }),
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent('%85’inin');
+  });
+
+  it('renders zero-valued trend periods', () => {
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        createdVsCompleted: [{ period: '2026-08-20', created: 0, completed: 0 }],
+        throughput: [{ period: '2026-08-20', count: 0 }],
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(
+      screen.getByRole('img', { name: '2026-08-20: Oluşturulan: 0, Tamamlanan: 0' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: '2026-08-20: Tamamlanan görev: 0' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps long trend series compact while exposing every bucket accessibly', () => {
+    const points = Array.from({ length: 30 }, (_, index) => ({
+      period: `2026-08-${String(index + 1).padStart(2, '0')}`,
+      created: index % 3,
+      completed: index % 2,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        createdVsCompleted: points,
+        throughput: points.map((point) => ({ period: point.period, count: point.completed })),
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(screen.getByRole('region', { name: 'Oluşturulan ve tamamlanan' })).toHaveClass('h-64');
+    expect(screen.getByRole('region', { name: 'Throughput' })).toHaveClass('h-64');
+    expect(screen.getByRole('group', { name: 'Oluşturulan ve tamamlanan trendi' })).not.toHaveClass(
+      'overflow-x-auto',
+    );
+    const trendLabels = screen
+      .getByTestId('company-trend-chart')
+      .querySelector('svg')
+      ?.querySelectorAll('text');
+    expect(trendLabels).toHaveLength(2);
+    expect(Number(trendLabels?.[0].getAttribute('x'))).toBeGreaterThan(0);
+    expect(Number(trendLabels?.[trendLabels.length - 1].getAttribute('x'))).toBeLessThan(100);
+    expect(
+      screen.getByRole('img', { name: /2026-08-30.*Oluşturulan: 2.*Tamamlanan: 1/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: /2026-08-30: Tamamlanan görev: 1/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('reveals chart values on hover, focus, and tap', () => {
+    renderDashboard();
+
+    const trendSurface = screen.getByTestId('company-trend-hit-surface');
+    vi.spyOn(trendSurface, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 120,
+      top: 0,
+      right: 300,
+      bottom: 120,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const trendPoint = screen.getByRole('img', {
+      name: '2026-08-20: Oluşturulan: 3, Tamamlanan: 2',
+    });
+    fireEvent.pointerMove(trendSurface, { clientX: 150, clientY: 40, pointerType: 'mouse' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-08-20');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Oluşturulan: 3 · Tamamlanan: 2');
+
+    fireEvent.pointerLeave(trendSurface, { pointerType: 'mouse' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    fireEvent.focus(trendPoint);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Oluşturulan: 3 · Tamamlanan: 2');
+    fireEvent.keyDown(trendPoint, { key: 'Escape', code: 'Escape' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    const throughputSurface = screen.getByTestId('company-throughput-hit-surface');
+    vi.spyOn(throughputSurface, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 120,
+      top: 0,
+      right: 300,
+      bottom: 120,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(throughputSurface, { clientX: 150, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-08-20');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Tamamlanan görev: 2');
+  });
+
+  it('routes a narrow chart tap to the nearest bucket', () => {
+    const points = Array.from({ length: 7 }, (_, index) => ({
+      period: `2026-09-${String(index + 7).padStart(2, '0')}`,
+      created: index + 1,
+      completed: index,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: { ...allDashboard, createdVsCompleted: points },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    const surface = screen.getByTestId('company-trend-hit-surface');
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 120,
+      top: 0,
+      right: 300,
+      bottom: 120,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const bucketCenter = (index: number) =>
+      300 * ((4 + (index + 0.5) * (92 / points.length)) / 100);
+
+    fireEvent.click(surface, { clientX: bucketCenter(0), clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-07');
+
+    fireEvent.click(surface, { clientX: bucketCenter(1), clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-08');
+
+    fireEvent.click(surface, { clientX: bucketCenter(6), clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-13');
   });
 
   it('uses a mobile two-by-two team comparison grid with an inline team label', () => {

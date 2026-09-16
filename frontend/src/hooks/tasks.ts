@@ -31,6 +31,9 @@ export interface Task {
   description: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  isBlocked?: boolean;
+  blockedSince?: string | null;
+  blockedReason?: string | null;
   deadline: string | null;
   archivedAt: string | null;
   teamId: string;
@@ -284,6 +287,25 @@ export function useUpdateTaskPriority() {
         restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
     },
     onSettled: (_d, _e, vars) => {
+      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    },
+  });
+}
+
+export function useUpdateTaskBlocked() {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: async (vars: {
+      taskId: string;
+      isBlocked: boolean;
+      blockedReason?: string | null;
+    }) => {
+      const { taskId, ...body } = vars;
+      const r = await api.patch<Task>(`/tasks/${taskId}/block`, body);
+      return r.data;
+    },
+    onSettled: (_data, _error, vars) => {
       if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
     },
   });

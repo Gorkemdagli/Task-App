@@ -153,7 +153,7 @@ describe('LandingPage', () => {
       await user.click(screen.getByRole('link', { name: 'İş akışı' }));
 
       expect(window.location.hash).toBe('');
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }

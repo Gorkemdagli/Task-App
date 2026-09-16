@@ -1,4 +1,5 @@
 import type { ListTasksFilters } from '@/hooks/tasks';
+import type { CompanyDashboardRange } from '@/services/companyDashboard';
 
 export const queryKeys = {
   profile: (userId: string) => ['profile', userId] as const,
@@ -13,6 +14,8 @@ export const queryKeys = {
       ['tenant', tenantId, 'team-scope', teamId, 'detail'] as const,
     memberCandidates: (tenantId: string, teamId: string, query: string) =>
       ['tenant', tenantId, 'team-scope', teamId, 'member-candidates', query] as const,
+    dashboard: (tenantId: string, teamId: string, range: CompanyDashboardRange = '30d') =>
+      ['tenant', tenantId, 'team-scope', teamId, 'dashboard', range] as const,
   },
   tasks: {
     list: (tenantId: string, filters: ListTasksFilters = {}) =>
@@ -32,6 +35,9 @@ export const queryKeys = {
   },
   companyUsers: (tenantId: string) => ['tenant', tenantId, 'company-users'] as const,
   companySettings: (tenantId: string) => ['tenant', tenantId, 'company-settings'] as const,
-  companyDashboard: (tenantId: string, teamId: string | null) =>
-    ['tenant', tenantId, 'company-dashboard', teamId ?? 'all'] as const,
+  companyDashboard: (
+    tenantId: string,
+    teamId: string | null,
+    range: CompanyDashboardRange = '30d',
+  ) => ['tenant', tenantId, 'company-dashboard', teamId ?? 'all', range] as const,
 };

@@ -1,23 +1,69 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Info } from 'lucide-react';
 import { useTeams } from '@/hooks/queries/useTeams';
 import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
-import { PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
+import type { CompanyDashboardRange, DashboardComparison } from '@/services/companyDashboard';
+import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
 
 function KpiCard({
   label,
   value,
   ariaLabel,
+  comparison,
+  tooltip,
 }: {
   label: string;
   value: string | number;
   ariaLabel: string;
+  comparison?: DashboardComparison;
+  tooltip?: string;
 }) {
   return (
     <article aria-label={ariaLabel} className="border-l border-border px-3 first:border-l-0">
-      <p className="text-xs text-secondary-foreground">{label}</p>
+      <p className="text-xs text-secondary-foreground">
+        {label}
+        {tooltip ? <InfoTooltip label={`${label} açıklaması`} description={tooltip} /> : null}
+      </p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
+      {comparison ? (
+        <p className="mt-0.5 text-[0.65rem] text-secondary-foreground">
+          Önceki {comparison.previous} · Δ {comparison.delta} ({comparison.deltaPercentage}%)
+        </p>
+      ) : null}
     </article>
+  );
+}
+
+function InfoTooltip({ label, description }: { label: string; description: string }) {
+  const tooltipId = useId();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <span className="relative ml-1 inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        title={description}
+        aria-describedby={isOpen ? tooltipId : undefined}
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => setIsOpen(false)}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-secondary-foreground hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <Info aria-hidden="true" size={11} strokeWidth={2.25} />
+      </button>
+      {isOpen ? (
+        <span
+          id={tooltipId}
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-border bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground shadow-md"
+        >
+          {description}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -27,7 +73,7 @@ function RiskCard({
   ariaLabel,
 }: {
   label: string;
-  value: number;
+  value: string | number;
   ariaLabel: string;
 }) {
   return (
@@ -38,9 +84,14 @@ function RiskCard({
   );
 }
 
+function formatDuration(value: number | null): string {
+  return value === null ? 'Ölçüm yok' : `${value} gün`;
+}
+
 export function CompanyDashboard() {
   const { data: teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [range, setRange] = useState<CompanyDashboardRange>('30d');
   const sortedTeams = useMemo(
     () =>
       [...(teams ?? [])].sort(
@@ -53,7 +104,7 @@ export function CompanyDashboard() {
     selectedTeamId && sortedTeams.some((team) => team.id === selectedTeamId)
       ? selectedTeamId
       : null;
-  const dashboard = useCompanyDashboard(activeTeamId);
+  const dashboard = useCompanyDashboard(activeTeamId, range);
 
   useEffect(() => {
     if (selectedTeamId && teams && !teams.some((team) => team.id === selectedTeamId)) {
@@ -104,29 +155,50 @@ export function CompanyDashboard() {
             Şirket operasyonlarının güncel özeti
           </p>
         </div>
-        <div className="space-y-2">
-          <label
-            htmlFor="company-team-filter"
-            className="block text-xs font-medium text-secondary-foreground"
-          >
-            Takım filtresi
-          </label>
-          <select
-            id="company-team-filter"
-            aria-label="Takım filtresi"
-            value={activeTeamId ?? 'all'}
-            onChange={(event) =>
-              setSelectedTeamId(event.target.value === 'all' ? null : event.target.value)
-            }
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:min-w-44"
-          >
-            <option value="all">Tümü</option>
-            {sortedTeams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="space-y-2">
+            <label
+              htmlFor="company-range-filter"
+              className="block text-xs font-medium text-secondary-foreground"
+            >
+              Dönem aralığı
+            </label>
+            <select
+              id="company-range-filter"
+              aria-label="Dönem aralığı"
+              value={range}
+              onChange={(event) => setRange(event.target.value as CompanyDashboardRange)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
+            >
+              <option value="7d">Son 7 gün</option>
+              <option value="30d">Son 30 gün</option>
+              <option value="90d">Son 90 gün</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label
+              htmlFor="company-team-filter"
+              className="block text-xs font-medium text-secondary-foreground"
+            >
+              Takım filtresi
+            </label>
+            <select
+              id="company-team-filter"
+              aria-label="Takım filtresi"
+              value={activeTeamId ?? 'all'}
+              onChange={(event) =>
+                setSelectedTeamId(event.target.value === 'all' ? null : event.target.value)
+              }
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:min-w-44"
+            >
+              <option value="all">Tümü</option>
+              {sortedTeams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -165,6 +237,77 @@ export function CompanyDashboard() {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
+        <KpiCard
+          label="Tamamlanan (dönem)"
+          value={data.completedInPeriod.current}
+          ariaLabel="Dönem tamamlanan görev KPI"
+          comparison={data.completedInPeriod}
+        />
+        <KpiCard
+          label="Oluşturulan (dönem)"
+          value={data.createdInPeriod.current}
+          ariaLabel="Dönem oluşturulan görev KPI"
+          comparison={data.createdInPeriod}
+        />
+        <KpiCard
+          label="Gecikme oranı"
+          value={`%${data.overdueRate.current}`}
+          ariaLabel="Gecikme oranı KPI"
+          comparison={data.overdueRate}
+        />
+        <KpiCard
+          label="Zamanında teslim"
+          value={`%${data.onTimeDeliveryRate.current}`}
+          ariaLabel="Zamanında teslim KPI"
+          comparison={data.onTimeDeliveryRate}
+        />
+        <KpiCard
+          label="Backlog değişimi"
+          value={data.backlogChange}
+          ariaLabel="Backlog değişimi KPI"
+        />
+      </div>
+
+      <section
+        aria-labelledby="company-flow-heading"
+        data-testid="company-flow-metrics"
+        className="rounded-lg border border-border bg-card"
+      >
+        <div className="border-b border-border px-4 py-4 md:px-5">
+          <h2 id="company-flow-heading" className="text-lg font-semibold">
+            Akış metrikleri
+          </h2>
+          <p className="mt-1 text-sm text-secondary-foreground">
+            Seçili dönemde tamamlanan görevlerin çevrim süresi
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 sm:grid-cols-3">
+          <KpiCard
+            label="Median çevrim süresi"
+            value={formatDuration(data.cycleTime.median)}
+            ariaLabel="Median çevrim süresi KPI"
+            tooltip="Tamamlanan görevlerin yarısının bu süreden kısa, yarısının uzun sürdüğünü gösterir."
+          />
+          <KpiCard
+            label="P85 çevrim süresi"
+            value={formatDuration(data.cycleTime.p85)}
+            ariaLabel="P85 çevrim süresi KPI"
+            tooltip="Tamamlanan görevlerin %85’inin bu sürede veya daha kısa sürede tamamlandığını gösterir."
+          />
+          <KpiCard
+            label="Ölçüm örneği"
+            value={`n=${data.cycleTime.sampleSize}`}
+            ariaLabel="Çevrim süresi örnek sayısı KPI"
+          />
+        </div>
+      </section>
+
+      <PeriodTrendCharts
+        createdVsCompleted={data.createdVsCompleted}
+        throughput={data.throughput}
+      />
+
       <section
         aria-labelledby="company-risk-heading"
         className="overflow-hidden rounded-lg border border-border bg-card"
@@ -196,6 +339,21 @@ export function CompanyDashboard() {
               label="Süresi dolan"
               value={data.risk.expiredTaskCount}
               ariaLabel="Süresi dolan risk"
+            />
+            <RiskCard
+              label="Engellenen görev"
+              value={data.risk.blockedTaskCount ?? 0}
+              ariaLabel="Engellenen görev riski"
+            />
+            <RiskCard
+              label="3 günden uzun engel"
+              value={data.risk.blockedOverThreeDaysTaskCount ?? 0}
+              ariaLabel="3 günden uzun engel riski"
+            />
+            <RiskCard
+              label="Engel oranı"
+              value={`%${data.risk.blockedRate ?? 0}`}
+              ariaLabel="Engel oranı"
             />
           </div>
         </div>

@@ -1,9 +1,26 @@
 import AxiosMockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from '@/lib/api';
-import { getCompanyDashboard, type CompanyDashboard } from './companyDashboard';
+import { getCompanyDashboard, getTeamDashboard, type CompanyDashboard } from './companyDashboard';
 
 const dashboard: CompanyDashboard = {
+  period: { range: '30d', start: '2026-07-22', end: '2026-08-21' },
+  createdInPeriod: { current: 2, previous: 1, delta: 1, deltaPercentage: 100 },
+  completedInPeriod: { current: 1, previous: 1, delta: 0, deltaPercentage: 0 },
+  cycleTime: { unit: 'days', median: 1, p85: 2, sampleSize: 1 },
+  leadTime: { unit: 'days', median: 3, sampleSize: 1 },
+  agingWip: {
+    unit: 'days',
+    buckets: { zeroToThree: 0, fourToSeven: 0, eightToFourteen: 0, fifteenToThirty: 0, overThirty: 0 },
+    measuredCount: 0,
+    unknownCount: 0,
+    totalCount: 0,
+  },
+  overdueRate: { current: 0, previous: 0, delta: 0, deltaPercentage: 0 },
+  onTimeDeliveryRate: { current: 100, previous: 100, delta: 0, deltaPercentage: 0 },
+  backlogChange: 1,
+  throughput: [{ period: '2026-08-20', count: 1 }],
+  createdVsCompleted: [{ period: '2026-08-20', created: 2, completed: 1 }],
   scope: { teamId: null, teamName: null },
   summary: {
     totalUserCount: 1,
@@ -52,25 +69,34 @@ describe('company dashboard service', () => {
     mock.restore();
   });
 
-  it('gets all-scope dashboard without query params', async () => {
-    mock.onGet('/company/dashboard').reply(200, dashboard);
+  it('gets all-scope dashboard with the selected range', async () => {
+    mock.onGet('/company/dashboard', { params: { range: '30d' } }).reply(200, dashboard);
 
     await expect(getCompanyDashboard()).resolves.toEqual(dashboard);
 
     expect(mock.history.get).toHaveLength(1);
     expect(mock.history.get[0].url).toBe('/company/dashboard');
-    expect(mock.history.get[0].params).toBeUndefined();
+    expect(mock.history.get[0].params).toEqual({ range: '30d' });
   });
 
   it('sends team scope through Axios params', async () => {
-    mock.onGet('/company/dashboard', { params: { teamId: 'team-a' } }).reply(200, {
+    mock.onGet('/company/dashboard', { params: { teamId: 'team-a', range: '7d' } }).reply(200, {
       ...dashboard,
       scope: { teamId: 'team-a', teamName: 'Alpha' },
     });
 
-    await expect(getCompanyDashboard('team-a')).resolves.toMatchObject({
+    await expect(getCompanyDashboard('team-a', '7d')).resolves.toMatchObject({
       scope: { teamId: 'team-a', teamName: 'Alpha' },
     });
-    expect(mock.history.get[0].params).toEqual({ teamId: 'team-a' });
+    expect(mock.history.get[0].params).toEqual({ teamId: 'team-a', range: '7d' });
+  });
+
+  it('gets a dedicated team dashboard endpoint', async () => {
+    mock.onGet('/teams/team-a/dashboard', { params: { range: '90d' } }).reply(200, dashboard);
+
+    await expect(getTeamDashboard('team-a', '90d')).resolves.toEqual(dashboard);
+
+    expect(mock.history.get[0].url).toBe('/teams/team-a/dashboard');
+    expect(mock.history.get[0].params).toEqual({ range: '90d' });
   });
 });

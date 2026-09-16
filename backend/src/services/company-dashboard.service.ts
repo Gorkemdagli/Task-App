@@ -1,16 +1,57 @@
 import { Prisma } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 import { AppError } from '../lib/appError';
-import { isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
-import { startOfUtcToday } from '../lib/calendarDate';
+import { getTeamRole, isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
+import { formatCalendarDate, startOfUtcToday } from '../lib/calendarDate';
 
 const MEMBER_LIMIT = 100;
 const RISK_TASK_LIMIT = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_RANGE = '30d' as const;
+
+export const COMPANY_DASHBOARD_RANGES = ['7d', '30d', '90d'] as const;
+export type CompanyDashboardRange = (typeof COMPANY_DASHBOARD_RANGES)[number];
 
 export type CountAndPercentage = {
   count: number;
   percentage: number;
+};
+
+export type DashboardComparison = {
+  current: number;
+  previous: number;
+  delta: number;
+  deltaPercentage: number;
+};
+
+export type DurationMetric = {
+  unit: 'days';
+  median: number | null;
+  sampleSize: number;
+};
+
+export type CycleTimeMetric = DurationMetric & {
+  p85: number | null;
+};
+
+export type AgingWipMetric = {
+  unit: 'days';
+  buckets: {
+    zeroToThree: number;
+    fourToSeven: number;
+    eightToFourteen: number;
+    fifteenToThirty: number;
+    overThirty: number;
+  };
+  measuredCount: number;
+  unknownCount: number;
+  totalCount: number;
+};
+
+export type CompanyDashboardTrendPoint = {
+  period: string;
+  created: number;
+  completed: number;
 };
 
 export type CompanyRiskTask = {
@@ -23,6 +64,21 @@ export type CompanyRiskTask = {
 };
 
 export type CompanyDashboard = {
+  period: {
+    range: CompanyDashboardRange;
+    start: string;
+    end: string;
+  };
+  createdInPeriod: DashboardComparison;
+  completedInPeriod: DashboardComparison;
+  cycleTime: CycleTimeMetric;
+  leadTime: DurationMetric;
+  agingWip: AgingWipMetric;
+  overdueRate: DashboardComparison;
+  onTimeDeliveryRate: DashboardComparison;
+  backlogChange: number;
+  throughput: Array<{ period: string; count: number }>;
+  createdVsCompleted: CompanyDashboardTrendPoint[];
   scope: { teamId: string | null; teamName: string | null };
   summary: {
     totalUserCount: number;
@@ -37,6 +93,9 @@ export type CompanyDashboard = {
     dueNextSevenDaysTaskCount: number;
     pendingApprovalTaskCount: number;
     expiredTaskCount: number;
+    blockedTaskCount: number;
+    blockedOverThreeDaysTaskCount: number;
+    blockedRate: number;
   };
   riskTasks: {
     overdue: CompanyRiskTask[];
@@ -81,7 +140,10 @@ export type CompanyDashboard = {
   }>;
 };
 
-export type CompanyDashboardFilters = { teamId?: string };
+export type CompanyDashboardFilters = {
+  teamId?: string;
+  range?: CompanyDashboardRange;
+};
 
 type Numeric = bigint | number;
 
@@ -93,6 +155,8 @@ type SummaryRow = {
   overdue_task_count: Numeric;
   due_next_seven_days_task_count: Numeric;
   pending_approval_task_count: Numeric;
+  blocked_task_count: Numeric;
+  blocked_over_three_days_task_count: Numeric;
   status_total: Numeric;
   status_todo: Numeric;
   status_in_progress: Numeric;
@@ -101,6 +165,25 @@ type SummaryRow = {
   priority_low: Numeric;
   priority_medium: Numeric;
   priority_high: Numeric;
+  current_created_task_count: Numeric;
+  previous_created_task_count: Numeric;
+  current_completed_task_count: Numeric;
+  previous_completed_task_count: Numeric;
+  current_deadline_completed_task_count: Numeric;
+  current_on_time_task_count: Numeric;
+  previous_deadline_completed_task_count: Numeric;
+  previous_on_time_task_count: Numeric;
+  cycle_time_median: Numeric | null;
+  cycle_time_p85: Numeric | null;
+  cycle_time_sample_count: Numeric;
+  lead_time_median: Numeric | null;
+  lead_time_sample_count: Numeric;
+  aging_wip_0_3_count: Numeric;
+  aging_wip_4_7_count: Numeric;
+  aging_wip_8_14_count: Numeric;
+  aging_wip_15_30_count: Numeric;
+  aging_wip_30_plus_count: Numeric;
+  aging_wip_unknown_count: Numeric;
 };
 
 type MemberRow = {
@@ -134,8 +217,18 @@ type RiskTaskRow = {
   status: 'todo' | 'in_progress' | 'done';
 };
 
-function asNumber(value: Numeric): number {
-  return typeof value === 'bigint' ? Number(value) : value;
+type TrendRow = {
+  period: string | Date;
+  created_count: Numeric;
+  completed_count: Numeric;
+};
+
+function asNumber(value: Numeric | null | undefined): number {
+  return typeof value === 'bigint' ? Number(value) : (value ?? 0);
+}
+
+function nullableNumber(value: Numeric | null | undefined): number | null {
+  return value == null ? null : asNumber(value);
 }
 
 function percentage(numerator: number, denominator: number): number {
@@ -146,6 +239,21 @@ function percentage(numerator: number, denominator: number): number {
 function countAndPercentage(value: Numeric, total: number): CountAndPercentage {
   const count = asNumber(value);
   return { count, percentage: percentage(count, total) };
+}
+
+function comparison(current: number, previous: number): DashboardComparison {
+  const delta = current - previous;
+  return {
+    current,
+    previous,
+    delta,
+    deltaPercentage: previous === 0 ? 0 : Math.round((delta / Math.abs(previous)) * 100),
+  };
+}
+
+function rangeConfig(range: CompanyDashboardRange | undefined) {
+  const value = range ?? DEFAULT_RANGE;
+  return { range: value, days: value === '7d' ? 7 : value === '90d' ? 90 : 30 };
 }
 
 function mapMember(row: MemberRow) {
@@ -167,7 +275,11 @@ const summaryQuery = (
   taskScope: Prisma.Sql,
   archiveCutoff: Date,
   today: Date,
+  now: Date,
   dueSoonExclusiveEnd: Date,
+  periodStart: Date,
+  periodEnd: Date,
+  previousPeriodStart: Date,
 ) => Prisma.sql`
   SELECT
     COUNT(task.id) AS total_task_count,
@@ -196,6 +308,15 @@ const summaryQuery = (
       WHERE task.archived_at IS NULL
         AND task.pending_status IS NOT NULL
     ) AS pending_approval_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.is_blocked = true
+    ) AS blocked_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.is_blocked = true
+        AND task.blocked_since < ${new Date(now.getTime() - 3 * DAY_MS)}
+    ) AS blocked_over_three_days_task_count,
     COUNT(task.id) FILTER (WHERE task.archived_at IS NULL) AS status_total,
     COUNT(task.id) FILTER (WHERE task.archived_at IS NULL AND task.status = 'todo') AS status_todo,
     COUNT(task.id) FILTER (
@@ -220,11 +341,183 @@ const summaryQuery = (
       WHERE task.archived_at IS NULL
         AND task.status IN ('todo', 'in_progress')
         AND task.priority = 'high'
-    ) AS priority_high
+    ) AS priority_high,
+    COUNT(task.id) FILTER (
+      WHERE task.created_at >= ${periodStart} AND task.created_at < ${periodEnd}
+    ) AS current_created_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.created_at >= ${previousPeriodStart} AND task.created_at < ${periodStart}
+    ) AS previous_created_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${periodStart} AND task.completed_at < ${periodEnd}
+    ) AS current_completed_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${previousPeriodStart} AND task.completed_at < ${periodStart}
+    ) AS previous_completed_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.deadline IS NOT NULL
+    ) AS current_deadline_completed_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.deadline IS NOT NULL
+        AND task.completed_at <= task.deadline
+    ) AS current_on_time_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${previousPeriodStart}
+        AND task.completed_at < ${periodStart}
+        AND task.deadline IS NOT NULL
+    ) AS previous_deadline_completed_task_count,
+    COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${previousPeriodStart}
+        AND task.completed_at < ${periodStart}
+        AND task.deadline IS NOT NULL
+        AND task.completed_at <= task.deadline
+    ) AS previous_on_time_task_count
+    ,PERCENTILE_CONT(0.5) WITHIN GROUP (
+      ORDER BY EXTRACT(EPOCH FROM (task.completed_at - task.started_at)) / 86400.0
+    ) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.started_at IS NOT NULL
+        AND task.completed_at IS NOT NULL
+        AND task.completed_at >= task.started_at
+    ) AS cycle_time_median
+    ,PERCENTILE_CONT(0.85) WITHIN GROUP (
+      ORDER BY EXTRACT(EPOCH FROM (task.completed_at - task.started_at)) / 86400.0
+    ) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.started_at IS NOT NULL
+        AND task.completed_at IS NOT NULL
+        AND task.completed_at >= task.started_at
+    ) AS cycle_time_p85
+    ,COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.started_at IS NOT NULL
+        AND task.completed_at IS NOT NULL
+        AND task.completed_at >= task.started_at
+    ) AS cycle_time_sample_count
+    ,PERCENTILE_CONT(0.5) WITHIN GROUP (
+      ORDER BY EXTRACT(EPOCH FROM (task.completed_at - task.created_at)) / 86400.0
+    ) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.created_at IS NOT NULL
+        AND task.completed_at IS NOT NULL
+        AND task.completed_at >= task.created_at
+    ) AS lead_time_median
+    ,COUNT(task.id) FILTER (
+      WHERE task.completed_at >= ${periodStart}
+        AND task.completed_at < ${periodEnd}
+        AND task.created_at IS NOT NULL
+        AND task.completed_at IS NOT NULL
+        AND task.completed_at >= task.created_at
+    ) AS lead_time_sample_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NOT NULL
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) < 4
+    ) AS aging_wip_0_3_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NOT NULL
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) >= 4
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) < 8
+    ) AS aging_wip_4_7_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NOT NULL
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) >= 8
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) < 15
+    ) AS aging_wip_8_14_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NOT NULL
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) >= 15
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) < 30
+    ) AS aging_wip_15_30_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NOT NULL
+        AND FLOOR(EXTRACT(EPOCH FROM (${now} - task.started_at)) / 86400.0) >= 30
+    ) AS aging_wip_30_plus_count
+    ,COUNT(task.id) FILTER (
+      WHERE task.archived_at IS NULL
+        AND task.status = 'in_progress'
+        AND task.pending_status IS NULL
+        AND task.started_at IS NULL
+    ) AS aging_wip_unknown_count
   FROM tasks task
   JOIN teams team ON team.id = task.team_id
   WHERE team.tenant_id = ${tenantId}::uuid
     ${taskScope}
+`;
+
+const trendQuery = (
+  tenantId: string,
+  taskScope: Prisma.Sql,
+  periodStart: Date,
+  periodEnd: Date,
+  bucketDays: number,
+) => Prisma.sql`
+  WITH periods AS (
+    SELECT generate_series(
+      ${periodStart}::timestamptz,
+      ${periodEnd}::timestamptz - (${bucketDays} * INTERVAL '1 day'),
+      ${bucketDays} * INTERVAL '1 day'
+    ) AS period_start
+  ), scoped_tasks AS (
+    SELECT task.id, task.created_at, task.completed_at
+    FROM tasks task
+    JOIN teams team ON team.id = task.team_id
+    WHERE team.tenant_id = ${tenantId}::uuid
+      ${taskScope}
+  )
+  SELECT
+    TO_CHAR(periods.period_start AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS period,
+    COUNT(DISTINCT scoped_tasks.id) FILTER (
+      WHERE scoped_tasks.created_at >= periods.period_start
+        AND scoped_tasks.created_at < LEAST(
+          periods.period_start + (${bucketDays} * INTERVAL '1 day'),
+          ${periodEnd}::timestamptz
+        )
+    ) AS created_count,
+    COUNT(DISTINCT scoped_tasks.id) FILTER (
+      WHERE scoped_tasks.completed_at >= periods.period_start
+        AND scoped_tasks.completed_at < LEAST(
+          periods.period_start + (${bucketDays} * INTERVAL '1 day'),
+          ${periodEnd}::timestamptz
+        )
+    ) AS completed_count
+  FROM periods
+  LEFT JOIN scoped_tasks ON (
+    (scoped_tasks.created_at >= periods.period_start
+      AND scoped_tasks.created_at < LEAST(
+        periods.period_start + (${bucketDays} * INTERVAL '1 day'),
+        ${periodEnd}::timestamptz
+      ))
+    OR (scoped_tasks.completed_at >= periods.period_start
+      AND scoped_tasks.completed_at < LEAST(
+        periods.period_start + (${bucketDays} * INTERVAL '1 day'),
+        ${periodEnd}::timestamptz
+      ))
+  )
+  GROUP BY periods.period_start
+  ORDER BY periods.period_start ASC
 `;
 
 const memberQuery = (tenantId: string, teamId: string | null, archiveCutoff: Date) => Prisma.sql`
@@ -321,6 +614,7 @@ const riskTaskQuery = (
       FROM task_assignees assignment
       JOIN users u ON u.id = assignment.user_id
       WHERE assignment.task_id = task.id
+        AND u.tenant_id = ${tenantId}::uuid
       ORDER BY assignment.assigned_at ASC, u.id ASC
       LIMIT 1
     ) assignee ON TRUE
@@ -386,15 +680,12 @@ function mapRiskTask(row: RiskTaskRow): CompanyRiskTask {
   };
 }
 
-export async function getCompanyDashboard(
+async function getDashboardData(
   db: TenantDb,
   actor: Actor,
   filters: CompanyDashboardFilters,
   now = new Date(),
 ): Promise<CompanyDashboard> {
-  if (!isCompanyAdmin(actor)) {
-    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
-  }
   const tenantId = requireTenant(actor);
 
   const team = filters.teamId
@@ -413,15 +704,31 @@ export async function getCompanyDashboard(
   const dueSoonExclusiveEnd = new Date(today.getTime() + 8 * DAY_MS);
   const taskScope = team ? Prisma.sql`AND task.team_id = ${team.id}::uuid` : Prisma.empty;
   const teamId = team?.id ?? null;
+  const selectedRange = rangeConfig(filters.range);
+  const periodEnd = new Date(today.getTime() + DAY_MS);
+  const periodStart = new Date(periodEnd.getTime() - selectedRange.days * DAY_MS);
+  const previousPeriodStart = new Date(periodStart.getTime() - selectedRange.days * DAY_MS);
+  const bucketDays = selectedRange.range === '90d' ? 7 : 1;
 
-  const [summaryRows, memberRows, riskTaskRows] = await Promise.all([
+  const [summaryRows, memberRows, riskTaskRows, trendRows] = await Promise.all([
     db.$queryRaw<SummaryRow[]>(
-      summaryQuery(tenantId, taskScope, archiveCutoff, today, dueSoonExclusiveEnd),
+      summaryQuery(
+        tenantId,
+        taskScope,
+        archiveCutoff,
+        today,
+        now,
+        dueSoonExclusiveEnd,
+        periodStart,
+        periodEnd,
+        previousPeriodStart,
+      ),
     ),
     db.$queryRaw<MemberRow[]>(memberQuery(tenantId, teamId, archiveCutoff)),
     db.$queryRaw<RiskTaskRow[]>(
       riskTaskQuery(tenantId, teamId, archiveCutoff, today, dueSoonExclusiveEnd),
     ),
+    db.$queryRaw<TrendRow[]>(trendQuery(tenantId, taskScope, periodStart, periodEnd, bucketDays)),
   ]);
 
   const summary = summaryRows[0];
@@ -434,7 +741,59 @@ export async function getCompanyDashboard(
   const totalTaskCount = asNumber(summary.total_task_count);
   const completedTaskCount = asNumber(summary.completed_task_count);
   const statusTotal = asNumber(summary.status_total);
+  const blockedTaskCount = asNumber(summary.blocked_task_count);
+  const blockedOverThreeDaysTaskCount = asNumber(summary.blocked_over_three_days_task_count);
   const priorityTotal = asNumber(summary.priority_total);
+  const currentCreated = asNumber(summary.current_created_task_count);
+  const previousCreated = asNumber(summary.previous_created_task_count);
+  const currentCompleted = asNumber(summary.current_completed_task_count);
+  const previousCompleted = asNumber(summary.previous_completed_task_count);
+  const currentDeadlineCompleted = asNumber(summary.current_deadline_completed_task_count);
+  const currentOnTime = asNumber(summary.current_on_time_task_count);
+  const previousDeadlineCompleted = asNumber(summary.previous_deadline_completed_task_count);
+  const previousOnTime = asNumber(summary.previous_on_time_task_count);
+  const cycleTimeSampleSize = asNumber(summary.cycle_time_sample_count);
+  const leadTimeSampleSize = asNumber(summary.lead_time_sample_count);
+  const agingWipBuckets = {
+    zeroToThree: asNumber(summary.aging_wip_0_3_count),
+    fourToSeven: asNumber(summary.aging_wip_4_7_count),
+    eightToFourteen: asNumber(summary.aging_wip_8_14_count),
+    fifteenToThirty: asNumber(summary.aging_wip_15_30_count),
+    overThirty: asNumber(summary.aging_wip_30_plus_count),
+  };
+  const agingWipMeasuredCount = Object.values(agingWipBuckets).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const agingWipUnknownCount = asNumber(summary.aging_wip_unknown_count);
+  const currentOnTimeRate = percentage(currentOnTime, currentDeadlineCompleted);
+  const previousOnTimeRate = percentage(previousOnTime, previousDeadlineCompleted);
+  const currentOverdueRate = percentage(
+    currentDeadlineCompleted - currentOnTime,
+    currentDeadlineCompleted,
+  );
+  const previousOverdueRate = percentage(
+    previousDeadlineCompleted - previousOnTime,
+    previousDeadlineCompleted,
+  );
+  const trendByPeriod = new Map(
+    trendRows.map((row) => [
+      typeof row.period === 'string' ? row.period : formatCalendarDate(row.period)!,
+      {
+        created: asNumber(row.created_count),
+        completed: asNumber(row.completed_count),
+      },
+    ]),
+  );
+  const createdVsCompleted = Array.from(
+    { length: Math.ceil(selectedRange.days / bucketDays) },
+    (_, index) => {
+      const periodDate = new Date(periodStart.getTime() + index * bucketDays * DAY_MS);
+      const period = formatCalendarDate(periodDate)!;
+      const values = trendByPeriod.get(period) ?? { created: 0, completed: 0 };
+      return { period, ...values };
+    },
+  );
   const riskTasks: CompanyDashboard['riskTasks'] = {
     overdue: [],
     dueNextSevenDays: [],
@@ -468,6 +827,36 @@ export async function getCompanyDashboard(
   }
 
   return {
+    period: {
+      range: selectedRange.range,
+      start: formatCalendarDate(periodStart)!,
+      end: formatCalendarDate(periodEnd)!,
+    },
+    createdInPeriod: comparison(currentCreated, previousCreated),
+    completedInPeriod: comparison(currentCompleted, previousCompleted),
+    cycleTime: {
+      unit: 'days',
+      median: nullableNumber(summary.cycle_time_median),
+      p85: nullableNumber(summary.cycle_time_p85),
+      sampleSize: cycleTimeSampleSize,
+    },
+    leadTime: {
+      unit: 'days',
+      median: nullableNumber(summary.lead_time_median),
+      sampleSize: leadTimeSampleSize,
+    },
+    agingWip: {
+      unit: 'days',
+      buckets: agingWipBuckets,
+      measuredCount: agingWipMeasuredCount,
+      unknownCount: agingWipUnknownCount,
+      totalCount: agingWipMeasuredCount + agingWipUnknownCount,
+    },
+    overdueRate: comparison(currentOverdueRate, previousOverdueRate),
+    onTimeDeliveryRate: comparison(currentOnTimeRate, previousOnTimeRate),
+    backlogChange: currentCreated - currentCompleted,
+    throughput: createdVsCompleted.map(({ period, completed }) => ({ period, count: completed })),
+    createdVsCompleted,
     scope: { teamId: team?.id ?? null, teamName: team?.name ?? null },
     summary: {
       totalUserCount,
@@ -482,6 +871,9 @@ export async function getCompanyDashboard(
       dueNextSevenDaysTaskCount: asNumber(summary.due_next_seven_days_task_count),
       pendingApprovalTaskCount: asNumber(summary.pending_approval_task_count),
       expiredTaskCount: asNumber(summary.expired_task_count),
+      blockedTaskCount,
+      blockedOverThreeDaysTaskCount,
+      blockedRate: percentage(blockedTaskCount, statusTotal),
     },
     riskTasks,
     statusBreakdown: {
@@ -504,4 +896,37 @@ export async function getCompanyDashboard(
     },
     teams,
   };
+}
+
+export async function getCompanyDashboard(
+  db: TenantDb,
+  actor: Actor,
+  filters: CompanyDashboardFilters,
+  now = new Date(),
+): Promise<CompanyDashboard> {
+  if (!isCompanyAdmin(actor)) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  return getDashboardData(db, actor, filters, now);
+}
+
+export async function getTeamDashboard(
+  db: TenantDb,
+  teamId: string,
+  actor: Actor,
+  filters: Pick<CompanyDashboardFilters, 'range'> = {},
+  now = new Date(),
+): Promise<CompanyDashboard> {
+  const tenantId = requireTenant(actor);
+  const team = await db.team.findFirst({
+    where: { id: teamId, tenantId },
+    select: { id: true },
+  });
+  if (!team) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
+
+  if (!isCompanyAdmin(actor) && (await getTeamRole(db, teamId, actor.id)) !== 'teamAdmin') {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+
+  return getDashboardData(db, actor, { teamId, range: filters.range }, now);
 }

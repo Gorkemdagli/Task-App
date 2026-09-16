@@ -133,38 +133,85 @@ describe('landing hero responsive layout', () => {
     );
 
     expect(desktopSnap).toBeGreaterThan(-1);
-    const snapBlock = landingCss.slice(desktopSnap, desktopSnap + 700);
+    const smoothSnap = landingCss.lastIndexOf(
+      '@media (min-width: 64rem) and (prefers-reduced-motion: no-preference) {\n  html:has(.landing-editorial) {',
+    );
+    const snapBlock = landingCss.slice(desktopSnap, smoothSnap);
 
     expect(snapBlock).toContain('scroll-snap-type: y mandatory;');
     expect(snapBlock).toContain('scroll-padding-block: var(--landing-nav-height) 0;');
     expect(snapBlock).toContain('.theme-landing main > section');
     expect(snapBlock).toContain('scroll-snap-align: center;');
     expect(snapBlock).toContain('scroll-snap-stop: always;');
+    expect(snapBlock).not.toContain('scroll-margin-top: var(--landing-nav-height);');
     expect(snapBlock).toContain(
       '.theme-landing .landing-footer {\n    scroll-snap-align: center;\n    scroll-snap-stop: always;',
     );
 
-    const smoothSnap = landingCss.lastIndexOf(
-      '@media (min-width: 64rem) and (prefers-reduced-motion: no-preference) {\n  html:has(.landing-editorial) {',
-    );
     expect(smoothSnap).toBeGreaterThan(desktopSnap);
     expect(landingCss.slice(smoothSnap, smoothSnap + 180)).toContain('scroll-behavior: smooth;');
   });
 
   it('fills desktop snap surfaces to the viewport without outer separators', () => {
     const desktopSurfaces = landingCss.lastIndexOf(
-      '@media (min-width: 64rem) {\n  .theme-landing main > section.landing-hero,\n  .theme-landing main > section.landing-features,\n  .theme-landing main > section.landing-motion,\n  .theme-landing .landing-footer {',
+      '@media (min-width: 64rem) {\n  .theme-landing main > section.landing-hero,\n  .theme-landing main > section.landing-features,\n  .theme-landing main > section.landing-motion {',
     );
 
     expect(desktopSurfaces).toBeGreaterThan(-1);
-    expect(landingCss.slice(desktopSurfaces, desktopSurfaces + 260)).toContain(
-      'min-height: 100svh;',
+    expect(landingCss.slice(desktopSurfaces, desktopSurfaces + 320)).toContain(
+      'min-height: calc(100svh - var(--landing-nav-height));',
+    );
+    expect(landingCss.slice(desktopSurfaces, desktopSurfaces + 260)).not.toContain(
+      '.theme-landing .landing-footer',
+    );
+    expect(landingCss).toContain(
+      `.theme-landing main > section.landing-hero,\n  .theme-landing main > section.landing-features,\n  .theme-landing main > section.landing-motion,\n  .theme-landing main > section.landing-preview-section,\n  .theme-landing .landing-footer {\n    padding-block: var(--spacing-8) var(--spacing-6);`,
     );
     expect(landingCss).not.toContain(
       'padding-block: clamp(6rem, 11vw, 11rem);\n  border-block: 1px solid var(--landing-border);',
     );
     expect(landingCss).not.toContain(
       'padding-block: clamp(5rem, 9vw, 9rem) 1.5rem;\n  border-top: 1px solid var(--landing-border);',
+    );
+  });
+
+  it('uses rendered geometry for desktop snap sections', () => {
+    const desktopContentVisibility = landingCss.lastIndexOf(
+      `@media (min-width: 64rem) {
+  .theme-landing .landing-features,
+  .theme-landing .landing-motion {
+    content-visibility: visible;
+    contain-intrinsic-size: none;`,
+    );
+
+    expect(desktopContentVisibility).toBeGreaterThan(-1);
+  });
+
+  it('keeps snap offsets aligned with the responsive nav height', () => {
+    expect(landingCss).toContain(':root {\n  --landing-nav-height: 5.25rem;');
+
+    const mobileNav = landingCss.lastIndexOf(
+      `@media (max-width: 47.9375rem) {
+  .theme-landing {
+    --landing-nav-height: 4.5rem;`,
+    );
+
+    expect(mobileNav).toBeGreaterThan(-1);
+  });
+
+  it('centers the desktop hero board with the copy group below the nav', () => {
+    const desktopHero = landingCss.lastIndexOf(
+      '@media (min-width: 64rem) {\n  .theme-landing main > section.landing-hero,',
+    );
+
+    expect(desktopHero).toBeGreaterThan(-1);
+    const heroLayout = landingCss.slice(desktopHero, desktopHero + 600);
+
+    expect(heroLayout).toContain(
+      '.theme-landing .landing-hero__split {\n    align-items: center;',
+    );
+    expect(heroLayout).toContain(
+      '.theme-landing .landing-hero__copy {\n    padding-top: 0;',
     );
   });
 });

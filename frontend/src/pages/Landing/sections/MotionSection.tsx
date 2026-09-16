@@ -44,6 +44,7 @@ export function MotionSection() {
       aria-labelledby="motion-title"
       className="landing-motion workflow-redesign"
     >
+      <span className="workflow-snap-anchor" aria-hidden="true" />
       <div className="landing-section-shell">
         <div className="landing-lifecycle-intro">
           <h2 id="motion-title" aria-label="Bir görev açılır. Herkes ne olacağını bilir.">

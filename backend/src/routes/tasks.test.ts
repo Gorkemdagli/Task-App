@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
@@ -124,6 +126,15 @@ describe('createTask', () => {
     expect(task.assignees.map((a) => a.userId)).toContain(member.id);
     expect(task.status).toBe('todo');
     expect(task.priority).toBe('high');
+
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      actorId: admin.id,
+      eventType: 'task_created',
+      fromStatus: null,
+      toStatus: null,
+    });
   });
 
   it('teamAdmin of the team can create task', async () => {
@@ -281,6 +292,90 @@ describe('updateTaskStatus', () => {
     );
     const updated = await tasksService.updateTaskStatus(t.id, { status: 'in_progress' }, member);
     expect(updated.status).toBe('in_progress');
+
+    const events = await prisma.taskEvent.findMany({
+      where: { taskId: t.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      actorId: member.id,
+      eventType: 'status_changed',
+      fromStatus: 'todo',
+      toStatus: 'in_progress',
+    });
+  });
+
+  it('same-status update creates no duplicate event', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'No-op', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    await tasksService.updateTaskStatus(task.id, { status: 'todo' }, member);
+
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(events).toHaveLength(1);
+  });
+
+  it('done to active status creates one reopen event', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Reopen', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    await tasksService.updateTaskStatus(task.id, { status: 'done' }, member);
+    await tasksService.updateTaskStatus(task.id, { status: 'in_progress' }, member);
+
+    const events = await prisma.taskEvent.findMany({
+      where: { taskId: task.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events).toHaveLength(3);
+    expect(events[2]).toMatchObject({
+      actorId: member.id,
+      eventType: 'task_reopened',
+      fromStatus: 'done',
+      toStatus: 'in_progress',
+    });
+  });
+
+  it('event failure rolls back the status and lifecycle update', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Atomic event', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION public.raise_task_event_test()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$ BEGIN RAISE EXCEPTION 'task event failure'; END; $$;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER task_event_failure_test
+      BEFORE INSERT ON "task_events"
+      FOR EACH ROW EXECUTE FUNCTION public.raise_task_event_test();
+    `);
+
+    try {
+      await expect(
+        tasksService.updateTaskStatus(task.id, { status: 'done' }, member),
+      ).rejects.toBeDefined();
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS task_event_failure_test ON "task_events"',
+      );
+      await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS public.raise_task_event_test()');
+    }
+
+    const persistedTask = await prisma.task.findUnique({ where: { id: task.id } });
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(persistedTask).toMatchObject({ status: 'todo', startedAt: null, completedAt: null });
+    expect(events).toHaveLength(1);
   });
 
   it('teamAdmin of the team can update any task status', async () => {
@@ -477,5 +572,28 @@ describe('error cases', () => {
     await expect(
       tasksService.getTask('00000000-0000-0000-0000-000000000000', admin),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('task block route validation', () => {
+  beforeEach(cleanDb);
+
+  it('rejects a malformed task id before calling the block service', async () => {
+    const admin = await register({
+      fullName: 'Block Route Admin',
+      email: 'block-route-admin@example.com',
+      password: 'hunter22',
+      companyName: 'Block Route Co',
+    });
+    const updateTaskBlocked = vi.spyOn(taskServiceImpl, 'updateTaskBlocked');
+
+    const response = await request(createApp())
+      .patch('/api/v1/tasks/not-a-uuid/block')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ isBlocked: true });
+
+    expect(response.status).toBe(400);
+    expect(updateTaskBlocked).not.toHaveBeenCalled();
+    updateTaskBlocked.mockRestore();
   });
 });

@@ -94,6 +94,7 @@ let mockTask: Task | null = null;
 // vi.clearAllMocks() implementation'ı siler, beforeEach'te tekrar bağlanır.
 const proposeMock = vi.fn();
 const updateMock = vi.fn();
+const blockMock = vi.fn();
 const restoreMock = vi.fn();
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
@@ -111,6 +112,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useAckTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useCancelTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+    useUpdateTaskBlocked: () => ({ mutate: blockMock, mutateAsync: blockMock, isPending: false }),
     useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useRestoreTask: () => ({ mutate: restoreMock, mutateAsync: restoreMock, isPending: false }),
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -294,6 +296,26 @@ describe('TaskDetailPage — status change intercept', () => {
     expect(proposeMock).toHaveBeenCalledTimes(1);
     expect(proposeMock).toHaveBeenCalledWith({ taskId: 't1', status: 'done' });
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('assigned member can block and unblock a task from the detail page', async () => {
+    mockTask = makeTask({ blockedReason: null });
+    const user = userEvent.setup();
+    vi.spyOn(window, 'prompt').mockReturnValue('API bekleniyor');
+    const rendered = renderTaskDetail();
+
+    await user.click(screen.getByTestId('task-block-toggle'));
+    expect(blockMock).toHaveBeenCalledWith({
+      taskId: 't1',
+      isBlocked: true,
+      blockedReason: 'API bekleniyor',
+    });
+
+    mockTask = makeTask({ isBlocked: true, blockedReason: 'API bekleniyor' });
+    rendered.unmount();
+    renderTaskDetail();
+    await user.click(screen.getByTestId('task-block-toggle'));
+    expect(blockMock).toHaveBeenLastCalledWith({ taskId: 't1', isBlocked: false });
   });
 
   it('member without team admin membership uses proposal flow', async () => {

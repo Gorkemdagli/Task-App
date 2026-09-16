@@ -7,6 +7,9 @@ import {
   createTaskSchema,
   updateTaskStatusSchema,
   updateTaskPrioritySchema,
+  updateTaskBlockedSchema,
+  taskIdParamsSchema,
+  type TaskIdParams,
   updateTaskFieldsSchema,
   restoreTaskSchema,
   listTasksQuerySchema,
@@ -157,6 +160,26 @@ tasksRouter.patch(
     try {
       const task = await runTenantRequest(req, (db, actor) =>
         tasksService.updateTaskPriority(db, (req.params as { id: string }).id, req.body, actor),
+      );
+      res.json(toTaskDto(task));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+tasksRouter.patch(
+  '/:id/block',
+  writeLimiter,
+  validateBody(updateTaskBlockedSchema),
+  async (req, res, next) => {
+    try {
+      const { id } = parseQuery<TaskIdParams>(taskIdParamsSchema, req.params);
+      const task = await runTenantRequest(
+        req,
+        (db, actor) =>
+          tasksService.updateTaskBlocked(db, id, req.body, actor),
+        statusTransactionOptions,
       );
       res.json(toTaskDto(task));
     } catch (e) {

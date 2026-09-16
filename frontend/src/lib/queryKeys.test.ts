@@ -47,18 +47,20 @@ describe('queryKeys', () => {
     ]);
   });
 
-  it('scopes company dashboard by tenant and team', () => {
+  it('scopes company dashboard by tenant, team, and range', () => {
     expect(queryKeys.companyDashboard('tenant-a', null)).toEqual([
       'tenant',
       'tenant-a',
       'company-dashboard',
       'all',
+      '30d',
     ]);
-    expect(queryKeys.companyDashboard('tenant-a', 'team-a')).toEqual([
+    expect(queryKeys.companyDashboard('tenant-a', 'team-a', '7d')).toEqual([
       'tenant',
       'tenant-a',
       'company-dashboard',
       'team-a',
+      '7d',
     ]);
   });
 

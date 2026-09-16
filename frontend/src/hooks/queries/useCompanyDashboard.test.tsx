@@ -72,10 +72,10 @@ describe('useCompanyDashboard', () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(companyDashboardService.getCompanyDashboard).toHaveBeenCalledWith('team-a');
+    expect(companyDashboardService.getCompanyDashboard).toHaveBeenCalledWith('team-a', '30d');
 
     const query = queryClient.getQueryCache().find({
-      queryKey: queryKeys.companyDashboard('tenant-a', 'team-a'),
+      queryKey: queryKeys.companyDashboard('tenant-a', 'team-a', '30d'),
     });
     const options = query?.options as { refetchOnWindowFocus?: boolean; refetchInterval?: unknown };
     expect(options.refetchOnWindowFocus).toBe(true);
