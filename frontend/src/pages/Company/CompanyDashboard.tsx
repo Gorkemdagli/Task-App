@@ -3,6 +3,7 @@ import { Info } from 'lucide-react';
 import { useTeams } from '@/hooks/queries/useTeams';
 import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
 import type { CompanyDashboardRange, DashboardComparison } from '@/services/companyDashboard';
+import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
 import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
 
@@ -207,6 +208,8 @@ export function CompanyDashboard() {
           Veriler güncelleniyor…
         </p>
       )}
+
+      <DashboardHealth health={data.health} />
 
       <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
         <KpiCard

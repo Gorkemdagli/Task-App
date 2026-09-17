@@ -14,6 +14,49 @@ export type DashboardComparison = {
   deltaPercentage: number;
 };
 
+export type DashboardPeriod = {
+  range: CompanyDashboardRange;
+  start: string;
+  end: string;
+};
+
+export type DashboardScope = { teamId: string | null; teamName: string | null };
+
+export type DashboardHealthStatus =
+  | 'ON_TRACK'
+  | 'AT_RISK'
+  | 'OFF_TRACK'
+  | 'INSUFFICIENT_DATA';
+
+export type DashboardHealthMetric =
+  | 'completedTaskCount'
+  | 'overdueRate'
+  | 'blockedRate'
+  | 'onTimeDeliveryRate'
+  | 'agingWipOverThirty'
+  | 'throughputBalance'
+  | 'backlogChange';
+
+export type DashboardHealthInsight = {
+  metric: DashboardHealthMetric;
+  observedValue: number | null;
+  threshold: number;
+  comparison: 'below' | 'at_or_above' | 'unavailable' | 'below_previous' | 'above_zero';
+  message: string;
+  period: DashboardPeriod;
+  scope: DashboardScope;
+};
+
+export type DashboardHealth = {
+  period: DashboardPeriod;
+  scope: DashboardScope;
+  status: DashboardHealthStatus;
+  sampleSize: number;
+  minimumSampleSize: number;
+  explanation: string;
+  insights: DashboardHealthInsight[];
+};
+
 export type DurationMetric = {
   unit: 'days';
   median: number | null;
@@ -54,11 +97,7 @@ export type CompanyRiskTask = {
 };
 
 export type CompanyDashboard = {
-  period: {
-    range: CompanyDashboardRange;
-    start: string;
-    end: string;
-  };
+  period: DashboardPeriod;
   createdInPeriod: DashboardComparison;
   completedInPeriod: DashboardComparison;
   cycleTime: CycleTimeMetric;
@@ -69,7 +108,8 @@ export type CompanyDashboard = {
   backlogChange: number;
   throughput: Array<{ period: string; count: number }>;
   createdVsCompleted: CompanyDashboardTrendPoint[];
-  scope: { teamId: string | null; teamName: string | null };
+  scope: DashboardScope;
+  health: DashboardHealth;
   summary: {
     totalUserCount: number;
     totalTaskCount: number;

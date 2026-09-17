@@ -35,6 +35,7 @@ export interface Task {
   blockedSince?: string | null;
   blockedReason?: string | null;
   deadline: string | null;
+  estimateMinutes?: number | null;
   archivedAt: string | null;
   teamId: string;
   assignerId: string;
@@ -136,6 +137,7 @@ export function useCreateTask() {
       title: string;
       description?: string;
       deadline?: string;
+      estimateMinutes?: number | null;
       priority: TaskPriority;
       assigneeIds: string[];
       teamId: string;
@@ -320,6 +322,7 @@ export function useUpdateTaskFields() {
       title?: string;
       description?: string | null;
       deadline?: string | null;
+      estimateMinutes?: number | null;
       assigneeIds?: string[];
     }) => {
       const { taskId, ...body } = vars;
@@ -333,6 +336,7 @@ export function useUpdateTaskFields() {
         ...(vars.title !== undefined && { title: vars.title }),
         ...(vars.description !== undefined && { description: vars.description }),
         ...(vars.deadline !== undefined && { deadline: vars.deadline }),
+        ...(vars.estimateMinutes !== undefined && { estimateMinutes: vars.estimateMinutes }),
         ...(vars.assigneeIds !== undefined && {
           assignees: task.assignees.filter((assignee) =>
             vars.assigneeIds?.includes(assignee.userId),

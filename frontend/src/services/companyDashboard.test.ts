@@ -22,6 +22,15 @@ const dashboard: CompanyDashboard = {
   throughput: [{ period: '2026-08-20', count: 1 }],
   createdVsCompleted: [{ period: '2026-08-20', created: 2, completed: 1 }],
   scope: { teamId: null, teamName: null },
+  health: {
+    period: { range: '30d', start: '2026-07-22', end: '2026-08-21' },
+    scope: { teamId: null, teamName: null },
+    status: 'INSUFFICIENT_DATA',
+    sampleSize: 1,
+    minimumSampleSize: 5,
+    explanation: 'Sağlık durumu için en az 5 tamamlanan görev gerekir; bu dönemde 1 görev tamamlandı.',
+    insights: [],
+  },
   summary: {
     totalUserCount: 1,
     totalTaskCount: 2,

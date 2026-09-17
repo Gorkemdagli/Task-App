@@ -40,6 +40,25 @@ const allDashboard: CompanyDashboardData = {
   throughput: [{ period: '2026-08-20', count: 2 }],
   createdVsCompleted: [{ period: '2026-08-20', created: 3, completed: 2 }],
   scope: { teamId: null, teamName: null },
+  health: {
+    period: { range: '30d', start: '2026-07-22', end: '2026-08-21' },
+    scope: { teamId: null, teamName: null },
+    status: 'AT_RISK',
+    sampleSize: 5,
+    minimumSampleSize: 5,
+    explanation: 'AT_RISK: Gecikme oranı %20.',
+    insights: [
+      {
+        metric: 'overdueRate',
+        observedValue: 20,
+        threshold: 20,
+        comparison: 'at_or_above',
+        message: 'Gecikme oranı %20; AT_RISK eşiği olan %20 seviyesinde veya üzerinde.',
+        period: { range: '30d', start: '2026-07-22', end: '2026-08-21' },
+        scope: { teamId: null, teamName: null },
+      },
+    ],
+  },
   summary: {
     totalUserCount: 103,
     totalTaskCount: 20,
@@ -122,6 +141,14 @@ const allDashboard: CompanyDashboardData = {
 const teamDashboard: CompanyDashboardData = {
   ...allDashboard,
   scope: { teamId: 'team-a', teamName: 'Alpha' },
+  health: {
+    ...allDashboard.health,
+    scope: { teamId: 'team-a', teamName: 'Alpha' },
+    insights: allDashboard.health.insights.map((insight) => ({
+      ...insight,
+      scope: { teamId: 'team-a', teamName: 'Alpha' },
+    })),
+  },
   members: { ...allDashboard.members, totalCount: 2, returnedCount: 2, capped: false },
   teams: [],
 };
@@ -264,6 +291,8 @@ describe('CompanyDashboard', () => {
   it('renders metrics, text-labelled charts, capped members, and accessible drill-downs', () => {
     renderDashboard();
 
+    expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent('Risk altında');
+    expect(screen.getByText('AT_RISK: Gecikme oranı %20.')).toBeInTheDocument();
     expect(screen.getByRole('article', { name: 'Toplam kullanıcı KPI' })).toHaveTextContent('103');
     expect(screen.getByRole('article', { name: 'Süresi dolan KPI' })).toHaveTextContent('4');
     expect(screen.getByRole('article', { name: 'Tamamlanma oranı KPI' })).toHaveTextContent('%25');
@@ -510,6 +539,13 @@ describe('CompanyDashboard', () => {
 
     const riskLedger = screen.getByRole('region', { name: 'Riskli görevler' });
     const riskPanel = within(riskLedger).getByRole('tabpanel', { name: 'Geciken görevler' });
+    const taskRow = screen
+      .getByRole('link', { name: 'Veri yedekleme prosedürünün güncellenmesi' })
+      .closest('tr');
+    expect(taskRow).not.toBeNull();
+    expect(within(taskRow as HTMLElement).getByText('Durum').closest('td')).not.toHaveClass(
+      'col-span-2',
+    );
     const pagination = within(riskPanel).getByRole('navigation', { name: 'Risk sayfalama' });
     expect(riskPanel.lastElementChild).toBe(pagination);
   });

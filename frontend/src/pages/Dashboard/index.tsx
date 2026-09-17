@@ -18,6 +18,7 @@ import {
   useTaskComments,
   useUpdateTaskStatus,
   useProposeTaskStatus,
+  useAckTaskStatus,
   type Task,
   type TaskStatus,
 } from '@/hooks/tasks';
@@ -261,6 +262,15 @@ function MemberTaskDetailPanel({
   onClose: () => void;
   user: AuthUser | null;
 }) {
+  const ackStatus = useAckTaskStatus();
+  const hasPending = task.pendingStatus !== null;
+  const youAreAssignee = task.assignees.some((assignee) => assignee.userId === user?.id);
+  const yourAcked = task.statusAcks.some(
+    (ack) => ack.userId === user?.id && ack.pendingVersion === task.pendingVersion,
+  );
+  const isProposer = task.pendingProposedBy === user?.id;
+  const canAck = hasPending && youAreAssignee && !yourAcked && !isProposer;
+
   return (
     <>
       <aside
@@ -304,6 +314,18 @@ function MemberTaskDetailPanel({
             </span>
             {task.pendingStatus && task.pendingProposer?.id !== user?.id && (
               <PendingStatusBadge status={task.pendingStatus} />
+            )}
+            {canAck && (
+              <button
+                type="button"
+                onClick={() =>
+                  ackStatus.mutate({ taskId: task.id, pendingVersion: task.pendingVersion })
+                }
+                disabled={ackStatus.isPending}
+                className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
+              >
+                {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
+              </button>
             )}
           </div>
 

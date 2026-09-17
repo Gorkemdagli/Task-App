@@ -19,6 +19,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [deadline, setDeadline] = useState<string | null>(null);
+  const [estimateMinutes, setEstimateMinutes] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +30,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
     setDescription('');
     setPriority('medium');
     setDeadline(null);
+    setEstimateMinutes('');
     setAssigneeIds([]);
     setError(null);
   };
@@ -47,6 +49,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadline ?? undefined,
+        estimateMinutes: estimateMinutes === '' ? null : Number(estimateMinutes),
         priority,
         assigneeIds,
         teamId,
@@ -110,6 +113,23 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 onChange={setDeadline}
                 required
                 invalid={noDeadline}
+              />
+            </div>
+            <div>
+              <label
+                className="mb-1 block text-xs text-muted-foreground"
+                htmlFor="task-estimate-minutes"
+              >
+                Tahmini süre (dakika, isteğe bağlı)
+              </label>
+              <input
+                id="task-estimate-minutes"
+                type="number"
+                min="0"
+                step="1"
+                value={estimateMinutes}
+                onChange={(e) => setEstimateMinutes(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <AssigneePicker

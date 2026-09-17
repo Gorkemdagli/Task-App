@@ -30,6 +30,7 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
 const mocks = {
   useUpdateTaskStatus: vi.fn(),
   useProposeTaskStatus: vi.fn(),
+  useAckTaskStatus: vi.fn(),
 };
 void mocks; // referans korunsun (gelecek drag-drop testleri için yer tutucu)
 
@@ -66,7 +67,11 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
-    useAckTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+    useAckTaskStatus: () => ({
+      mutate: mocks.useAckTaskStatus,
+      mutateAsync: mocks.useAckTaskStatus,
+      isPending: false,
+    }),
     useCancelTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
     useCreateComment: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
@@ -540,6 +545,99 @@ describe('DashboardPage', () => {
       'href',
       '/tasks/selected-task',
     );
+  });
+
+  it('lets an unacknowledged assignee approve a pending task from the detail panel', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'pending-task',
+      pendingStatus: 'in_progress',
+      pendingVersion: 7,
+      pendingProposedBy: 'u2',
+      pendingProposer: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-pending-task').querySelector('a')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Onayla' }));
+
+    expect(mocks.useAckTaskStatus).toHaveBeenCalledWith({
+      taskId: 'pending-task',
+      pendingVersion: 7,
+    });
+  });
+
+  it.each([
+    ['proposer', { pendingProposedBy: 'u1' }],
+    [
+      'non-assignee',
+      {
+        assignees: [
+          {
+            userId: 'u2',
+            assignedAt: new Date().toISOString(),
+            user: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
+          },
+        ],
+      },
+    ],
+    [
+      'already acknowledged',
+      {
+        statusAcks: [
+          {
+            id: 'ack-1',
+            userId: 'u1',
+            proposedStatus: 'in_progress' as const,
+            pendingVersion: 1,
+            ackedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    ],
+  ])('hides approval action for %s', (_caseName, overrides) => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'pending-task',
+      pendingStatus: 'in_progress',
+      pendingVersion: 1,
+      pendingProposedBy: 'u2',
+      pendingProposer: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
+      ...(overrides as Partial<Task>),
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-pending-task').querySelector('a')!);
+
+    expect(screen.queryByRole('button', { name: 'Onayla' })).toBeNull();
+  });
+
+  it('keeps approval available when the user only acknowledged an older pending version', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'pending-task',
+      pendingStatus: 'in_progress',
+      pendingVersion: 2,
+      pendingProposedBy: 'u2',
+      pendingProposer: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
+      statusAcks: [
+        {
+          id: 'ack-1',
+          userId: 'u1',
+          proposedStatus: 'in_progress',
+          pendingVersion: 1,
+          ackedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-pending-task').querySelector('a')!);
+
+    expect(screen.getByRole('button', { name: 'Onayla' })).toBeInTheDocument();
   });
 
   it('opens the dashboard detail panel for admin task cards on desktop', () => {

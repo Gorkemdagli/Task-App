@@ -15,11 +15,13 @@ const calendarDateSchema = z.string().transform((value, ctx) => {
 
 export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done']);
 export const taskPrioritySchema = z.enum(['low', 'medium', 'high']);
+const estimateMinutesSchema = z.number().int().min(0).max(2147483647).nullable().optional();
 
 export const createTaskSchema = z.object({
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().max(5000).optional(),
   deadline: calendarDateSchema.optional(),
+  estimateMinutes: estimateMinutesSchema,
   priority: taskPrioritySchema,
   assigneeIds: z.array(z.string().uuid()).min(1),
   teamId: z.string().uuid(),
@@ -55,6 +57,7 @@ export const updateTaskFieldsSchema = z
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(5000).nullable().optional(),
     deadline: calendarDateSchema.nullable().optional(),
+    estimateMinutes: estimateMinutesSchema,
     assigneeIds: z.array(z.string().uuid()).min(1).optional(),
   })
   .refine(
@@ -62,6 +65,7 @@ export const updateTaskFieldsSchema = z
       v.title !== undefined ||
       v.description !== undefined ||
       v.deadline !== undefined ||
+      v.estimateMinutes !== undefined ||
       v.assigneeIds !== undefined,
     { message: 'En az bir alan güncellenmeli' },
   );

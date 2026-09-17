@@ -8,6 +8,13 @@ const MEMBER_LIMIT = 100;
 const RISK_TASK_LIMIT = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RANGE = '30d' as const;
+const HEALTH_MIN_SAMPLE_SIZE = 5;
+const HEALTH_THRESHOLDS = {
+  overdueAtRisk: 20,
+  overdueOffTrack: 35,
+  blockedAtRisk: 15,
+  blockedOffTrack: 25,
+} as const;
 
 export const COMPANY_DASHBOARD_RANGES = ['7d', '30d', '90d'] as const;
 export type CompanyDashboardRange = (typeof COMPANY_DASHBOARD_RANGES)[number];
@@ -22,6 +29,49 @@ export type DashboardComparison = {
   previous: number;
   delta: number;
   deltaPercentage: number;
+};
+
+export type DashboardPeriod = {
+  range: CompanyDashboardRange;
+  start: string;
+  end: string;
+};
+
+export type DashboardScope = { teamId: string | null; teamName: string | null };
+
+export type DashboardHealthStatus =
+  | 'ON_TRACK'
+  | 'AT_RISK'
+  | 'OFF_TRACK'
+  | 'INSUFFICIENT_DATA';
+
+export type DashboardHealthMetric =
+  | 'completedTaskCount'
+  | 'overdueRate'
+  | 'blockedRate'
+  | 'onTimeDeliveryRate'
+  | 'agingWipOverThirty'
+  | 'throughputBalance'
+  | 'backlogChange';
+
+export type DashboardHealthInsight = {
+  metric: DashboardHealthMetric;
+  observedValue: number | null;
+  threshold: number;
+  comparison: 'below' | 'at_or_above' | 'unavailable' | 'below_previous' | 'above_zero';
+  message: string;
+  period: DashboardPeriod;
+  scope: DashboardScope;
+};
+
+export type DashboardHealth = {
+  period: DashboardPeriod;
+  scope: DashboardScope;
+  status: DashboardHealthStatus;
+  sampleSize: number;
+  minimumSampleSize: number;
+  explanation: string;
+  insights: DashboardHealthInsight[];
 };
 
 export type DurationMetric = {
@@ -64,11 +114,7 @@ export type CompanyRiskTask = {
 };
 
 export type CompanyDashboard = {
-  period: {
-    range: CompanyDashboardRange;
-    start: string;
-    end: string;
-  };
+  period: DashboardPeriod;
   createdInPeriod: DashboardComparison;
   completedInPeriod: DashboardComparison;
   cycleTime: CycleTimeMetric;
@@ -79,7 +125,8 @@ export type CompanyDashboard = {
   backlogChange: number;
   throughput: Array<{ period: string; count: number }>;
   createdVsCompleted: CompanyDashboardTrendPoint[];
-  scope: { teamId: string | null; teamName: string | null };
+  scope: DashboardScope;
+  health: DashboardHealth;
   summary: {
     totalUserCount: number;
     totalTaskCount: number;
@@ -254,6 +301,195 @@ function comparison(current: number, previous: number): DashboardComparison {
 function rangeConfig(range: CompanyDashboardRange | undefined) {
   const value = range ?? DEFAULT_RANGE;
   return { range: value, days: value === '7d' ? 7 : value === '90d' ? 90 : 30 };
+}
+
+function deriveHealth(
+  period: DashboardPeriod,
+  scope: DashboardScope,
+  inputs: {
+    completedTaskCount: number;
+    overdueNumerator: number;
+    overdueDenominator: number;
+    blockedNumerator: number;
+    blockedDenominator: number;
+    currentOnTimeRate: number;
+    previousOnTimeRate: number;
+    currentOnTimeNumerator: number;
+    currentOnTimeDenominator: number;
+    previousOnTimeNumerator: number;
+    previousOnTimeDenominator: number;
+    agingWipOverThirty: number;
+    backlogChange: number;
+    createdVsCompleted: CompanyDashboardTrendPoint[];
+  },
+): DashboardHealth {
+  const trace = { period, scope };
+  const insufficientInsights: DashboardHealthInsight[] = [];
+  if (inputs.completedTaskCount < HEALTH_MIN_SAMPLE_SIZE) {
+    insufficientInsights.push({
+      ...trace,
+      metric: 'completedTaskCount',
+      observedValue: inputs.completedTaskCount,
+      threshold: HEALTH_MIN_SAMPLE_SIZE,
+      comparison: 'below',
+      message: `Örneklem yetersiz: ${inputs.completedTaskCount}/${HEALTH_MIN_SAMPLE_SIZE} tamamlanan görev.`,
+    });
+  }
+  if (inputs.overdueDenominator <= 0) {
+    insufficientInsights.push({
+      ...trace,
+      metric: 'overdueRate',
+      observedValue: null,
+      threshold: HEALTH_THRESHOLDS.overdueAtRisk,
+      comparison: 'unavailable',
+      message: 'Gecikme oranı için tamamlanan ve teslim tarihi olan görev bulunmuyor.',
+    });
+  }
+  if (inputs.blockedDenominator <= 0) {
+    insufficientInsights.push({
+      ...trace,
+      metric: 'blockedRate',
+      observedValue: null,
+      threshold: HEALTH_THRESHOLDS.blockedAtRisk,
+      comparison: 'unavailable',
+      message: 'Engel oranı için kapsamda görev bulunmuyor.',
+    });
+  }
+  if (insufficientInsights.length > 0) {
+    return {
+      period,
+      scope,
+      status: 'INSUFFICIENT_DATA',
+      sampleSize: inputs.completedTaskCount,
+      minimumSampleSize: HEALTH_MIN_SAMPLE_SIZE,
+      explanation: `Sağlık durumu üretilemedi: ${insufficientInsights.map((insight) => insight.message).join(' ')}`,
+      insights: insufficientInsights,
+    };
+  }
+
+  const insights: DashboardHealthInsight[] = [];
+  const addRateInsight = (
+    metric: 'overdueRate' | 'blockedRate',
+    observedValue: number,
+    numerator: number,
+    denominator: number,
+    label: string,
+    atRiskThreshold: number,
+    offTrackThreshold: number,
+  ) => {
+    const atOffTrack = numerator * 100 >= denominator * offTrackThreshold;
+    const atRisk = numerator * 100 >= denominator * atRiskThreshold;
+    const threshold = atOffTrack ? offTrackThreshold : atRisk ? atRiskThreshold : null;
+    if (threshold === null) return;
+    const status = threshold === offTrackThreshold ? 'OFF_TRACK' : 'AT_RISK';
+    insights.push({
+      ...trace,
+      metric,
+      observedValue,
+      threshold,
+      comparison: 'at_or_above',
+      message: `${label} %${observedValue}; ${status} eşiği olan %${threshold} seviyesinde veya üzerinde.`,
+    });
+  };
+
+  addRateInsight(
+    'overdueRate',
+    percentage(inputs.overdueNumerator, inputs.overdueDenominator),
+    inputs.overdueNumerator,
+    inputs.overdueDenominator,
+    'Gecikme oranı',
+    HEALTH_THRESHOLDS.overdueAtRisk,
+    HEALTH_THRESHOLDS.overdueOffTrack,
+  );
+  addRateInsight(
+    'blockedRate',
+    percentage(inputs.blockedNumerator, inputs.blockedDenominator),
+    inputs.blockedNumerator,
+    inputs.blockedDenominator,
+    'Engel oranı',
+    HEALTH_THRESHOLDS.blockedAtRisk,
+    HEALTH_THRESHOLDS.blockedOffTrack,
+  );
+
+  if (
+    inputs.previousOnTimeDenominator > 0 &&
+    inputs.currentOnTimeDenominator > 0 &&
+    inputs.currentOnTimeNumerator * inputs.previousOnTimeDenominator <
+      inputs.previousOnTimeNumerator * inputs.currentOnTimeDenominator
+  ) {
+    insights.push({
+      ...trace,
+      metric: 'onTimeDeliveryRate',
+      observedValue: inputs.currentOnTimeRate,
+      threshold: inputs.previousOnTimeRate,
+      comparison: 'below_previous',
+      message: `Zamanında teslim oranı %${inputs.currentOnTimeRate}; önceki dönem oranı %${inputs.previousOnTimeRate} seviyesinin altında.`,
+    });
+  }
+  if (inputs.agingWipOverThirty > 0) {
+    insights.push({
+      ...trace,
+      metric: 'agingWipOverThirty',
+      observedValue: inputs.agingWipOverThirty,
+      threshold: 0,
+      comparison: 'above_zero',
+      message: `${inputs.agingWipOverThirty} görev 30 günden uzun süredir in-progress durumda.`,
+    });
+  }
+  const longestOutpacingRun = inputs.createdVsCompleted.reduce(
+    ({ longest, current }, point) => {
+      const next = point.created > point.completed ? current + 1 : 0;
+      return { longest: Math.max(longest, next), current: next };
+    },
+    { longest: 0, current: 0 },
+  ).longest;
+  if (longestOutpacingRun > 0) {
+    insights.push({
+      ...trace,
+      metric: 'throughputBalance',
+      observedValue: longestOutpacingRun,
+      threshold: 0,
+      comparison: 'above_zero',
+      message: `Girişlerin çıkışları aştığı en uzun seri ${longestOutpacingRun} dönem sürdü.`,
+    });
+  }
+  if (inputs.backlogChange > 0) {
+    insights.push({
+      ...trace,
+      metric: 'backlogChange',
+      observedValue: inputs.backlogChange,
+      threshold: 0,
+      comparison: 'above_zero',
+      message: `Backlog bu dönemde ${inputs.backlogChange} görev arttı.`,
+    });
+  }
+
+  const status: DashboardHealthStatus =
+    inputs.overdueNumerator * 100 >= inputs.overdueDenominator * HEALTH_THRESHOLDS.overdueOffTrack ||
+    inputs.blockedNumerator * 100 >= inputs.blockedDenominator * HEALTH_THRESHOLDS.blockedOffTrack
+      ? 'OFF_TRACK'
+      : inputs.overdueNumerator * 100 >= inputs.overdueDenominator * HEALTH_THRESHOLDS.overdueAtRisk ||
+          inputs.blockedNumerator * 100 >= inputs.blockedDenominator * HEALTH_THRESHOLDS.blockedAtRisk
+        ? 'AT_RISK'
+        : 'ON_TRACK';
+  const overdueRate = percentage(inputs.overdueNumerator, inputs.overdueDenominator);
+  const blockedRate = percentage(inputs.blockedNumerator, inputs.blockedDenominator);
+  const explanation =
+    status === 'ON_TRACK'
+      ? `Gecikme oranı %${overdueRate} ve engel oranı %${blockedRate}; AT_RISK eşiklerinin altında.${
+          insights.length > 0 ? ` ${insights.map((insight) => insight.message).join(' ')}` : ''
+        }`
+      : `${status}: ${insights.map((insight) => insight.message).join(' ')}`;
+
+  return {
+    period,
+    scope,
+    status,
+    sampleSize: inputs.completedTaskCount,
+    minimumSampleSize: HEALTH_MIN_SAMPLE_SIZE,
+    explanation,
+    insights,
+  };
 }
 
 function mapMember(row: MemberRow) {
@@ -826,12 +1062,16 @@ async function getDashboardData(
     });
   }
 
+  const period: DashboardPeriod = {
+    range: selectedRange.range,
+    start: formatCalendarDate(periodStart)!,
+    end: formatCalendarDate(periodEnd)!,
+  };
+  const scope: DashboardScope = { teamId: team?.id ?? null, teamName: team?.name ?? null };
+  const blockedRate = percentage(blockedTaskCount, statusTotal);
+
   return {
-    period: {
-      range: selectedRange.range,
-      start: formatCalendarDate(periodStart)!,
-      end: formatCalendarDate(periodEnd)!,
-    },
+    period,
     createdInPeriod: comparison(currentCreated, previousCreated),
     completedInPeriod: comparison(currentCompleted, previousCompleted),
     cycleTime: {
@@ -857,7 +1097,23 @@ async function getDashboardData(
     backlogChange: currentCreated - currentCompleted,
     throughput: createdVsCompleted.map(({ period, completed }) => ({ period, count: completed })),
     createdVsCompleted,
-    scope: { teamId: team?.id ?? null, teamName: team?.name ?? null },
+    scope,
+    health: deriveHealth(period, scope, {
+      completedTaskCount: currentCompleted,
+      overdueNumerator: currentDeadlineCompleted - currentOnTime,
+      overdueDenominator: currentDeadlineCompleted,
+      blockedNumerator: blockedTaskCount,
+      blockedDenominator: statusTotal,
+      currentOnTimeRate,
+      previousOnTimeRate,
+      currentOnTimeNumerator: currentOnTime,
+      currentOnTimeDenominator: currentDeadlineCompleted,
+      previousOnTimeNumerator: previousOnTime,
+      previousOnTimeDenominator: previousDeadlineCompleted,
+      agingWipOverThirty: agingWipBuckets.overThirty,
+      backlogChange: currentCreated - currentCompleted,
+      createdVsCompleted,
+    }),
     summary: {
       totalUserCount,
       totalTaskCount,
@@ -873,7 +1129,7 @@ async function getDashboardData(
       expiredTaskCount: asNumber(summary.expired_task_count),
       blockedTaskCount,
       blockedOverThreeDaysTaskCount,
-      blockedRate: percentage(blockedTaskCount, statusTotal),
+      blockedRate,
     },
     riskTasks,
     statusBreakdown: {

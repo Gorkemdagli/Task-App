@@ -35,6 +35,24 @@ describe('task calendar-date schema', () => {
   });
 });
 
+describe('task estimate schema', () => {
+  it('accepts nullable non-negative minute estimates on create and update', () => {
+    expect(createTaskSchema.parse({ ...baseTask, estimateMinutes: 0 }).estimateMinutes).toBe(0);
+    expect(createTaskSchema.parse({ ...baseTask, estimateMinutes: 90 }).estimateMinutes).toBe(90);
+    expect(updateTaskFieldsSchema.parse({ estimateMinutes: null }).estimateMinutes).toBeNull();
+  });
+
+  it('rejects fractional and negative estimates', () => {
+    expect(() => createTaskSchema.parse({ ...baseTask, estimateMinutes: 1.5 })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ estimateMinutes: -1 })).toThrow();
+  });
+
+  it('rejects estimates above the PostgreSQL integer limit', () => {
+    expect(() => createTaskSchema.parse({ ...baseTask, estimateMinutes: 2147483648 })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ estimateMinutes: 2147483648 })).toThrow();
+  });
+});
+
 describe('task blocking schema', () => {
   it('accepts an optional trimmed reason and explicit state', () => {
     expect(

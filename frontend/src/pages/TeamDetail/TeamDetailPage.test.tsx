@@ -103,6 +103,25 @@ const dashboard: TeamDashboardData = {
   throughput: [],
   createdVsCompleted: [],
   scope: { teamId: team.id, teamName: team.name },
+  health: {
+    period: { range: '30d', start: '2025-01-01', end: '2025-01-31' },
+    scope: { teamId: team.id, teamName: team.name },
+    status: 'INSUFFICIENT_DATA',
+    sampleSize: 1,
+    minimumSampleSize: 5,
+    explanation: 'Sağlık durumu için en az 5 tamamlanan görev gerekir; bu dönemde 1 görev tamamlandı.',
+    insights: [
+      {
+        metric: 'completedTaskCount',
+        observedValue: 1,
+        threshold: 5,
+        comparison: 'below',
+        message: 'Örneklem yetersiz: 1/5 tamamlanan görev.',
+        period: { range: '30d', start: '2025-01-01', end: '2025-01-31' },
+        scope: { teamId: team.id, teamName: team.name },
+      },
+    ],
+  },
   summary: {
     totalUserCount: 2,
     totalTaskCount: 2,
@@ -200,6 +219,8 @@ describe('TeamDetailPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Dashboard' }));
     expect(screen.getByRole('heading', { name: 'Takım Dashboardu' })).toBeInTheDocument();
     expect(screen.getByText('Toplam üye')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent('Yetersiz veri');
+    expect(screen.getByText(/en az 5 tamamlanan görev gerekir/i)).toBeInTheDocument();
     expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
     expect(screen.getByText('Lead time')).toBeInTheDocument();
     expect(screen.getByText(/Ölçülemeyen/)).toBeInTheDocument();
