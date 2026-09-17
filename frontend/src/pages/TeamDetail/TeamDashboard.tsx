@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useTeamDashboard } from '@/hooks/queries/useTeamDashboard';
 import type { CompanyDashboardRange } from '@/services/companyDashboard';
+import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
 import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from '../Company/CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger } from '../Company/CompanyDashboardTables';
 
@@ -150,6 +151,8 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
         </p>
       )}
 
+      <DashboardHealth health={data.health} />
+
       <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Toplam üye" value={data.summary.totalUserCount} />
         <KpiCard label="Toplam görev" value={data.summary.totalTaskCount} />
@@ -190,13 +193,16 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
         data-testid="team-flow-metrics"
         className="rounded-lg border border-border bg-card"
       >
-        <div className="border-b border-border px-4 py-4 md:px-5">
-          <h2 id="team-flow-heading" className="text-lg font-semibold">
-            Akış metrikleri
-          </h2>
-          <p className="mt-1 text-sm text-secondary-foreground">
-            Seçili dönemde tamamlanan görevler ve mevcut WIP
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-5">
+          <div>
+            <h2 id="team-flow-heading" className="text-lg font-semibold">
+              Akış metrikleri
+            </h2>
+            <p className="mt-1 text-sm text-secondary-foreground">
+              Seçili dönemde tamamlanan görevler ve mevcut WIP
+            </p>
+          </div>
+          <KpiCard label="Ölçüm örneği" value={`n=${data.cycleTime.sampleSize}`} />
         </div>
         <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 sm:grid-cols-3">
           <KpiCard
@@ -214,7 +220,6 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
             value={formatDuration(data.leadTime.median)}
             tooltip="Görevin oluşturulmasından tamamlanmasına kadar geçen medyan süreyi gösterir."
           />
-          <KpiCard label="Ölçüm örneği" value={`n=${data.cycleTime.sampleSize}`} />
         </div>
         <div className="border-t border-border px-4 py-4 md:px-5">
           <div className="flex items-baseline justify-between gap-3">

@@ -140,7 +140,7 @@ function RiskTaskRow({ task }: { task: CompanyRiskTask }) {
           {formatCalendarDateDisplay(task.deadline)}
         </span>
       </td>
-      <td className="col-span-2 lg:table-cell lg:px-3 lg:py-3">
+      <td className="min-w-0 lg:table-cell lg:px-3 lg:py-3">
         <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">Durum</span>
         <StatusBadge status={task.status} />
       </td>

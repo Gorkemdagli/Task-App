@@ -43,6 +43,7 @@ export interface TaskWithRelations {
   blockedSince: Date | null;
   blockedReason: string | null;
   deadline: Date | null;
+  estimateMinutes: number | null;
   startedAt: Date | null;
   completedAt: Date | null;
   archivedAt: Date | null;
@@ -136,6 +137,7 @@ export async function createTask(
       title: input.title,
       description: input.description ?? null,
       deadline: input.deadline ?? null,
+      estimateMinutes: input.estimateMinutes ?? null,
       priority: input.priority,
       assignerId: actor.id,
       assignees: { create: uniqueIds.map((userId) => ({ userId })) },
@@ -607,6 +609,7 @@ export async function updateTaskFields(
       ...(input.title !== undefined && { title: input.title }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.deadline !== undefined && { deadline: input.deadline }),
+      ...(input.estimateMinutes !== undefined && { estimateMinutes: input.estimateMinutes }),
       ...(pendingCancelledByProposerRemoval && {
         pendingStatus: null,
         pendingProposedBy: null,

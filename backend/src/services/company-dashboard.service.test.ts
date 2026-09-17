@@ -7,6 +7,7 @@ const TEAM_ID = '11111111-1111-4111-8111-111111111111';
 const now = new Date('2026-08-20T12:00:00.000Z');
 const admin: Actor = { id: 'admin-a', role: 'companyAdmin', tenantId: 'tenant-a' };
 const member: Actor = { id: 'member-a', role: 'member', tenantId: 'tenant-a' };
+type Numeric = bigint | number;
 
 const db = {
   team: { findFirst: vi.fn() },
@@ -404,5 +405,146 @@ describe('getCompanyDashboard', () => {
     );
     expect(summaryQuery.text).toMatch(/task\.blocked_since < \$\d+/);
     expect(blockedCutoff).toEqual(new Date('2026-08-17T12:00:00.000Z'));
+  });
+
+  it('derives deterministic health at boundaries, with off-track precedence and insufficient data', async () => {
+    const load = async (
+      overrides: Partial<typeof summaryRow>,
+      trends: Array<{
+        period: string;
+        created_count: Numeric;
+        completed_count: Numeric;
+      }> = [],
+    ) => {
+      vi.mocked(db.$queryRaw)
+        .mockResolvedValueOnce([{ ...summaryRow, ...overrides }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(trends)
+        .mockResolvedValueOnce([]);
+      return getCompanyDashboard(db, admin, { range: '30d' }, now);
+    };
+
+    const onTrack = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 100n,
+      current_on_time_task_count: 81n,
+      blocked_task_count: 14n,
+      status_total: 100n,
+    });
+    expect(onTrack.health.status).toBe('ON_TRACK');
+    expect(onTrack.health.insights.filter(({ metric }) => metric === 'overdueRate' || metric === 'blockedRate')).toEqual([]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const atRisk = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 100n,
+      current_on_time_task_count: 80n,
+      blocked_task_count: 15n,
+      status_total: 100n,
+    });
+    expect(atRisk.health.status).toBe('AT_RISK');
+    expect(atRisk.health.insights.filter(({ metric }) => metric === 'overdueRate' || metric === 'blockedRate').map(({ metric, observedValue, threshold }) => ({ metric, observedValue, threshold }))).toEqual([
+      { metric: 'overdueRate', observedValue: 20, threshold: 20 },
+      { metric: 'blockedRate', observedValue: 15, threshold: 15 },
+    ]);
+    expect(atRisk.health.insights[0]).toMatchObject({
+      period: atRisk.period,
+      scope: atRisk.scope,
+    });
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const offTrack = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 100n,
+      current_on_time_task_count: 65n,
+      blocked_task_count: 25n,
+      status_total: 100n,
+    });
+    expect(offTrack.health.status).toBe('OFF_TRACK');
+    expect(offTrack.health.insights.filter(({ metric }) => metric === 'overdueRate' || metric === 'blockedRate').map((insight) => insight.threshold)).toEqual([35, 25]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const insufficient = await load({
+      current_completed_task_count: 4n,
+      current_deadline_completed_task_count: 100n,
+      current_on_time_task_count: 0n,
+      blocked_task_count: 100n,
+      status_total: 100n,
+    });
+    expect(insufficient.health.status).toBe('INSUFFICIENT_DATA');
+    expect(insufficient.health.insights).toEqual([
+      expect.objectContaining({
+        metric: 'completedTaskCount',
+        observedValue: 4,
+        threshold: 5,
+        comparison: 'below',
+      }),
+    ]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const roundedButBelowOffTrack = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 23n,
+      current_on_time_task_count: 15n,
+      blocked_task_count: 0n,
+      status_total: 100n,
+    });
+    expect(roundedButBelowOffTrack.overdueRate.current).toBe(35);
+    expect(roundedButBelowOffTrack.health.status).toBe('AT_RISK');
+    expect(roundedButBelowOffTrack.health.insights).toEqual([
+      expect.objectContaining({ metric: 'overdueRate', observedValue: 35, threshold: 20 }),
+      expect.objectContaining({ metric: 'onTimeDeliveryRate' }),
+      expect.objectContaining({ metric: 'agingWipOverThirty' }),
+    ]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const missingOverdueDenominator = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 0n,
+      current_on_time_task_count: 0n,
+      blocked_task_count: 0n,
+      status_total: 100n,
+    });
+    expect(missingOverdueDenominator.health.status).toBe('INSUFFICIENT_DATA');
+    expect(missingOverdueDenominator.health.insights).toEqual([
+      expect.objectContaining({ metric: 'overdueRate', comparison: 'unavailable' }),
+    ]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const missingBlockedDenominator = await load({
+      current_completed_task_count: 5n,
+      current_deadline_completed_task_count: 100n,
+      current_on_time_task_count: 100n,
+      blocked_task_count: 0n,
+      status_total: 0n,
+    });
+    expect(missingBlockedDenominator.health.status).toBe('INSUFFICIENT_DATA');
+    expect(missingBlockedDenominator.health.insights).toEqual([
+      expect.objectContaining({ metric: 'blockedRate', comparison: 'unavailable' }),
+    ]);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const additionalInsights = await load(
+      {
+        current_completed_task_count: 5n,
+        current_created_task_count: 7n,
+        current_deadline_completed_task_count: 5n,
+        current_on_time_task_count: 5n,
+        blocked_task_count: 0n,
+        status_total: 100n,
+        aging_wip_30_plus_count: 2n,
+      },
+      [
+        { period: '2026-08-01', created_count: 2n, completed_count: 1n },
+        { period: '2026-08-02', created_count: 3n, completed_count: 2n },
+      ],
+    );
+    expect(additionalInsights.health.status).toBe('ON_TRACK');
+    expect(additionalInsights.health.insights.map(({ metric }) => metric)).toEqual([
+      'agingWipOverThirty',
+      'throughputBalance',
+      'backlogChange',
+    ]);
   });
 });

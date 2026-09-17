@@ -159,6 +159,7 @@ model Task {
   blockedSince DateTime?   @map("blocked_since") @db.Timestamptz(6)
   blockedReason String?     @map("blocked_reason")
   deadline    DateTime?    @db.Timestamptz(6)
+  estimateMinutes Int?      @map("estimate_minutes")
   startedAt   DateTime?    @map("started_at") @db.Timestamptz(6)
   completedAt DateTime?    @map("completed_at") @db.Timestamptz(6)
   assignerId  String       @map("assigner_id") @db.Uuid

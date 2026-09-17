@@ -137,6 +137,22 @@ describe('createTask', () => {
     });
   });
 
+  it('stores a nullable estimate in minutes', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      {
+        title: 'Estimated task',
+        priority: 'medium',
+        estimateMinutes: 90,
+        assigneeIds: [member.id],
+        teamId: team.id,
+      },
+      admin,
+    );
+
+    expect(task.estimateMinutes).toBe(90);
+  });
+
   it('teamAdmin of the team can create task', async () => {
     const { member, team } = await makeTeamWithTeamAdminMember();
     const t = await tasksService.createTask(
@@ -206,6 +222,29 @@ describe('createTask', () => {
       where: { userId: admin.id, type: 'task_assigned' },
     });
     expect(notifs).toHaveLength(0);
+  });
+});
+
+describe('updateTaskFields estimate', () => {
+  beforeEach(cleanDb);
+
+  it('updates and clears a nullable estimate without changing assignment scope', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const task = await tasksService.createTask(
+      { title: 'Estimate update', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    const estimated = await tasksService.updateTaskFields(
+      task.id,
+      { estimateMinutes: 120 },
+      admin,
+    );
+    expect(estimated.estimateMinutes).toBe(120);
+    expect(estimated.assignees.map((assignee) => assignee.userId)).toEqual([member.id]);
+
+    const cleared = await tasksService.updateTaskFields(task.id, { estimateMinutes: null }, admin);
+    expect(cleared.estimateMinutes).toBeNull();
   });
 });
 
