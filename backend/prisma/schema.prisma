@@ -30,10 +30,19 @@ enum TaskPriority {
 
 enum TaskEventType {
   task_created
+  assignee_added
+  assignee_removed
   status_changed
   task_reopened
+  status_change_requested
+  status_change_approved
+  status_change_rejected
+  priority_changed
+  deadline_changed
   task_blocked
   task_unblocked
+  file_added
+  file_deleted
 }
 
 enum ChannelType {
@@ -78,6 +87,7 @@ model Tenant {
   users User[]
   teams Team[]
   companyInvitations CompanyInvitation[]
+  taskFiles TaskFile[]
 
   @@map("tenants")
 }
@@ -112,6 +122,8 @@ model User {
   notifications    Notification[]
   receivedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationRecipient")
   sentCompanyInvitations     CompanyInvitation[] @relation("CompanyInvitationInviter")
+  uploadedTaskFiles          TaskFile[] @relation("TaskFileUploader")
+  deletedTaskFiles           TaskFile[] @relation("TaskFileDeletedBy")
 
   @@index([tenantId])
   @@map("users")
@@ -153,6 +165,10 @@ model Task {
   teamId      String       @map("team_id") @db.Uuid
   title       String
   description String?
+  scopeItems  String[]     @default([]) @map("scope_items")
+  targetAudience String?   @map("target_audience")
+  expectedOutput String?   @map("expected_output")
+  tags        String[]     @default([])
   status      TaskStatus   @default(todo)
   priority    TaskPriority @default(medium)
   isBlocked   Boolean      @default(false) @map("is_blocked")
@@ -174,6 +190,7 @@ model Task {
   statusAcks      TaskStatusAck[]
   comments        TaskComment[]
   events          TaskEvent[]
+  files           TaskFile[]
 
   pendingStatus     TaskStatus? @map("pending_status")
   pendingVersion    Int         @default(0) @map("pending_version")
@@ -202,6 +219,29 @@ model TaskEvent {
 
   @@index([taskId, createdAt])
   @@map("task_events")
+}
+
+model TaskFile {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id") @db.Uuid
+  taskId       String   @map("task_id") @db.Uuid
+  uploaderId   String   @map("uploader_id") @db.Uuid
+  originalName String   @map("original_name")
+  objectPath   String   @unique @map("object_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedById  String?  @map("deleted_by_id") @db.Uuid
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader     User     @relation("TaskFileUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  deletedBy    User?    @relation("TaskFileDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId, deletedAt, createdAt])
+  @@index([tenantId])
+  @@map("task_files")
 }
 
 model TaskAssignee {

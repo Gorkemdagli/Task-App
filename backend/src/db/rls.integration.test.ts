@@ -148,16 +148,58 @@ describe('RLS tenant isolation for task relations', () => {
     const deleteResult = await asTenant(tenantAId, userAId, (db) =>
       db.taskStatusAck.deleteMany({ where: { taskId: taskBId } }),
     );
-    const eventUpdateResult = await asTenant(tenantAId, userAId, (db) =>
-      db.taskEvent.updateMany({ where: { taskId: taskBId }, data: { actorId: userAId } }),
-    );
-    const eventDeleteResult = await asTenant(tenantAId, userAId, (db) =>
-      db.taskEvent.deleteMany({ where: { taskId: taskBId } }),
-    );
     expect(updateResult.count).toBe(0);
     expect(deleteResult.count).toBe(0);
-    expect(eventUpdateResult.count).toBe(0);
-    expect(eventDeleteResult.count).toBe(0);
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskEvent.updateMany({ where: { taskId: taskBId }, data: { actorId: userAId } }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskEvent.deleteMany({ where: { taskId: taskBId } }),
+      ),
+    ).rejects.toBeDefined();
+  });
+
+  it('task events are append-only and task files remain tenant-scoped', async () => {
+    const ownTenantEvent = await asTenant(tenantAId, userAId, (db) =>
+      db.taskEvent.findFirstOrThrow({ where: { taskId: taskAId } }),
+    );
+
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskEvent.update({
+          where: { id: ownTenantEvent.id },
+          data: { metadata: { tampered: true } },
+        }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskEvent.delete({ where: { id: ownTenantEvent.id } }),
+      ),
+    ).rejects.toBeDefined();
+
+    await asTenant(tenantAId, userAId, (db) =>
+      db.taskFile.create({
+        data: {
+          tenantId: tenantAId,
+          taskId: taskAId,
+          uploaderId: userAId,
+          originalName: 'brief.pdf',
+          objectPath: `tenants/${tenantAId}/tasks/${taskAId}/file-a`,
+          mimeType: 'application/pdf',
+          sizeBytes: 128,
+        },
+      }),
+    );
+
+    const tenantBFiles = await asTenant(tenantBId, userBId, (db) =>
+      db.taskFile.findMany({ where: { taskId: taskAId } }),
+    );
+
+    expect(tenantBFiles).toEqual([]);
   });
 
   it('tenantless users can be claimed by the current tenant', async () => {
