@@ -87,6 +87,21 @@ CREATE POLICY "task_files_insert" ON "task_files"
       WHERE t."id" = "task_files"."task_id"
         AND tm."tenant_id" = current_setting('app.tenant_id', true)::uuid
     )
+    AND EXISTS (
+      SELECT 1
+      FROM "users" u
+      WHERE u."id" = "task_files"."uploader_id"
+        AND u."tenant_id" = current_setting('app.tenant_id', true)::uuid
+    )
+    AND (
+      "task_files"."deleted_by_id" IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM "users" u
+        WHERE u."id" = "task_files"."deleted_by_id"
+          AND u."tenant_id" = current_setting('app.tenant_id', true)::uuid
+      )
+    )
   );
 
 CREATE POLICY "task_files_update" ON "task_files"
@@ -109,6 +124,21 @@ CREATE POLICY "task_files_update" ON "task_files"
       JOIN "teams" tm ON tm."id" = t."team_id"
       WHERE t."id" = "task_files"."task_id"
         AND tm."tenant_id" = current_setting('app.tenant_id', true)::uuid
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM "users" u
+      WHERE u."id" = "task_files"."uploader_id"
+        AND u."tenant_id" = current_setting('app.tenant_id', true)::uuid
+    )
+    AND (
+      "task_files"."deleted_by_id" IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM "users" u
+        WHERE u."id" = "task_files"."deleted_by_id"
+          AND u."tenant_id" = current_setting('app.tenant_id', true)::uuid
+      )
     )
   );
 

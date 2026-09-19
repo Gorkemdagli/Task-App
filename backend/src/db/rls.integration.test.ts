@@ -181,7 +181,53 @@ describe('RLS tenant isolation for task relations', () => {
       ),
     ).rejects.toBeDefined();
 
-    await asTenant(tenantAId, userAId, (db) =>
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskFile.create({
+          data: {
+            tenantId: tenantAId,
+            taskId: taskAId,
+            uploaderId: userBId,
+            originalName: 'cross-tenant-uploader.pdf',
+            objectPath: `tenants/${tenantAId}/tasks/${taskAId}/cross-tenant-uploader`,
+            mimeType: 'application/pdf',
+            sizeBytes: 128,
+          },
+        }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskFile.create({
+          data: {
+            tenantId: tenantBId,
+            taskId: taskAId,
+            uploaderId: userAId,
+            originalName: 'wrong-tenant.pdf',
+            objectPath: `tenants/${tenantBId}/tasks/${taskAId}/wrong-tenant`,
+            mimeType: 'application/pdf',
+            sizeBytes: 128,
+          },
+        }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskFile.create({
+          data: {
+            tenantId: tenantAId,
+            taskId: taskBId,
+            uploaderId: userAId,
+            originalName: 'wrong-task.pdf',
+            objectPath: `tenants/${tenantAId}/tasks/${taskBId}/wrong-task`,
+            mimeType: 'application/pdf',
+            sizeBytes: 128,
+          },
+        }),
+      ),
+    ).rejects.toBeDefined();
+
+    const ownTenantFile = await asTenant(tenantAId, userAId, (db) =>
       db.taskFile.create({
         data: {
           tenantId: tenantAId,
@@ -194,6 +240,15 @@ describe('RLS tenant isolation for task relations', () => {
         },
       }),
     );
+
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskFile.update({
+          where: { id: ownTenantFile.id },
+          data: { deletedById: userBId },
+        }),
+      ),
+    ).rejects.toBeDefined();
 
     const tenantBFiles = await asTenant(tenantBId, userBId, (db) =>
       db.taskFile.findMany({ where: { taskId: taskAId } }),
