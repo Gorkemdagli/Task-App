@@ -224,8 +224,11 @@ describe('ackTaskStatus', () => {
     await tasksService.proposeTaskStatus(task.id, { status: 'in_progress' }, b);
 
     const proposalEvents = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
-    expect(proposalEvents).toHaveLength(1);
-    expect(proposalEvents[0].eventType).toBe('task_created');
+    expect(proposalEvents).toHaveLength(2);
+    expect(proposalEvents.map((event) => event.eventType)).toEqual([
+      'task_created',
+      'status_change_requested',
+    ]);
 
     const result = await tasksService.ackTaskStatus(task.id, c);
 
@@ -239,8 +242,11 @@ describe('ackTaskStatus', () => {
     expect(acks.find((a) => a.userId === c.id)).toBeDefined();
 
     const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
-    expect(events).toHaveLength(1);
-    expect(events[0].eventType).toBe('task_created');
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => event.eventType)).toEqual([
+      'task_created',
+      'status_change_requested',
+    ]);
   });
 
   it('tüm assignees ack → apply + notify + acks cleared', async () => {
@@ -275,8 +281,14 @@ describe('ackTaskStatus', () => {
     expect(notifs[0].payload).toMatchObject({ oldStatus: 'todo', newStatus: 'in_progress' });
 
     const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
-    expect(events).toHaveLength(2);
-    expect(events[1]).toMatchObject({
+    expect(events).toHaveLength(4);
+    expect(events[2]).toMatchObject({
+      actorId: c.id,
+      eventType: 'status_change_approved',
+      fromStatus: 'todo',
+      toStatus: 'in_progress',
+    });
+    expect(events[3]).toMatchObject({
       actorId: b.id,
       eventType: 'status_changed',
       fromStatus: 'todo',

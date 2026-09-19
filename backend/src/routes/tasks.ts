@@ -19,6 +19,8 @@ import * as tasksService from '../services/tasks.service';
 import { runTenantRequest } from '../http/runTenantRequest';
 import { parseQuery } from '../http/parseQuery';
 import { toTaskDto } from '../http/taskDto';
+import { listTaskHistory } from '../services/task-events.service';
+import { z } from 'zod';
 
 export const tasksRouter = Router();
 
@@ -26,6 +28,11 @@ const statusTransactionOptions = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   maxRetries: 3,
 } as const;
+
+const taskHistoryQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().default(50),
+});
 
 tasksRouter.use(requireAuth);
 
@@ -50,6 +57,22 @@ tasksRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
       tasksService.listTasks(db, parsed, actor),
     );
     res.json({ ...result, tasks: result.tasks.map(toTaskDto) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+tasksRouter.get('/:id/history', authenticatedReadLimiter, async (req, res, next) => {
+  try {
+    const { id } = parseQuery<TaskIdParams>(taskIdParamsSchema, req.params);
+    const query = parseQuery<Parameters<typeof listTaskHistory>[3]>(
+      taskHistoryQuerySchema,
+      req.query,
+    );
+    const result = await runTenantRequest(req, (db, actor) =>
+      listTaskHistory(db, id, actor, query),
+    );
+    res.json(result);
   } catch (e) {
     next(e);
   }

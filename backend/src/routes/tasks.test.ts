@@ -776,3 +776,50 @@ describe('structured task field routes', () => {
     expect(response.body).not.toHaveProperty('scopeItems');
   });
 });
+
+describe('task history route', () => {
+  beforeEach(cleanDb);
+
+  it('returns newest task events with cursor pagination', async () => {
+    const { task, memberAccessToken } = await makeRouteTaskFixture();
+    const status = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}/status`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ status: 'in_progress' });
+    expect(status.status).toBe(200);
+
+    const first = await request(createApp())
+      .get(`/api/v1/tasks/${task.id}/history?limit=1`)
+      .set('Authorization', `Bearer ${memberAccessToken}`);
+    expect(first.status).toBe(200);
+    expect(first.body.items).toHaveLength(1);
+    expect(first.body.items[0]).toMatchObject({
+      eventType: 'status_changed',
+      actor: { id: task.assignees?.[0]?.userId ?? expect.any(String), name: 'Route Member' },
+    });
+    expect(typeof first.body.nextCursor).toBe('string');
+
+    const second = await request(createApp())
+      .get(`/api/v1/tasks/${task.id}/history?limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`);
+    expect(second.status).toBe(200);
+    expect(second.body.items[0].eventType).toBe('task_created');
+    expect(second.body.nextCursor).toBeNull();
+  });
+
+  it('does not reveal history across tenants', async () => {
+    const { task } = await makeRouteTaskFixture();
+    const foreign = await register({
+      fullName: 'Foreign Admin',
+      email: 'history-foreign@example.com',
+      password: 'hunter22',
+      companyName: 'Foreign History Co',
+    });
+
+    const response = await request(createApp())
+      .get(`/api/v1/tasks/${task.id}/history`)
+      .set('Authorization', `Bearer ${foreign.accessToken}`);
+    expect(response.status).toBe(404);
+    expect(response.body).not.toHaveProperty('items');
+  });
+});
