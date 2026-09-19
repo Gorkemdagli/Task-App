@@ -16,6 +16,7 @@ const baseProductionEnv = {
   QSTASH_NEXT_SIGNING_KEY: 'next-signing-key',
   SUPABASE_URL: 'https://supabase.example.test',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+  SUPABASE_TASK_FILES_BUCKET: 'taskflow-task-files',
   SENTRY_DSN: 'https://public@sentry.example.test/1',
   SENTRY_ENVIRONMENT: 'production',
   SENTRY_RELEASE: 'release-sha',
@@ -29,6 +30,7 @@ describe('environment contract', () => {
       PUBLIC_API_ORIGIN: undefined,
       QSTASH_CURRENT_SIGNING_KEY: undefined,
       QSTASH_NEXT_SIGNING_KEY: undefined,
+      SUPABASE_TASK_FILES_BUCKET: undefined,
     });
 
     expect(result.success).toBe(false);
@@ -39,6 +41,7 @@ describe('environment contract', () => {
           'PUBLIC_API_ORIGIN',
           'QSTASH_CURRENT_SIGNING_KEY',
           'QSTASH_NEXT_SIGNING_KEY',
+          'SUPABASE_TASK_FILES_BUCKET',
         ]),
       );
     }

@@ -28,6 +28,7 @@ export const envSchema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+    SUPABASE_TASK_FILES_BUCKET: z.string().min(1).optional(),
     SENTRY_DSN: z.string().url().optional(),
     SENTRY_ENVIRONMENT: z.string().min(1).default('development'),
     SENTRY_RELEASE: z.string().min(1).optional(),
@@ -93,6 +94,13 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SUPABASE_SERVICE_ROLE_KEY'],
         message: 'SUPABASE_SERVICE_ROLE_KEY is required in production',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.SUPABASE_TASK_FILES_BUCKET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SUPABASE_TASK_FILES_BUCKET'],
+        message: 'SUPABASE_TASK_FILES_BUCKET is required in production',
       });
     }
     if (value.NODE_ENV === 'production' && !value.SENTRY_DSN) {
