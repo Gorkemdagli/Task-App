@@ -9,5 +9,12 @@ export function toTaskDto(task: TaskWithRelations): TaskDto {
   const publicTask = { ...task };
   Reflect.deleteProperty(publicTask, 'startedAt');
   Reflect.deleteProperty(publicTask, 'completedAt');
-  return { ...publicTask, deadline: formatCalendarDate(task.deadline) };
+  return {
+    ...publicTask,
+    scopeItems: task.scopeItems ?? [],
+    targetAudience: task.targetAudience ?? null,
+    expectedOutput: task.expectedOutput ?? null,
+    tags: task.tags ?? [],
+    deadline: formatCalendarDate(task.deadline),
+  };
 }

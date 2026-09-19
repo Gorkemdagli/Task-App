@@ -16,6 +16,16 @@ const calendarDateSchema = z.string().transform((value, ctx) => {
 export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done']);
 export const taskPrioritySchema = z.enum(['low', 'medium', 'high']);
 const estimateMinutesSchema = z.number().int().min(0).max(2147483647).nullable().optional();
+const scopeItemsSchema = z.array(z.string().trim().min(1).max(240)).max(20);
+const taskDetailTextSchema = z.string().trim().max(2000).nullable().optional();
+const taskTagsSchema = z.array(z.string().trim().min(1).max(32)).max(10).transform((tags) => {
+  const uniqueTags = new Map<string, string>();
+  for (const tag of tags) {
+    const key = tag.toLocaleLowerCase('tr-TR');
+    if (!uniqueTags.has(key)) uniqueTags.set(key, tag);
+  }
+  return Array.from(uniqueTags.values());
+});
 
 export const createTaskSchema = z.object({
   title: z.string().trim().min(3).max(200),
@@ -56,6 +66,10 @@ export const updateTaskFieldsSchema = z
   .object({
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(5000).nullable().optional(),
+    scopeItems: scopeItemsSchema.optional(),
+    targetAudience: taskDetailTextSchema,
+    expectedOutput: taskDetailTextSchema,
+    tags: taskTagsSchema.optional(),
     deadline: calendarDateSchema.nullable().optional(),
     estimateMinutes: estimateMinutesSchema,
     assigneeIds: z.array(z.string().uuid()).min(1).optional(),
@@ -64,6 +78,10 @@ export const updateTaskFieldsSchema = z
     (v) =>
       v.title !== undefined ||
       v.description !== undefined ||
+      v.scopeItems !== undefined ||
+      v.targetAudience !== undefined ||
+      v.expectedOutput !== undefined ||
+      v.tags !== undefined ||
       v.deadline !== undefined ||
       v.estimateMinutes !== undefined ||
       v.assigneeIds !== undefined,
