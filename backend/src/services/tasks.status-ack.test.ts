@@ -213,6 +213,15 @@ describe('ackTaskStatus', () => {
     const second = await tasksService.proposeTaskStatus(task.id, { status: 'done' }, b);
     expect(second.pendingVersion).toBe(2);
 
+    const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
+    expect(events).toHaveLength(4);
+    expect(events.find((event) => event.eventType === 'status_change_rejected')).toMatchObject({
+      actorId: b.id,
+      fromStatus: 'todo',
+      toStatus: 'in_progress',
+      metadata: { pendingVersion: 1 },
+    });
+
     await expect(
       inTenant(c, (db) => taskServiceImpl.ackTaskStatus(db, task.id, { pendingVersion: 1 }, c)),
     ).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PENDING_VERSION' });

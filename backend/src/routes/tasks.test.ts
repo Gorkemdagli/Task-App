@@ -822,4 +822,15 @@ describe('task history route', () => {
     expect(response.status).toBe(404);
     expect(response.body).not.toHaveProperty('items');
   });
+
+  it.each(['0', '51', '1.5', 'not-a-number'])('rejects invalid history limit %s', async (limit) => {
+    const { task, memberAccessToken } = await makeRouteTaskFixture();
+    const response = await request(createApp())
+      .get(`/api/v1/tasks/${task.id}/history?limit=${limit}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Bad Request');
+    expect(Array.isArray(response.body.issues)).toBe(true);
+  });
 });
