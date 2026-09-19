@@ -37,6 +37,10 @@ export interface TaskWithRelations {
   id: string;
   title: string;
   description: string | null;
+  scopeItems: string[];
+  targetAudience: string | null;
+  expectedOutput: string | null;
+  tags: string[];
   status: TaskStatus;
   priority: TaskPriority;
   isBlocked: boolean;
@@ -608,6 +612,10 @@ export async function updateTaskFields(
     data: {
       ...(input.title !== undefined && { title: input.title }),
       ...(input.description !== undefined && { description: input.description }),
+      ...(input.scopeItems !== undefined && { scopeItems: input.scopeItems }),
+      ...(input.targetAudience !== undefined && { targetAudience: input.targetAudience }),
+      ...(input.expectedOutput !== undefined && { expectedOutput: input.expectedOutput }),
+      ...(input.tags !== undefined && { tags: input.tags }),
       ...(input.deadline !== undefined && { deadline: input.deadline }),
       ...(input.estimateMinutes !== undefined && { estimateMinutes: input.estimateMinutes }),
       ...(pendingCancelledByProposerRemoval && {

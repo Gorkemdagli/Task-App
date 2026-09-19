@@ -112,6 +112,40 @@ async function makeTeamWithTeamAdminMember() {
   return { admin, member, team };
 }
 
+async function makeRouteTaskFixture() {
+  const adminRegistration = await register({
+    fullName: 'Route Admin',
+    email: 'route-admin@example.com',
+    password: 'hunter22',
+    companyName: 'Route Acme',
+  });
+  const admin = adminRegistration.user as Actor;
+  const memberRegistration = await register({
+    fullName: 'Route Member',
+    email: 'route-member@example.com',
+    password: 'hunter22',
+  });
+  await prisma.user.update({
+    where: { id: memberRegistration.user.id },
+    data: { tenantId: admin.tenantId, role: 'member' },
+  });
+  const member = { ...memberRegistration.user, role: 'member' as const, tenantId: admin.tenantId };
+  const team = await createTeam({ name: 'Route Engineering' }, admin);
+  await addMemberByDisplayId(team.id, member.displayId, admin);
+  const task = await tasksService.createTask(
+    { title: 'Structured task', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
+    admin,
+  );
+  return {
+    admin,
+    adminAccessToken: adminRegistration.accessToken,
+    member,
+    memberAccessToken: memberRegistration.accessToken,
+    team,
+    task,
+  };
+}
+
 describe('createTask', () => {
   beforeEach(cleanDb);
 
@@ -634,5 +668,111 @@ describe('task block route validation', () => {
     expect(response.status).toBe(400);
     expect(updateTaskBlocked).not.toHaveBeenCalled();
     updateTaskBlocked.mockRestore();
+  });
+});
+
+describe('structured task field routes', () => {
+  beforeEach(cleanDb);
+
+  it('allows an in-scope Team Admin to update all structured fields', async () => {
+    const { admin, member, memberAccessToken, task, team } = await makeRouteTaskFixture();
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: team.id, userId: member.id } },
+      data: { role: 'teamAdmin' },
+    });
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({
+        scopeItems: ['  Senaryo  ', '  Metin  '],
+        targetAudience: '  Kullanıcılar  ',
+        expectedOutput: '  MP4 video  ',
+        tags: ['  Mobil  ', 'MOBİL'],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      scopeItems: ['Senaryo', 'Metin'],
+      targetAudience: 'Kullanıcılar',
+      expectedOutput: 'MP4 video',
+      tags: ['Mobil'],
+    });
+    expect(response.body.assignerId).toBe(admin.id);
+  });
+
+  it('allows a Company Admin to update structured fields within the tenant', async () => {
+    const { adminAccessToken, task } = await makeRouteTaskFixture();
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ targetAudience: 'Şirket', tags: ['plan'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      scopeItems: [],
+      targetAudience: 'Şirket',
+      expectedOutput: null,
+      tags: ['plan'],
+    });
+  });
+
+  it('denies a regular Member from updating structured fields', async () => {
+    const { memberAccessToken, task } = await makeRouteTaskFixture();
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ targetAudience: 'Nope' });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('denies a Team Admin from another team', async () => {
+    const { admin, task } = await makeRouteTaskFixture();
+    const outsiderRegistration = await register({
+      fullName: 'Other Team Admin',
+      email: 'other-team-admin@example.com',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: outsiderRegistration.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
+    const otherTeam = await createTeam({ name: 'Other Engineering' }, admin);
+    await addMemberByDisplayId(otherTeam.id, outsiderRegistration.user.displayId, admin);
+    await prisma.teamMember.update({
+      where: {
+        teamId_userId: { teamId: otherTeam.id, userId: outsiderRegistration.user.id },
+      },
+      data: { role: 'teamAdmin' },
+    });
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
+      .send({ targetAudience: 'Nope' });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('returns no task data for a wrong-tenant direct request', async () => {
+    const { task } = await makeRouteTaskFixture();
+    const outsiderRegistration = await register({
+      fullName: 'Wrong Tenant Admin',
+      email: 'wrong-tenant-admin@example.com',
+      password: 'hunter22',
+      companyName: 'Route Globex',
+    });
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
+      .send({ targetAudience: 'Nope' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).not.toHaveProperty('title');
+    expect(response.body).not.toHaveProperty('scopeItems');
   });
 });

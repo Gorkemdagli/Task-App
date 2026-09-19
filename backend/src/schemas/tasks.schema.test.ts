@@ -61,3 +61,30 @@ describe('task blocking schema', () => {
     expect(updateTaskBlockedSchema.parse({ isBlocked: false })).toEqual({ isBlocked: false });
   });
 });
+
+describe('structured task fields schema', () => {
+  it('trims fields and removes Turkish-locale duplicate tags using the first spelling', () => {
+    const parsed = updateTaskFieldsSchema.parse({
+      scopeItems: ['  Senaryo ve metin taslağı  '],
+      targetAudience: '  Mevcut ve potansiyel kullanıcılar  ',
+      expectedOutput: '  MP4 formatında altyazılı video  ',
+      tags: ['  Mobil-Uygulama  ', 'MOBİL-UYGULAMA', '  Tanıtım  '],
+    });
+
+    expect(parsed).toEqual({
+      scopeItems: ['Senaryo ve metin taslağı'],
+      targetAudience: 'Mevcut ve potansiyel kullanıcılar',
+      expectedOutput: 'MP4 formatında altyazılı video',
+      tags: ['Mobil-Uygulama', 'Tanıtım'],
+    });
+  });
+
+  it('rejects structured field limits and whitespace-only tags', () => {
+    expect(() => updateTaskFieldsSchema.parse({ scopeItems: ['x'.repeat(241)] })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ scopeItems: Array.from({ length: 21 }, () => 'x') })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ targetAudience: 'x'.repeat(2001) })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ expectedOutput: 'x'.repeat(2001) })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ tags: Array.from({ length: 11 }, (_, i) => `tag-${i}`) })).toThrow();
+    expect(() => updateTaskFieldsSchema.parse({ tags: ['   '] })).toThrow();
+  });
+});
