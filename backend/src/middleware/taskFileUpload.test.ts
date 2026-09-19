@@ -76,6 +76,19 @@ describe('uploadTaskFile', () => {
     expect(response.body.error).toBe('FILE_REQUIRED');
   });
 
+  it('rejects excess multipart fields through the invalid file error path', async () => {
+    const response = await request(createUploadApp())
+      .post('/upload')
+      .field('extra', 'value')
+      .attach('file', Buffer.from('%PDF-1.7\n'), {
+        filename: 'task.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_FILE');
+  });
+
   it('rejects files larger than 25 MB after buffering limits are applied', async () => {
     const response = await request(createUploadApp())
       .post('/upload')
