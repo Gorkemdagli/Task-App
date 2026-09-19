@@ -239,6 +239,7 @@ async function loadTaskWithAssignees(
   status: TaskStatus;
   priority: TaskPriority;
   deadline: Date | null;
+  archivedAt: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
   teamId: string;
@@ -268,6 +269,7 @@ async function loadTaskWithAssignees(
     status: task.status,
     priority: task.priority,
     deadline: task.deadline,
+    archivedAt: task.archivedAt,
     isBlocked: task.isBlocked,
     blockedSince: task.blockedSince,
     blockedReason: task.blockedReason,
@@ -363,6 +365,16 @@ async function proposeStatusLocked(
   if (task.assigneeIds.size === 1) return applyStatusLocked(db, task, status, actor.id);
 
   const pendingVersion = task.pendingVersion + 1;
+  if (task.pendingStatus !== null) {
+    await appendTaskEvent(db, {
+      taskId: task.id,
+      actorId: actor.id,
+      eventType: 'status_change_rejected',
+      fromStatus: task.status,
+      toStatus: task.pendingStatus,
+      metadata: { pendingVersion: task.pendingVersion },
+    });
+  }
   await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
   if (task.assigneeIds.has(actor.id)) {
     await db.taskStatusAck.create({
@@ -782,11 +794,7 @@ export async function restoreTask(
   input: RestoreTaskInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
-  const task = await db.task.findFirst({
-    where: { id: taskId, team: { tenantId: requireTenant(actor) } },
-    select: { id: true, teamId: true, archivedAt: true, deadline: true },
-  });
-  if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
+  const task = await lockTask(db, taskId, actor);
 
   await assertCanRestoreTask(db, actor, task);
   if (task.archivedAt === null) {
