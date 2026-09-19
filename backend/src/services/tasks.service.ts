@@ -32,6 +32,7 @@ import type {
   RestoreTaskInput,
 } from '../schemas/tasks.schema';
 import { startOfUtcToday } from '../lib/calendarDate';
+import { appendTaskEvent } from './task-events.service';
 
 export interface TaskWithRelations {
   id: string;
@@ -148,12 +149,10 @@ export async function createTask(
     },
     include: TASK_INCLUDE,
   });
-  await db.taskEvent.create({
-    data: {
-      taskId: task.id,
-      actorId: actor.id,
-      eventType: 'task_created',
-    },
+  await appendTaskEvent(db, {
+    taskId: task.id,
+    actorId: actor.id,
+    eventType: 'task_created',
   });
 
   // Bildirim: tüm assignee'lere (actor hariç)
@@ -238,6 +237,8 @@ async function loadTaskWithAssignees(
   id: string;
   title: string;
   status: TaskStatus;
+  priority: TaskPriority;
+  deadline: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
   teamId: string;
@@ -265,6 +266,8 @@ async function loadTaskWithAssignees(
     id: task.id,
     title: task.title,
     status: task.status,
+    priority: task.priority,
+    deadline: task.deadline,
     isBlocked: task.isBlocked,
     blockedSince: task.blockedSince,
     blockedReason: task.blockedReason,
@@ -331,14 +334,12 @@ async function applyStatusLocked(
   await db.taskStatusAck.deleteMany({ where: { taskId: task.id } });
 
   if (task.status !== status) {
-    await db.taskEvent.create({
-      data: {
-        taskId: task.id,
-        actorId,
-        eventType: task.status === 'done' ? 'task_reopened' : 'status_changed',
-        fromStatus: task.status,
-        toStatus: status,
-      },
+    await appendTaskEvent(db, {
+      taskId: task.id,
+      actorId,
+      eventType: task.status === 'done' ? 'task_reopened' : 'status_changed',
+      fromStatus: task.status,
+      toStatus: status,
     });
     await notifyTaskStatusChanged(
       db,
@@ -383,6 +384,14 @@ async function proposeStatusLocked(
       pendingVersion,
     },
     include: TASK_INCLUDE,
+  });
+
+  await appendTaskEvent(db, {
+    taskId: task.id,
+    actorId: actor.id,
+    eventType: 'status_change_requested',
+    fromStatus: task.status,
+    toStatus: status,
   });
 
   await notifyTaskStatusPending(
@@ -476,6 +485,13 @@ export async function ackTaskStatus(
     return { task: updated, applied: false };
   }
 
+  await appendTaskEvent(db, {
+    taskId,
+    actorId: actor.id,
+    eventType: 'status_change_approved',
+    fromStatus: task.status,
+    toStatus: pendingStatus,
+  });
   const updated = await applyStatusLocked(
     db,
     task,
@@ -503,6 +519,14 @@ export async function cancelTaskStatus(
   });
   await db.taskStatusAck.deleteMany({ where: { taskId } });
 
+  await appendTaskEvent(db, {
+    taskId,
+    actorId: actor.id,
+    eventType: 'status_change_rejected',
+    fromStatus: task.status,
+    toStatus: task.pendingStatus,
+  });
+
   return getTask(db, taskId, actor);
 }
 
@@ -520,6 +544,14 @@ export async function updateTaskPriority(
     data: { priority: input.priority },
     include: TASK_INCLUDE,
   });
+  if (task.priority !== input.priority) {
+    await appendTaskEvent(db, {
+      taskId,
+      actorId: actor.id,
+      eventType: 'priority_changed',
+      metadata: { oldPriority: task.priority, newPriority: input.priority },
+    });
+  }
   return updated as TaskWithRelations;
 }
 
@@ -557,13 +589,11 @@ export async function updateTaskBlocked(
   });
 
   if (task.isBlocked !== nextBlocked) {
-    await db.taskEvent.create({
-      data: {
-        taskId,
-        actorId: actor.id,
-        eventType: nextBlocked ? 'task_blocked' : 'task_unblocked',
-        metadata: nextBlocked ? { blockedReason: updated.blockedReason } : {},
-      },
+    await appendTaskEvent(db, {
+      taskId,
+      actorId: actor.id,
+      eventType: nextBlocked ? 'task_blocked' : 'task_unblocked',
+      metadata: nextBlocked ? { blockedReason: updated.blockedReason } : {},
     });
   }
 
@@ -629,6 +659,57 @@ export async function updateTaskFields(
     },
     include: TASK_INCLUDE,
   });
+  const affectedIds = [...addedAssigneeIds, ...removedAssigneeIds];
+  if (affectedIds.length > 0) {
+    const affectedUsers = await db.user.findMany({
+      where: { id: { in: affectedIds }, tenantId: task.tenantId },
+      select: { id: true, fullName: true },
+    });
+    const affectedNames = new Map(affectedUsers.map((user) => [user.id, user.fullName]));
+    const metadata = (userIds: string[]) => ({
+      affectedUserIds: userIds,
+      affectedDisplayNames: userIds.map((userId) => affectedNames.get(userId) ?? 'Deleted user'),
+    });
+    if (addedAssigneeIds.length > 0) {
+      await appendTaskEvent(db, {
+        taskId,
+        actorId: actor.id,
+        eventType: 'assignee_added',
+        metadata: metadata(addedAssigneeIds),
+      });
+    }
+    if (removedAssigneeIds.length > 0) {
+      await appendTaskEvent(db, {
+        taskId,
+        actorId: actor.id,
+        eventType: 'assignee_removed',
+        metadata: metadata(removedAssigneeIds),
+      });
+    }
+  }
+  if (
+    input.deadline !== undefined &&
+    (task.deadline?.getTime() ?? null) !== (input.deadline?.getTime() ?? null)
+  ) {
+    await appendTaskEvent(db, {
+      taskId,
+      actorId: actor.id,
+      eventType: 'deadline_changed',
+      metadata: {
+        oldDeadline: task.deadline?.toISOString() ?? null,
+        newDeadline: input.deadline?.toISOString() ?? null,
+      },
+    });
+  }
+  if (pendingCancelledByProposerRemoval) {
+    await appendTaskEvent(db, {
+      taskId,
+      actorId: actor.id,
+      eventType: 'status_change_rejected',
+      fromStatus: task.status,
+      toStatus: task.pendingStatus,
+    });
+  }
   if (
     task.pendingStatus !== null &&
     !pendingCancelledByProposerRemoval &&
@@ -658,6 +739,13 @@ export async function updateTaskFields(
         ? { id: task.pendingProposedBy, role: 'member', tenantId: task.tenantId }
         : actor;
       const lockedTask = await loadTaskWithAssignees(db, taskId, actor);
+      await appendTaskEvent(db, {
+        taskId,
+        actorId: actor.id,
+        eventType: 'status_change_approved',
+        fromStatus: lockedTask.status,
+        toStatus: task.pendingStatus,
+      });
       await applyStatusLocked(db, lockedTask, task.pendingStatus, pendingActor.id);
       return getTask(db, taskId, actor);
     }
@@ -696,7 +784,7 @@ export async function restoreTask(
 ): Promise<TaskWithRelations> {
   const task = await db.task.findFirst({
     where: { id: taskId, team: { tenantId: requireTenant(actor) } },
-    select: { id: true, teamId: true, archivedAt: true },
+    select: { id: true, teamId: true, archivedAt: true, deadline: true },
   });
   if (!task) throw new AppError(404, 'Görev bulunamadı', 'NOT_FOUND');
 
@@ -717,6 +805,17 @@ export async function restoreTask(
     data: { deadline: input.deadline, archivedAt: null },
     include: TASK_INCLUDE,
   });
+  if ((task.deadline?.getTime() ?? null) !== input.deadline.getTime()) {
+    await appendTaskEvent(db, {
+      taskId,
+      actorId: actor.id,
+      eventType: 'deadline_changed',
+      metadata: {
+        oldDeadline: task.deadline?.toISOString() ?? null,
+        newDeadline: input.deadline.toISOString(),
+      },
+    });
+  }
   return updated as TaskWithRelations;
 }
 
