@@ -11,6 +11,7 @@ import { notificationsRouter } from './notifications';
 import { usersRouter } from './users';
 import { companyInvitationsRouter } from './company-invitations';
 import { companyDashboardRouter } from './company-dashboard';
+import { taskFilesRouter } from './task-files';
 
 export const apiRouter = Router();
 
@@ -20,6 +21,7 @@ apiRouter.use('/internal', internalRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/teams', teamsRouter);
 apiRouter.use('/tasks', tasksRouter);
+apiRouter.use('/tasks', taskFilesRouter);
 apiRouter.use('/tasks/:taskId/comments', commentsRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/notifications', notificationsRouter);
