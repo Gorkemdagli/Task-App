@@ -74,7 +74,7 @@ function hasTaskFileSignature(buffer: Buffer, signature: TaskFileSignature): boo
 function createParser() {
   return multer({
     storage: multer.memoryStorage(),
-    limits: { files: 1, fields: 0, parts: 1, fileSize: TASK_FILE_MAX_BYTES },
+    limits: { files: 1, fields: 0, parts: 2, fileSize: TASK_FILE_MAX_BYTES },
     fileFilter: (_req, file, callback) => {
       const extension = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
       const policy = TASK_FILE_POLICY[extension as keyof typeof TASK_FILE_POLICY];

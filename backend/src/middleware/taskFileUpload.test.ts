@@ -42,6 +42,21 @@ const validFiles: ReadonlyArray<[string, string, string, Buffer]> = [
 ];
 
 describe('uploadTaskFile', () => {
+  it('accepts the route-shaped single PDF multipart request', async () => {
+    const response = await request(createUploadApp())
+      .post('/upload')
+      .attach('file', Buffer.from('%PDF-1.7\n'), {
+        filename: 'route-report.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      file: { originalname: 'route-report.pdf', mimetype: 'application/pdf' },
+    });
+  });
+
   it.each(validFiles)('accepts a valid %s extension/MIME/signature pair', async (_label, filename, contentType, body) => {
     const response = await request(createUploadApp())
       .post('/upload')
