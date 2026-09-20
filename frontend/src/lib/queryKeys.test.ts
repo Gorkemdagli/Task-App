@@ -47,6 +47,29 @@ describe('queryKeys', () => {
     ]);
   });
 
+  it('scopes task files and history by tenant and task', () => {
+    expect(queryKeys.task.files('tenant-a', 'task-1')).toEqual([
+      'tenant',
+      'tenant-a',
+      'task',
+      'task-1',
+      'files',
+    ]);
+    expect(queryKeys.task.history('tenant-a', 'task-1')).toEqual([
+      'tenant',
+      'tenant-a',
+      'task',
+      'task-1',
+      'history',
+    ]);
+    expect(queryKeys.task.files('tenant-a', 'task-1')).not.toEqual(
+      queryKeys.task.files('tenant-b', 'task-1'),
+    );
+    expect(queryKeys.task.history('tenant-a', 'task-1')).not.toEqual(
+      queryKeys.task.history('tenant-a', 'task-2'),
+    );
+  });
+
   it('scopes company dashboard by tenant, team, and range', () => {
     expect(queryKeys.companyDashboard('tenant-a', null)).toEqual([
       'tenant',
