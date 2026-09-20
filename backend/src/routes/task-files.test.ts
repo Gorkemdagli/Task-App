@@ -109,7 +109,7 @@ describe('task file routes', () => {
 
     expect(uploadResponse.status).toBe(201);
     expect(uploadResponse.body).not.toHaveProperty('objectPath');
-    expect(storageState.uploaded[0]).toMatch(new RegExp(`^tasks/${member.tenantId}/${task.id}/[^/]+$`));
+    expect(storageState.uploaded[0]).toMatch(new RegExp(`^tenants/${member.tenantId}/tasks/${task.id}/[^/]+$`));
 
     const listResponse = await request(app)
       .get(`/api/v1/tasks/${task.id}/files`)
@@ -130,6 +130,53 @@ describe('task file routes', () => {
       expiresAt: '2026-09-20T10:01:00.000Z',
     });
     expect(storageState.signed).toEqual(storageState.uploaded);
+  });
+
+  it('keeps deletion behind signed URL issuance for the same file row', async () => {
+    const { member, memberAccessToken, task } = await makeFixture();
+    const app = createApp();
+    const uploadResponse = await request(app)
+      .post(`/api/v1/tasks/${task.id}/files`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .attach('file', Buffer.from('%PDF-1.7\n'), { filename: 'race.pdf', contentType: 'application/pdf' });
+
+    let signingStarted!: () => void;
+    const signed = new Promise<void>((resolve) => {
+      signingStarted = resolve;
+    });
+    let releaseSigning!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseSigning = resolve;
+    });
+    storageState.storage.createDownloadUrl.mockImplementationOnce(async (path: string) => {
+      signingStarted();
+      await release;
+      storageState.signed.push(path);
+      return { url: 'https://signed.example/task-file', expiresAt: '2026-09-20T10:01:00.000Z' };
+    });
+
+    const downloadPromise = request(app)
+      .post(`/api/v1/tasks/${task.id}/files/${uploadResponse.body.id}/download`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .then((response) => response);
+    let signingStartTimer: ReturnType<typeof setTimeout>;
+    await new Promise<void>((resolve, reject) => {
+      signingStartTimer = setTimeout(() => reject(new Error('download signing did not start')), 1_000);
+      signed.then(() => {
+        clearTimeout(signingStartTimer);
+        resolve();
+      }, reject);
+    });
+
+    const deletePromise = request(app)
+      .delete(`/api/v1/tasks/${task.id}/files/${uploadResponse.body.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(storageState.storage.remove).not.toHaveBeenCalled();
+
+    releaseSigning();
+    expect((await downloadPromise).status).toBe(200);
+    expect((await deletePromise).status).toBe(204);
   });
 
   it('denies another member and cross-tenant users, while allowing uploader deletion', async () => {

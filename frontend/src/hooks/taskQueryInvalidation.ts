@@ -13,4 +13,5 @@ export function invalidateTaskFilesAndHistoryQueries(
 export function invalidateTaskQueries(queryClient: QueryClient, tenantId: string, taskId: string) {
   queryClient.invalidateQueries({ queryKey: queryKeys.task.detail(tenantId, taskId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.tenant(tenantId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.task.history(tenantId, taskId) });
 }

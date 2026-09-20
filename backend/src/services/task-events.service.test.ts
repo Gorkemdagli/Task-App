@@ -96,7 +96,14 @@ describe('task event history', () => {
       listTaskHistory(db, task.id, member, { limit: 2, cursor: first.nextCursor ?? undefined }),
     );
     expect(second.items.map((item) => item.id)).toEqual(expected.slice(2, 4).map((item) => item.id));
-    expect(new Set([...first.items, ...second.items].map((item) => item.id)).size).toBe(4);
+    const third = await inTenant(member, (db) =>
+      listTaskHistory(db, task.id, member, { limit: 2, cursor: second.nextCursor ?? undefined }),
+    );
+    expect(third.items.map((item) => item.id)).toEqual(expected.slice(4).map((item) => item.id));
+    expect(third.nextCursor).toBeNull();
+    expect([...first.items, ...second.items, ...third.items].map((item) => item.id)).toEqual(
+      expected.map((item) => item.id),
+    );
   });
 
   it('uses a stable actor fallback when the event user is unavailable', async () => {

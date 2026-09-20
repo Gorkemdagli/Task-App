@@ -37,6 +37,8 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: SUPABASE_TASK_FILES_BUCKET
+        sync: false
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

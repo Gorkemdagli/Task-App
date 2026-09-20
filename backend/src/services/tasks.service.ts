@@ -3,6 +3,7 @@ import type { TenantDb } from '../db/types';
 import { AppError } from '../lib/appError';
 import {
   assertCanAckTaskStatus,
+  assertCanAssignTask,
   assertCanCancelTaskStatus,
   assertCanCreateTask,
   assertCanDeleteTask,
@@ -619,7 +620,11 @@ export async function updateTaskFields(
   actor: Actor,
 ): Promise<TaskWithRelations> {
   const task = await lockTask(db, taskId, actor);
-  await assertCanUpdateTaskFields(db, actor, taskPermissionInput(task));
+  const permissions = taskPermissionInput(task);
+  if (input.assigneeIds !== undefined) await assertCanAssignTask(db, actor, permissions);
+  if (Object.keys(input).some((field) => field !== 'assigneeIds')) {
+    await assertCanUpdateTaskFields(db, actor, permissions);
+  }
 
   let nextAssigneeIds: string[] | undefined;
   let addedAssigneeIds: string[] = [];
