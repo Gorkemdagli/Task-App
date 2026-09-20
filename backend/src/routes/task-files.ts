@@ -64,10 +64,10 @@ taskFilesRouter.post(
 taskFilesRouter.post('/:taskId/files/:fileId/download', authenticatedReadLimiter, async (req, res, next) => {
   try {
     const { taskId, fileId } = parseQuery<TaskFileParams>(taskFileParamsSchema, req.params);
-    const path = await runTenantRequest(req, (db, actor) =>
-      taskFilesService.createTaskFileDownload(db, taskId, fileId, actor),
-    );
-    const result = await createTaskFileStorage().createDownloadUrl(path);
+    const result = await runTenantRequest(req, async (db, actor) => {
+      const path = await taskFilesService.createTaskFileDownload(db, taskId, fileId, actor);
+      return createTaskFileStorage().createDownloadUrl(path);
+    });
     res.json(result);
   } catch (error) {
     next(error);

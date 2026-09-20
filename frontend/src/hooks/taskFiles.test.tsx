@@ -138,6 +138,8 @@ describe('task file and history hooks', () => {
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.task.detail(tenantId, taskId) });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.tenant(tenantId) });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.task.history(tenantId, taskId) });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.task.comments(tenantId, taskId) });
   });
 
   it('appends history pages without duplicate items', async () => {

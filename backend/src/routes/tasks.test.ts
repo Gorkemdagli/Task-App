@@ -674,6 +674,30 @@ describe('task block route validation', () => {
 describe('structured task field routes', () => {
   beforeEach(cleanDb);
 
+  it('keeps a demoted task assigner able to assign, but denies admin-only fields', async () => {
+    const { admin, member, team } = await makeTeamWithTeamAdminMember();
+    const second = await makeMember('demoted-assigner-second@example.com', admin.tenantId!);
+    await addMemberByDisplayId(team.id, second.displayId, admin);
+    const task = await tasksService.createTask(
+      { title: 'Demoted assigner task', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
+      member,
+    );
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: team.id, userId: member.id } },
+      data: { role: 'member' },
+    });
+
+    const updated = await tasksService.updateTaskFields(
+      task.id,
+      { assigneeIds: [member.id, second.id] },
+      member,
+    );
+    expect(updated.assignees.map((assignee) => assignee.userId)).toContain(second.id);
+    await expect(
+      tasksService.updateTaskFields(task.id, { targetAudience: 'Nope' }, member),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
   it('allows an in-scope Team Admin to update all structured fields', async () => {
     const { admin, member, memberAccessToken, task, team } = await makeRouteTaskFixture();
     await prisma.teamMember.update({

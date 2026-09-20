@@ -62,7 +62,7 @@ async function loadViewableTask(
 }
 
 function objectPath(tenantId: string, taskId: string, fileId: string): string {
-  return `tasks/${tenantId}/${taskId}/${fileId}`;
+  return `tenants/${tenantId}/tasks/${taskId}/${fileId}`;
 }
 
 function toTaskFileItem(
@@ -178,10 +178,16 @@ export async function createTaskFileDownload(
   actor: Actor,
 ): Promise<string> {
   const task = await loadViewableTask(db, taskId, actor);
-  const file = await db.taskFile.findFirst({
-    where: { id: fileId, tenantId: task.team.tenantId, taskId: task.id, deletedAt: null },
-    select: { objectPath: true },
-  });
+  const files = await db.$queryRaw<Array<{ objectPath: string }>>`
+    SELECT object_path AS "objectPath"
+    FROM task_files
+    WHERE id = ${fileId}
+      AND tenant_id = ${task.team.tenantId}::uuid
+      AND task_id = ${task.id}::uuid
+      AND deleted_at IS NULL
+    FOR UPDATE
+  `;
+  const file = files[0];
   if (!file) throw new AppError(404, 'Dosya bulunamadı', 'NOT_FOUND');
   return file.objectPath;
 }
