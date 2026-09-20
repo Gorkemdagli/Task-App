@@ -1,9 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
+import type { AxiosProgressEvent } from 'axios';
 import { api } from '../lib/api';
 import { appendTaskFilterParams } from '../lib/taskFilterParams';
 import { useAuthStore } from '../stores/authStore';
 import { queryKeys } from '../lib/queryKeys';
-import { invalidateTaskQueries } from './taskQueryInvalidation';
+import {
+  invalidateTaskFilesAndHistoryQueries,
+  invalidateTaskQueries,
+} from './taskQueryInvalidation';
 import { patchTaskCaches, restoreTaskCaches, snapshotTaskCaches } from '../lib/taskCache';
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -29,6 +39,10 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
+  scopeItems?: string[];
+  targetAudience?: string | null;
+  expectedOutput?: string | null;
+  tags?: string[];
   status: TaskStatus;
   priority: TaskPriority;
   isBlocked?: boolean;
@@ -63,6 +77,29 @@ export interface Comment {
   body: string;
   createdAt: string;
   author: { id: string; displayId: string; fullName: string; avatarUrl: string | null };
+}
+
+export interface TaskFile {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploader: { id: string; name: string };
+  canDelete: boolean;
+}
+
+export interface TaskHistoryItem {
+  id: string;
+  eventType: string;
+  createdAt: string;
+  actor: { id: string; name: string } | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface TaskHistoryPage {
+  items: TaskHistoryItem[];
+  nextCursor: string | null;
 }
 
 export interface ListTasksFilters {
@@ -125,6 +162,101 @@ export function useTaskComments(taskId: string | undefined, options?: { enabled?
       // Sadece sayfa görünürken poll
       if (typeof document !== 'undefined' && document.hidden) return false;
       return 5000;
+    },
+  });
+}
+
+export function useTaskFiles(taskId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useQuery<{ files: TaskFile[] }>({
+    queryKey: queryKeys.task.files(tenantId ?? 'tenantless', taskId ?? 'none'),
+    queryFn: async () => {
+      const r = await api.get<{ files: TaskFile[] }>(`/tasks/${taskId}/files`);
+      return r.data;
+    },
+    enabled: Boolean(tenantId && taskId),
+  });
+}
+
+const TASK_HISTORY_PAGE_SIZE = 50;
+
+function dedupeTaskHistory(
+  data: InfiniteData<TaskHistoryPage, string | null>,
+): InfiniteData<TaskHistoryPage, string | null> {
+  const seen = new Set<string>();
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      }),
+    })),
+  };
+}
+
+export function useTaskHistory(taskId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useInfiniteQuery({
+    queryKey: queryKeys.task.history(tenantId ?? 'tenantless', taskId ?? 'none'),
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }): Promise<TaskHistoryPage> => {
+      const params = new URLSearchParams({ limit: String(TASK_HISTORY_PAGE_SIZE) });
+      if (pageParam) params.set('cursor', pageParam);
+      const r = await api.get<TaskHistoryPage>(`/tasks/${taskId}/history?${params.toString()}`);
+      return r.data;
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    select: dedupeTaskHistory,
+    enabled: Boolean(tenantId && taskId),
+  });
+}
+
+export function useUploadTaskFile() {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: async (vars: {
+      taskId: string;
+      file: File;
+      onUploadProgress?: (progressEvent: AxiosProgressEvent) => void;
+    }) => {
+      const formData = new FormData();
+      formData.append('file', vars.file);
+      const r = await api.post<TaskFile>(`/tasks/${vars.taskId}/files`, formData, {
+        onUploadProgress: vars.onUploadProgress,
+      });
+      return r.data;
+    },
+    onSuccess: (_data, vars) => {
+      if (tenantId) invalidateTaskFilesAndHistoryQueries(qc, tenantId, vars.taskId);
+    },
+  });
+}
+
+export function useDownloadTaskFile() {
+  return useMutation({
+    mutationFn: async (vars: { taskId: string; fileId: string }) => {
+      const r = await api.post<{ url: string; expiresAt: string }>(
+        `/tasks/${vars.taskId}/files/${vars.fileId}/download`,
+      );
+      if (typeof window !== 'undefined') window.open(r.data.url, '_blank', 'noopener,noreferrer');
+    },
+  });
+}
+
+export function useDeleteTaskFile() {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: async (vars: { taskId: string; fileId: string }) => {
+      await api.delete(`/tasks/${vars.taskId}/files/${vars.fileId}`);
+      return vars;
+    },
+    onSuccess: (_data, vars) => {
+      if (tenantId) invalidateTaskFilesAndHistoryQueries(qc, tenantId, vars.taskId);
     },
   });
 }
@@ -321,6 +453,10 @@ export function useUpdateTaskFields() {
       taskId: string;
       title?: string;
       description?: string | null;
+      scopeItems?: string[];
+      targetAudience?: string | null;
+      expectedOutput?: string | null;
+      tags?: string[];
       deadline?: string | null;
       estimateMinutes?: number | null;
       assigneeIds?: string[];
@@ -335,6 +471,10 @@ export function useUpdateTaskFields() {
         ...task,
         ...(vars.title !== undefined && { title: vars.title }),
         ...(vars.description !== undefined && { description: vars.description }),
+        ...(vars.scopeItems !== undefined && { scopeItems: vars.scopeItems }),
+        ...(vars.targetAudience !== undefined && { targetAudience: vars.targetAudience }),
+        ...(vars.expectedOutput !== undefined && { expectedOutput: vars.expectedOutput }),
+        ...(vars.tags !== undefined && { tags: vars.tags }),
         ...(vars.deadline !== undefined && { deadline: vars.deadline }),
         ...(vars.estimateMinutes !== undefined && { estimateMinutes: vars.estimateMinutes }),
         ...(vars.assigneeIds !== undefined && {

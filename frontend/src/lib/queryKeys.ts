@@ -27,6 +27,10 @@ export const queryKeys = {
     detail: (tenantId: string, taskId: string) => ['tenant', tenantId, 'task', taskId] as const,
     comments: (tenantId: string, taskId: string) =>
       ['tenant', tenantId, 'task', taskId, 'comments'] as const,
+    files: (tenantId: string, taskId: string) =>
+      ['tenant', tenantId, 'task', taskId, 'files'] as const,
+    history: (tenantId: string, taskId: string) =>
+      ['tenant', tenantId, 'task', taskId, 'history'] as const,
   },
   notifications: (tenantId: string) => ['tenant', tenantId, 'notifications'] as const,
   companyInvitations: {
