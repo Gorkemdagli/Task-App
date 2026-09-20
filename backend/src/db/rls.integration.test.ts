@@ -245,6 +245,30 @@ describe('RLS tenant isolation for task relations', () => {
       asTenant(tenantAId, userAId, (db) =>
         db.taskFile.update({
           where: { id: ownTenantFile.id },
+          data: { objectPath: `tenants/${tenantAId}/tasks/${taskAId}/mutated` },
+        }),
+      ),
+    ).rejects.toBeDefined();
+
+    const deletedAt = new Date();
+    const softDeletedFile = await asTenant(tenantAId, userAId, (db) =>
+      db.taskFile.update({
+        where: { id: ownTenantFile.id },
+        data: { deletedAt, deletedById: userAId },
+      }),
+    );
+
+    expect(softDeletedFile).toMatchObject({
+      id: ownTenantFile.id,
+      objectPath: ownTenantFile.objectPath,
+      deletedAt,
+      deletedById: userAId,
+    });
+
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.taskFile.update({
+          where: { id: ownTenantFile.id },
           data: { deletedById: userBId },
         }),
       ),
