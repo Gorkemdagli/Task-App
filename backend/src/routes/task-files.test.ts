@@ -109,7 +109,7 @@ describe('task file routes', () => {
 
     expect(uploadResponse.status).toBe(201);
     expect(uploadResponse.body).not.toHaveProperty('objectPath');
-    expect(storageState.uploaded[0]).toMatch(new RegExp(`^tenants/${member.tenantId}/tasks/${task.id}/[^/]+$`));
+    expect(storageState.uploaded[0]).toMatch(new RegExp(`^tenants/${member.tenantId}/tasks/${task.id}/files/[^/]+$`));
 
     const listResponse = await request(app)
       .get(`/api/v1/tasks/${task.id}/files`)

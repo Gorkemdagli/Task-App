@@ -62,7 +62,7 @@ async function loadViewableTask(
 }
 
 function objectPath(tenantId: string, taskId: string, fileId: string): string {
-  return `tenants/${tenantId}/tasks/${taskId}/${fileId}`;
+  return `tenants/${tenantId}/tasks/${taskId}/files/${fileId}`;
 }
 
 function toTaskFileItem(
