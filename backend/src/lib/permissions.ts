@@ -160,8 +160,19 @@ export async function assertCanUpdateTaskFields(
   actor: Actor,
   task: TaskForPerm,
 ): Promise<void> {
-  if (task.assignerId === actor.id) return;
   if (await isTeamAdminOf(db, actor, task.teamId)) return;
+  throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+}
+
+export async function assertCanAssignTask(
+  db: TenantDb,
+  actor: Actor,
+  task: TaskForPerm,
+): Promise<void> {
+  if (!(await isTeamMemberOf(db, actor, task.teamId))) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
+  if (task.assignerId === actor.id || (await isTeamAdminOf(db, actor, task.teamId))) return;
   throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
 }
 
