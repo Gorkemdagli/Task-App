@@ -101,7 +101,7 @@ describe('task file service', () => {
       uploader: { id: member.id, name: 'File Member' },
       canDelete: true,
     });
-    expect(fake.uploaded[0]).toMatch(new RegExp(`^tenants/${admin.tenantId}/tasks/${task.id}/[^/]+$`));
+    expect(fake.uploaded[0]).toMatch(new RegExp(`^tenants/${admin.tenantId}/tasks/${task.id}/files/[^/]+$`));
     expect(fake.uploaded[0]).not.toContain('report.pdf');
 
     const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
