@@ -96,6 +96,8 @@ const proposeMock = vi.fn();
 const updateMock = vi.fn();
 const blockMock = vi.fn();
 const restoreMock = vi.fn();
+const updateFieldsMock = vi.fn();
+let updateFieldsPending = false;
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -103,6 +105,15 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     ...actual,
     useTask: () => ({ data: mockTask, isLoading: false, isError: false }),
     useTaskComments: () => ({ data: { comments: [] }, isLoading: false, isError: false }),
+    useTaskFiles: () => ({ data: { files: [] }, isLoading: false, isError: false }),
+    useTaskHistory: () => ({
+      data: { pages: [{ items: [] }] },
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    }),
     useUpdateTaskStatus: () => ({ mutate: updateMock, mutateAsync: updateMock, isPending: false }),
     useProposeTaskStatus: () => ({
       mutate: proposeMock,
@@ -113,7 +124,11 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useCancelTaskStatus: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUpdateTaskPriority: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUpdateTaskBlocked: () => ({ mutate: blockMock, mutateAsync: blockMock, isPending: false }),
-    useUpdateTaskFields: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+    useUpdateTaskFields: () => ({
+      mutate: updateFieldsMock,
+      mutateAsync: updateFieldsMock,
+      isPending: updateFieldsPending,
+    }),
     useRestoreTask: () => ({ mutate: restoreMock, mutateAsync: restoreMock, isPending: false }),
     useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   };
@@ -150,6 +165,10 @@ function makeTask(overrides: Partial<Task>): Task {
     pendingProposedAt: null,
     pendingProposer: null,
     statusAcks: [],
+    scopeItems: [],
+    targetAudience: null,
+    expectedOutput: null,
+    tags: [],
     team: { id: 'team-1', name: 'UX', tenantId: 't1' },
     assigner: { id: 'u1', displayId: 'AAAAA', fullName: 'Ada', avatarUrl: null },
     assignees: [
@@ -162,6 +181,102 @@ function makeTask(overrides: Partial<Task>): Task {
     ...overrides,
   };
 }
+
+describe('TaskDetailPage — approved workbench', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updateFieldsMock.mockReset();
+    updateFieldsPending = false;
+    useAuthStore.setState({ accessToken: 't', user: admin });
+  });
+
+  it('renders the semantic desktop regions and real task context without a display id', () => {
+    mockTask = makeTask({
+      title: 'Launch brief',
+      scopeItems: ['Research', 'Draft'],
+      targetAudience: 'Product team',
+      expectedOutput: 'Approved brief',
+      tags: ['launch', 'brief'],
+    });
+    renderTaskDetail();
+
+    expect(screen.getByRole('complementary', { name: 'Görev bilgileri ve geçmiş' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Görev içeriği' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Dosyalar ve yorumlar' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Dosyalar' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Yorumlar' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Geçmiş' })).toBeInTheDocument();
+    expect(screen.getByText('Research')).toBeInTheDocument();
+    expect(screen.getByText('Product team')).toBeInTheDocument();
+    expect(screen.getByText('Approved brief')).toBeInTheDocument();
+    expect(screen.getByText('launch')).toBeInTheDocument();
+    expect(screen.queryByText(/#TF-/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Düzenle' })).toBeInTheDocument();
+  });
+
+  it('keeps task context read-only for a member and hides the edit action', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockTask = makeTask({ scopeItems: ['Member scope'], targetAudience: 'Members' });
+    renderTaskDetail();
+
+    expect(screen.getByText('Member scope')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Düzenle' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the admin edit form open and shows an inline error when saving fails', async () => {
+    updateFieldsMock.mockImplementation((_variables, options) => {
+      options?.onError?.(new Error('save failed'));
+    });
+    mockTask = makeTask({
+      description: 'Before',
+      scopeItems: ['First item'],
+      targetAudience: 'Members',
+      expectedOutput: 'Brief',
+      tags: ['initial'],
+    });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }));
+
+    expect(screen.getByTestId('task-edit-form')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Değişiklikler kaydedilemedi.');
+    expect(screen.getByLabelText('Başlık')).toHaveValue('Test task');
+  });
+
+  it('closes and resets the admin edit form only after a successful save', async () => {
+    updateFieldsMock.mockImplementation((_variables, options) => {
+      options?.onSuccess?.();
+    });
+    mockTask = makeTask({ scopeItems: ['First item'], tags: ['initial'] });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }));
+
+    expect(screen.queryByTestId('task-edit-form')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    expect(screen.getByLabelText('Kapsam (her satır bir madde)')).toHaveValue('First item');
+  });
+
+  it('disables edit cancellation while structured fields are saving', async () => {
+    updateFieldsPending = true;
+    mockTask = makeTask({ scopeItems: ['First item'] });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    const cancelButtons = screen.getAllByRole('button', { name: 'Vazgeç' });
+
+    expect(cancelButtons).toHaveLength(2);
+    cancelButtons.forEach((button) => expect(button).toBeDisabled());
+    await user.click(cancelButtons[0]);
+    await user.keyboard('{Escape}');
+    expect(screen.getByTestId('task-edit-form')).toBeInTheDocument();
+  });
+});
 
 function makeAssignee(userId: string, fullName: string) {
   return {
@@ -187,6 +302,8 @@ function renderTaskDetail() {
 describe('TaskDetailPage — archived task restore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    updateFieldsMock.mockReset();
+    updateFieldsPending = false;
     useAuthStore.setState({ accessToken: 't', user: admin });
   });
 
@@ -215,6 +332,8 @@ describe('TaskDetailPage — archived task restore', () => {
 describe('TaskDetailPage — status change intercept', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    updateFieldsMock.mockReset();
+    updateFieldsPending = false;
     // clearAllMocks sonrası implementation bağlantısı kaybolur; onSettled'i
     // simulate etmek için tekrar bağla (dialog close testi).
     proposeMock.mockImplementation((_vars: unknown, opts?: { onSettled?: () => void }) => {
