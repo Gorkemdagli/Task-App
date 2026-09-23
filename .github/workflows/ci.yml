@@ -35,7 +35,7 @@ jobs:
         run: npx dotenv -e .env.test -- prisma generate
       - name: Start test services
         run: docker compose up -d postgres-test redis-test
-      - run: npm run ci:check
+      - run: npx dotenv -e backend/.env.test -- npm run ci:check
       - name: Enforce backend coverage gates
         run: |
           npm run test:coverage --workspace=backend
@@ -82,7 +82,7 @@ jobs:
         run: |
           npm run test --workspace=backend -- src/test/health.test.ts
           npm run perf:fixture --workspace=backend
-      - run: npm run build:backend
+      - run: npx dotenv -e backend/.env.test -- npm run build:backend
       - run: npm run build:frontend
       - name: Start backend and frontend preview
         shell: bash
