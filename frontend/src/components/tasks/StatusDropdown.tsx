@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 import type { TaskStatus } from '@/hooks/tasks';
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -23,7 +24,7 @@ export function StatusDropdown({ value, onChange, disabled }: StatusDropdownProp
           className="inline-flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-secondary-foreground transition-colors hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Durum: <span className="font-medium">{STATUS_LABEL[value]}</span>
-          <span className="text-xs">▾</span>
+          <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

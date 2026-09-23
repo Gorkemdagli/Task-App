@@ -56,6 +56,8 @@ enum NotificationType {
   message_received
   task_status_pending
   task_status_changed
+  company_invite_accepted
+  company_invite_rejected
 }
 
 enum CompanyInvitationStatus {

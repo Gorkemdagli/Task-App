@@ -388,6 +388,43 @@ describe('CompanyDashboard', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders cumulative flow samples accessibly', () => {
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: {
+        ...allDashboard,
+        cumulativeFlow: {
+          samples: [
+            { date: '2026-08-19', todo: 2, inProgress: 1, done: 3 },
+            { date: '2026-08-20', todo: 1, inProgress: 2, done: 3 },
+          ],
+          bottleneck: {
+            inProgressDelta: 1,
+            inProgressGrowthPct: 100,
+            agingInProgressCount: 0,
+            unknownStartedAtCount: 0,
+            blockedRate: 0,
+            cycleDegradationPct: null,
+          },
+          statusDurations: {
+            todo: { unit: 'days', median: 1, sampleSize: 2 },
+            inProgress: { unit: 'days', median: 2, sampleSize: 2 },
+            timeBeforeCompletion: { unit: 'days', median: 3, sampleSize: 2 },
+          },
+        },
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDashboard();
+
+    expect(screen.getByRole('region', { name: 'Kümülatif akış' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: /2026-08-20: Yapılacak: 1, Yapılıyor: 2, Yapıldı: 3/ }),
+    ).toBeInTheDocument();
+  });
+
   it('keeps long trend series compact while exposing every bucket accessibly', () => {
     const points = Array.from({ length: 30 }, (_, index) => ({
       period: `2026-08-${String(index + 1).padStart(2, '0')}`,

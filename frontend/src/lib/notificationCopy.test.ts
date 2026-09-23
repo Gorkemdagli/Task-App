@@ -23,7 +23,7 @@ describe('notificationCopy', () => {
       type: 'task_commented',
       payload: { taskId: 't1', taskTitle: 'Login fix', actorName: 'Selin' },
     });
-    expect(text).toBe('Selin göreve yorum ekledi');
+    expect(text).toBe('Selin, "Login fix" görevine yorum yaptı');
   });
 
   it('formats task_commented without actor (fallback)', () => {
@@ -31,12 +31,27 @@ describe('notificationCopy', () => {
       type: 'task_commented',
       payload: { taskId: 't1', taskTitle: 'Login fix' },
     });
-    expect(text).toBe('Göreve yeni bir yorum eklendi');
+    expect(text).toBe('"Login fix" görevine yeni bir yorum eklendi');
   });
   it('formats message_received without task payload', () => {
     expect(
       notificationCopy({ type: 'message_received', payload: { actorName: 'Mert Kaya' } }),
     ).toBe('Mert Kaya sana mesaj g\u00f6nderdi');
+  });
+
+  it('formats company invitation outcomes with invitee and company', () => {
+    expect(
+      notificationCopy({
+        type: 'company_invite_accepted',
+        payload: { companyName: 'Acme', actorName: 'Deniz' },
+      }),
+    ).toBe('Deniz, Acme şirketine katılma davetini kabul etti');
+    expect(
+      notificationCopy({
+        type: 'company_invite_rejected',
+        payload: { companyName: 'Acme', actorName: 'Deniz' },
+      }),
+    ).toBe('Deniz, Acme şirketine katılma davetini reddetti');
   });
 
   it('formats task status notifications', () => {
@@ -49,9 +64,14 @@ describe('notificationCopy', () => {
     expect(
       notificationCopy({
         type: 'task_status_changed',
-        payload: { taskId: 't1', taskTitle: 'Login fix', newStatus: 'done' },
+        payload: {
+          taskId: 't1',
+          taskTitle: 'Login fix',
+          newStatus: 'done',
+          actorName: 'Selin',
+        },
       }),
-    ).toContain('Yap\u0131ld\u0131');
+    ).toBe('Selin, "Login fix" görevinin durumunu Yapıldı olarak güncelledi');
   });
 });
 

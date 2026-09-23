@@ -88,7 +88,11 @@ describe('queryKeys', () => {
   });
 
   it('keeps incoming invitations identity-scoped and admin invitations tenant-scoped', () => {
-    expect(queryKeys.companyInvitations.incoming()).toEqual(['company-invitations', 'incoming']);
+    expect(queryKeys.companyInvitations.incoming('user-1')).toEqual([
+      'company-invitations',
+      'incoming',
+      'user-1',
+    ]);
     expect(queryKeys.companyInvitations.admin('tenant-a')).toEqual([
       'tenant',
       'tenant-a',

@@ -104,6 +104,32 @@ export type CompanyDashboardTrendPoint = {
   completed: number;
 };
 
+export type CumulativeFlowSample = {
+  date: string;
+  todo: number;
+  inProgress: number;
+  done: number;
+};
+
+export type CumulativeFlowBottleneck = {
+  inProgressDelta: number;
+  inProgressGrowthPct: number | null;
+  agingInProgressCount: number;
+  unknownStartedAtCount: number;
+  blockedRate: number | null;
+  cycleDegradationPct: number | null;
+};
+
+export type CumulativeFlow = {
+  samples: CumulativeFlowSample[];
+  bottleneck: CumulativeFlowBottleneck;
+  statusDurations: {
+    todo: DurationMetric;
+    inProgress: DurationMetric;
+    timeBeforeCompletion: DurationMetric;
+  };
+};
+
 export type CompanyRiskTask = {
   id: string;
   title: string;
@@ -125,6 +151,7 @@ export type CompanyDashboard = {
   backlogChange: number;
   throughput: Array<{ period: string; count: number }>;
   createdVsCompleted: CompanyDashboardTrendPoint[];
+  cumulativeFlow: CumulativeFlow;
   scope: DashboardScope;
   health: DashboardHealth;
   summary: {
@@ -268,6 +295,20 @@ type TrendRow = {
   period: string | Date;
   created_count: Numeric;
   completed_count: Numeric;
+};
+
+export type CumulativeFlowRow = {
+  task_id: string;
+  created_at: Date;
+  archived_at: Date | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  is_blocked: boolean;
+  status: 'todo' | 'in_progress' | 'done';
+  event_id: string | null;
+  event_created_at: Date | null;
+  event_type: 'status_changed' | 'task_reopened' | 'task_blocked' | 'task_unblocked' | null;
+  event_to_status: 'todo' | 'in_progress' | 'done' | null;
 };
 
 function asNumber(value: Numeric | null | undefined): number {
@@ -503,6 +544,216 @@ function mapMember(row: MemberRow) {
     completedTaskCount,
     expiredTaskCount: asNumber(row.expired_task_count),
     completionRate: percentage(completedTaskCount, assignedTaskCount),
+  };
+}
+
+type FlowStatus = 'todo' | 'in_progress' | 'done';
+
+function isFlowStatus(value: unknown): value is FlowStatus {
+  return value === 'todo' || value === 'in_progress' || value === 'done';
+}
+
+type FlowTask = {
+  id: string;
+  createdAt: Date;
+  archivedAt: Date | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  isBlocked: boolean;
+  currentStatus: FlowStatus;
+  events: Array<{
+    id: string;
+    createdAt: Date;
+    type: CumulativeFlowRow['event_type'];
+    toStatus: FlowStatus | null;
+  }>;
+};
+
+function compareFlowEvents(
+  left: { createdAt: Date; id: string },
+  right: { createdAt: Date; id: string },
+) {
+  const timeDelta = left.createdAt.getTime() - right.createdAt.getTime();
+  if (timeDelta !== 0) return timeDelta;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function flowTasks(rows: CumulativeFlowRow[]): FlowTask[] {
+  const tasks = new Map<string, FlowTask>();
+  for (const row of rows) {
+    let task = tasks.get(row.task_id);
+    if (!task) {
+      task = {
+        id: row.task_id,
+        createdAt: row.created_at,
+        archivedAt: row.archived_at,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        isBlocked: row.is_blocked,
+        currentStatus: row.status,
+        events: [],
+      };
+      tasks.set(row.task_id, task);
+    }
+    if (row.event_id && row.event_created_at && row.event_type) {
+      task.events.push({
+        id: row.event_id,
+        createdAt: row.event_created_at,
+        type: row.event_type,
+        toStatus: isFlowStatus(row.event_to_status) ? row.event_to_status : null,
+      });
+    }
+  }
+  return [...tasks.values()].map((task) => ({
+    ...task,
+    events: task.events.sort(compareFlowEvents),
+  }));
+}
+
+function inProgressSince(task: FlowTask): Date | null {
+  let startedAt = task.startedAt;
+  for (const event of task.events) {
+    if (
+      (event.type === 'status_changed' || event.type === 'task_reopened') &&
+      event.toStatus === 'in_progress'
+    ) {
+      startedAt = event.createdAt;
+    }
+  }
+  return startedAt;
+}
+
+function flowStatusAt(task: FlowTask, boundary: Date): FlowStatus | null {
+  if (task.createdAt >= boundary || (task.archivedAt && task.archivedAt <= boundary)) return null;
+  let status: FlowStatus = 'todo';
+  for (const event of task.events) {
+    if (event.createdAt >= boundary) break;
+    if (
+      (event.type === 'status_changed' || event.type === 'task_reopened') &&
+      event.toStatus
+    ) {
+      status = event.toStatus;
+    }
+  }
+  return status;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function durationMetric(values: number[]): DurationMetric {
+  return { unit: 'days', median: median(values), sampleSize: values.length };
+}
+
+function statusDurations(tasks: FlowTask[], now: Date): CumulativeFlow['statusDurations'] {
+  const todoDurations: number[] = [];
+  const inProgressDurations: number[] = [];
+  const timeBeforeCompletion: number[] = [];
+  for (const task of tasks) {
+    const completion = task.completedAt;
+    const completionEnd = completion && completion <= now ? completion : now;
+    const end =
+      task.archivedAt && task.archivedAt < completionEnd ? task.archivedAt : completionEnd;
+    if (end < task.createdAt) continue;
+    let status: FlowStatus = 'todo';
+    let cursor = task.createdAt;
+    let todo = 0;
+    let inProgress = 0;
+    for (const event of task.events) {
+      if (event.createdAt > end) break;
+      if (event.createdAt < cursor) continue;
+      const days = (event.createdAt.getTime() - cursor.getTime()) / DAY_MS;
+      if (status === 'todo') todo += days;
+      if (status === 'in_progress') inProgress += days;
+      if (
+        (event.type === 'status_changed' || event.type === 'task_reopened') &&
+        event.toStatus
+      ) {
+        status = event.toStatus;
+      }
+      cursor = event.createdAt;
+    }
+    const remainingDays = (end.getTime() - cursor.getTime()) / DAY_MS;
+    if (status === 'todo') todo += remainingDays;
+    if (status === 'in_progress') inProgress += remainingDays;
+    todoDurations.push(todo);
+    inProgressDurations.push(inProgress);
+    if (completion && completion >= task.createdAt && completion <= now) {
+      timeBeforeCompletion.push((completion.getTime() - task.createdAt.getTime()) / DAY_MS);
+    }
+  }
+  return {
+    todo: durationMetric(todoDurations),
+    inProgress: durationMetric(inProgressDurations),
+    timeBeforeCompletion: durationMetric(timeBeforeCompletion),
+  };
+}
+
+export function deriveCumulativeFlow(
+  rows: CumulativeFlowRow[],
+  periodStart: Date,
+  periodEnd: Date,
+  now: Date,
+): CumulativeFlow {
+  const tasks = flowTasks(rows);
+  const samples: CumulativeFlowSample[] = [];
+  for (let boundary = new Date(periodStart); boundary < periodEnd; boundary = new Date(boundary.getTime() + DAY_MS)) {
+    const counts = { todo: 0, inProgress: 0, done: 0 };
+    const sampleBoundary = new Date(boundary.getTime() + DAY_MS);
+    for (const task of tasks) {
+      const status = flowStatusAt(task, sampleBoundary);
+      if (status === 'todo') counts.todo += 1;
+      if (status === 'in_progress') counts.inProgress += 1;
+      if (status === 'done') counts.done += 1;
+    }
+    samples.push({ date: formatCalendarDate(boundary)!, ...counts });
+  }
+
+  const currentTasks = tasks.filter((task) => !task.archivedAt || task.archivedAt > now);
+  const inProgressTasks = currentTasks.filter((task) => task.currentStatus === 'in_progress');
+  const activeStartedAt = inProgressTasks.map(inProgressSince);
+  const openTasks = currentTasks.filter((task) => {
+    return task.currentStatus === 'todo' || task.currentStatus === 'in_progress';
+  });
+  const currentInProgress = samples.at(-1)?.inProgress ?? 0;
+  const previousInProgress = samples[0]?.inProgress ?? 0;
+  const inProgressDelta = currentInProgress - previousInProgress;
+  const currentCycles: number[] = [];
+  const previousCycles: number[] = [];
+  for (const task of tasks) {
+    if (!task.startedAt || !task.completedAt || task.completedAt < task.startedAt) continue;
+    const cycleDays = (task.completedAt.getTime() - task.startedAt.getTime()) / DAY_MS;
+    if (task.completedAt >= periodStart && task.completedAt < periodEnd) currentCycles.push(cycleDays);
+    if (task.completedAt >= new Date(periodStart.getTime() - (periodEnd.getTime() - periodStart.getTime())) && task.completedAt < periodStart) {
+      previousCycles.push(cycleDays);
+    }
+  }
+  const currentMedian = currentCycles.length >= 5 ? median(currentCycles) : null;
+  const previousMedian = previousCycles.length >= 5 ? median(previousCycles) : null;
+  return {
+    samples,
+    bottleneck: {
+      inProgressDelta,
+      inProgressGrowthPct:
+        previousInProgress === 0 ? null : Math.round((inProgressDelta / previousInProgress) * 100),
+      agingInProgressCount: activeStartedAt.filter(
+        (startedAt) => startedAt !== null && now.getTime() - startedAt.getTime() >= 15 * DAY_MS,
+      ).length,
+      unknownStartedAtCount: activeStartedAt.filter((startedAt) => startedAt === null).length,
+      blockedRate:
+        openTasks.length === 0
+          ? null
+          : percentage(openTasks.filter((task) => task.isBlocked).length, openTasks.length),
+      cycleDegradationPct:
+        currentMedian === null || previousMedian === null || previousMedian === 0
+          ? null
+          : Math.round(((currentMedian - previousMedian) / previousMedian) * 100),
+    },
+    statusDurations: statusDurations(tasks, now),
   };
 }
 
@@ -754,6 +1005,29 @@ const trendQuery = (
   )
   GROUP BY periods.period_start
   ORDER BY periods.period_start ASC
+`;
+
+const cumulativeFlowQuery = (tenantId: string, taskScope: Prisma.Sql) => Prisma.sql`
+  SELECT
+    task.id AS task_id,
+    task.created_at,
+    task.archived_at,
+    task.started_at,
+    task.completed_at,
+    task.is_blocked,
+    task.status,
+    event.id AS event_id,
+    event.created_at AS event_created_at,
+    event.event_type,
+    event.to_status AS event_to_status
+  FROM tasks task
+  JOIN teams team ON team.id = task.team_id
+  LEFT JOIN task_events event
+    ON event.task_id = task.id
+    AND event.event_type IN ('status_changed', 'task_reopened')
+  WHERE team.tenant_id = ${tenantId}::uuid
+    ${taskScope}
+  ORDER BY task.id ASC, event.created_at ASC NULLS LAST, event.id ASC NULLS LAST
 `;
 
 const memberQuery = (tenantId: string, teamId: string | null, archiveCutoff: Date) => Prisma.sql`
@@ -1062,6 +1336,9 @@ async function getDashboardData(
     });
   }
 
+  const cumulativeFlowRows =
+    (await db.$queryRaw<CumulativeFlowRow[]>(cumulativeFlowQuery(tenantId, taskScope))) ?? [];
+
   const period: DashboardPeriod = {
     range: selectedRange.range,
     start: formatCalendarDate(periodStart)!,
@@ -1069,6 +1346,7 @@ async function getDashboardData(
   };
   const scope: DashboardScope = { teamId: team?.id ?? null, teamName: team?.name ?? null };
   const blockedRate = percentage(blockedTaskCount, statusTotal);
+  const cumulativeFlow = deriveCumulativeFlow(cumulativeFlowRows, periodStart, periodEnd, now);
 
   return {
     period,
@@ -1097,6 +1375,7 @@ async function getDashboardData(
     backlogChange: currentCreated - currentCompleted,
     throughput: createdVsCompleted.map(({ period, completed }) => ({ period, count: completed })),
     createdVsCompleted,
+    cumulativeFlow,
     scope,
     health: deriveHealth(period, scope, {
       completedTaskCount: currentCompleted,

@@ -142,6 +142,7 @@ export function PermissionsPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<DraftPermissions | null>(null);
   const [draft, setDraft] = useState<DraftPermissions | null>(null);
+  const [pendingDiscardAction, setPendingDiscardAction] = useState<(() => void) | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -192,13 +193,19 @@ export function PermissionsPage() {
   function discardDraft() {
     setDraft(null);
     setSaveError(null);
+    setPendingDiscardAction(null);
   }
 
-  function confirmDiscard(): boolean {
+  function requestDiscard(action: () => void): boolean {
     if (!hasUnsavedDraft()) return true;
-    if (!window.confirm(DISCARD_MESSAGE)) return false;
+    setPendingDiscardAction(() => action);
+    return false;
+  }
+
+  function discardAndContinue() {
+    const action = pendingDiscardAction;
     discardDraft();
-    return true;
+    action?.();
   }
 
   function clearSelection() {
@@ -207,27 +214,36 @@ export function PermissionsPage() {
     setDraft(null);
     setSaveError(null);
     setConfirming(false);
+    setPendingDiscardAction(null);
   }
 
   function selectUser(candidate: CompanyUser) {
-    if (isSaving || candidate.id === selectedUserId || !confirmDiscard()) return;
-    setSelectedUserId(candidate.id);
-    setBaseline(snapshot(candidate));
-    setDraft(null);
-    setSaveError(null);
-    inspectorRef.current?.focus();
+    if (isSaving || candidate.id === selectedUserId) return;
+    const select = () => {
+      setSelectedUserId(candidate.id);
+      setBaseline(snapshot(candidate));
+      setDraft(null);
+      setSaveError(null);
+      inspectorRef.current?.focus();
+    };
+    if (!requestDiscard(select)) return;
+    select();
   }
 
   function changeFilters(nextSearch: string, nextRole: RoleFilter, nextTeam: string): boolean {
     const hidesSelection = selectedUser && !filterUsersByCriteria(allUsers, nextSearch, nextRole, nextTeam).some(
       (candidate) => candidate.id === selectedUser.id,
     );
-    if (hidesSelection && !confirmDiscard()) return false;
-    if (hidesSelection) clearSelection();
-    setSearch(nextSearch);
-    setRoleFilter(nextRole);
-    setTeamFilter(nextTeam);
-    setPage(1);
+    const applyFilters = () => {
+      if (hidesSelection) clearSelection();
+      setPendingDiscardAction(null);
+      setSearch(nextSearch);
+      setRoleFilter(nextRole);
+      setTeamFilter(nextTeam);
+      setPage(1);
+    };
+    if (hidesSelection && !requestDiscard(applyFilters)) return false;
+    applyFilters();
     return true;
   }
 
@@ -235,6 +251,7 @@ export function PermissionsPage() {
     if (!selectedUser || selectedUser.id === user?.id || teamsEditingBlocked || isSaving) return;
     setDraft(change(selectedDraft ?? snapshot(selectedUser)));
     setSaveError(null);
+    setPendingDiscardAction(null);
   }
 
   function setTeamRole(teamId: string, role: 'member' | 'teamAdmin' | null) {
@@ -263,9 +280,18 @@ export function PermissionsPage() {
   }
 
   function closeMobileInspector() {
-    const previousId = selectedUserId;
-    clearSelection();
-    if (previousId) rowRefs.current[previousId]?.focus();
+    const close = () => {
+      const previousId = selectedUserId;
+      clearSelection();
+      if (previousId) rowRefs.current[previousId]?.focus();
+    };
+    if (!requestDiscard(close)) return;
+    close();
+  }
+
+  function changePage(nextPage: number) {
+    const applyPage = () => setPage(nextPage);
+    if (requestDiscard(applyPage)) applyPage();
   }
 
   const retryUsers = () => {
@@ -501,9 +527,7 @@ export function PermissionsPage() {
                       <button
                         type="button"
                         aria-label="Önceki sayfa"
-                        onClick={() => {
-                          if (confirmDiscard()) setPage((current) => Math.max(1, current - 1));
-                        }}
+                        onClick={() => changePage(Math.max(1, visiblePage - 1))}
                         disabled={visiblePage === 1 || isSaving}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -512,9 +536,7 @@ export function PermissionsPage() {
                       <button
                         type="button"
                         aria-label="Sonraki sayfa"
-                        onClick={() => {
-                          if (confirmDiscard()) setPage((current) => Math.min(totalPages, current + 1));
-                        }}
+                        onClick={() => changePage(Math.min(totalPages, visiblePage + 1))}
                         disabled={visiblePage === totalPages || isSaving}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -549,6 +571,20 @@ export function PermissionsPage() {
                 </Button>
               )}
             </div>
+
+            {pendingDiscardAction && (
+              <div role="alert" className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+                <p className="text-sm text-foreground">{DISCARD_MESSAGE}</p>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setPendingDiscardAction(null)}>
+                    Düzenlemeye Devam Et
+                  </Button>
+                  <Button type="button" variant="destructive" onClick={discardAndContinue}>
+                    Değişiklikleri İptal Et ve Devam Et
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {!selectedUser || !selectedDraft || !selectedBaseline ? (
               <p className="py-10 text-center text-sm text-secondary-foreground">

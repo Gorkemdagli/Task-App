@@ -2,12 +2,11 @@ export function RouteFallback() {
   return (
     <div
       data-testid="route-fallback"
-      className="space-y-3"
+      className="flex min-h-screen items-center justify-center bg-background text-secondary-foreground"
       role="status"
       aria-label="Sayfa yükleniyor"
     >
-      <div className="h-8 w-48 animate-pulse rounded-md bg-secondary" />
-      <div className="h-24 w-full animate-pulse rounded-md bg-secondary" />
+      Yükleniyor...
     </div>
   );
 }

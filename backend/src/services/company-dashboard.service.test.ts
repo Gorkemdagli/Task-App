@@ -115,6 +115,24 @@ describe('getCompanyDashboard', () => {
     expect(riskQuery.text).toMatch(/u\.tenant_id = \$\d+::uuid/);
   });
 
+  it('tenant-scopes the cumulative flow task and event query', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await getCompanyDashboard(db, admin, {}, now);
+
+    const cumulativeQuery = vi.mocked(db.$queryRaw).mock.calls[5]?.[0] as { text: string };
+    expect(cumulativeQuery.text).toMatch(/JOIN teams team ON team\.id = task\.team_id/);
+    expect(cumulativeQuery.text).toMatch(/team\.tenant_id = \$\d+::uuid/);
+    expect(cumulativeQuery.text).toMatch(/LEFT JOIN task_events event\s+ON event\.task_id = task\.id/);
+    expect(cumulativeQuery.text).toMatch(/event\.event_type IN \('status_changed', 'task_reopened'\)/);
+  });
+
   it('maps all-scope aggregates, rounds percentages, and caps members', async () => {
     vi.mocked(db.$queryRaw)
       .mockResolvedValueOnce([summaryRow])
@@ -364,6 +382,7 @@ describe('getCompanyDashboard', () => {
 
     const result = await getCompanyDashboard(db, admin, { teamId: TEAM_ID }, now);
     const summaryQuery = vi.mocked(db.$queryRaw).mock.calls[0]?.[0] as { text: string };
+    const cumulativeQuery = vi.mocked(db.$queryRaw).mock.calls[4]?.[0] as { text: string };
 
     expect(result.cycleTime).toEqual({ unit: 'days', median: null, p85: null, sampleSize: 0 });
     expect(result.leadTime).toEqual({ unit: 'days', median: null, sampleSize: 0 });
@@ -378,6 +397,7 @@ describe('getCompanyDashboard', () => {
     expect(summaryQuery.text).toMatch(/team\.tenant_id = \$\d+::uuid/);
     expect(summaryQuery.text).toMatch(/task\.team_id = \$\d+::uuid/);
     expect(summaryQuery.text).toMatch(/task\.pending_status IS NULL/);
+    expect(cumulativeQuery.text).toMatch(/task\.team_id = \$\d+::uuid/);
   });
 
   it('scopes blocked metrics to active tasks and uses an exact UTC three-day cutoff', async () => {

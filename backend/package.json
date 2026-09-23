@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:archive-worker": "tsx watch src/archive-worker.ts",
+    "prebuild": "npm run prisma:generate",
     "build": "tsc",
     "start": "node dist/index.js",
     "start:archive-worker": "node dist/archive-worker.js",

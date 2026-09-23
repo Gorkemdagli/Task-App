@@ -87,6 +87,30 @@ export type CompanyDashboardTrendPoint = {
   completed: number;
 };
 
+export type CumulativeFlowSample = {
+  date: string;
+  todo: number;
+  inProgress: number;
+  done: number;
+};
+
+export type CumulativeFlow = {
+  samples: CumulativeFlowSample[];
+  bottleneck: {
+    inProgressDelta: number;
+    inProgressGrowthPct: number | null;
+    agingInProgressCount: number;
+    unknownStartedAtCount: number;
+    blockedRate: number | null;
+    cycleDegradationPct: number | null;
+  };
+  statusDurations: {
+    todo: DurationMetric;
+    inProgress: DurationMetric;
+    timeBeforeCompletion: DurationMetric;
+  };
+};
+
 export type CompanyRiskTask = {
   id: string;
   title: string;
@@ -108,6 +132,7 @@ export type CompanyDashboard = {
   backlogChange: number;
   throughput: Array<{ period: string; count: number }>;
   createdVsCompleted: CompanyDashboardTrendPoint[];
+  cumulativeFlow?: CumulativeFlow;
   scope: DashboardScope;
   health: DashboardHealth;
   summary: {

@@ -12,6 +12,7 @@ type StatusBreakdown = CompanyDashboard['statusBreakdown'];
 type PriorityBreakdown = CompanyDashboard['priorityBreakdown'];
 type TrendPoint = CompanyDashboard['createdVsCompleted'][number];
 type ThroughputPoint = CompanyDashboard['throughput'][number];
+type CumulativeFlowPoint = NonNullable<CompanyDashboard['cumulativeFlow']>['samples'][number];
 
 const STATUS_SEGMENTS = [
   { key: 'todo', label: 'Yapılacak', color: 'text-status-todo', marker: 'bg-status-todo' },
@@ -276,12 +277,87 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
   );
 }
 
+function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; max: number }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const labels = chartLabels(points.length);
+  const activePoint = activeIndex === null ? null : points[activeIndex];
+  const series = [
+    { key: 'todo', stroke: 'stroke-status-todo', fill: 'fill-status-todo' },
+    { key: 'inProgress', stroke: 'stroke-status-inprogress', fill: 'fill-status-inprogress' },
+    { key: 'done', stroke: 'stroke-status-done', fill: 'fill-status-done' },
+  ] as const;
+
+  return (
+    <div className="relative min-h-0 flex-1" data-testid="company-cumulative-flow-chart">
+      <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
+        {series.map((item) => (
+          <polyline
+            key={item.key}
+            points={points
+              .map((point, index) => `${chartX(index, points.length)},${chartY(point[item.key], max)}`)
+              .join(' ')}
+            fill="none"
+            className={item.stroke}
+            strokeWidth="1.5"
+          />
+        ))}
+        {points.map((point, index) => {
+          const x = chartX(index, points.length);
+          return (
+            <g key={point.date} aria-hidden="true">
+              {series.map((item) => (
+                <circle
+                  key={item.key}
+                  cx={x}
+                  cy={chartY(point[item.key], max)}
+                  r="1.5"
+                  className={item.fill}
+                />
+              ))}
+              {labels.has(index) && (
+                <text x={x} y="61" textAnchor="middle" className="fill-secondary-foreground text-xs">
+                  {point.date.slice(5)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {activePoint && activeIndex !== null && (
+        <ChartTooltip x={chartX(activeIndex, points.length)}>
+          {`${activePoint.date} · Yapılacak: ${activePoint.todo} · Yapılıyor: ${activePoint.inProgress} · Yapıldı: ${activePoint.done}`}
+        </ChartTooltip>
+      )}
+      <ChartInteractionSurface
+        testId="company-cumulative-flow-hit-surface"
+        count={points.length}
+        onActivate={setActiveIndex}
+        onDeactivate={() => setActiveIndex(null)}
+      >
+        {points.map((point, index) => (
+          <ChartDataPoint
+            key={point.date}
+            x={chartX(index, points.length)}
+            top={`${(chartY(Math.max(point.todo, point.inProgress, point.done), max) / CHART_BOTTOM) * 100}%`}
+            label={`${point.date}: Yapılacak: ${point.todo}, Yapılıyor: ${point.inProgress}, Yapıldı: ${point.done}`}
+            onActivate={() => setActiveIndex(index)}
+            onDeactivate={() => setActiveIndex(null)}
+          />
+        ))}
+      </ChartInteractionSurface>
+    </div>
+  );
+}
+
 export function PeriodTrendCharts({
   createdVsCompleted,
   throughput,
+  cumulativeFlow,
 }: {
   createdVsCompleted: TrendPoint[];
   throughput: ThroughputPoint[];
+  cumulativeFlow?: CompanyDashboard['cumulativeFlow'];
 }) {
   const maxFlow = Math.max(
     1,
@@ -362,6 +438,40 @@ export function PeriodTrendCharts({
           )}
         </div>
       </section>
+
+      {cumulativeFlow && (
+        <section
+          aria-labelledby="company-cumulative-flow-heading"
+          className="flex h-64 min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 md:col-span-2 md:p-5"
+        >
+          <div className="mb-2 shrink-0">
+            <h2 id="company-cumulative-flow-heading" className="text-lg font-semibold">
+              Kümülatif akış
+            </h2>
+            <p className="text-sm text-secondary-foreground">Gün sonu görev durumları</p>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col" role="group" aria-label="Kümülatif akış trendi">
+            {cumulativeFlow.samples.length === 0 && (
+              <p className="py-6 text-center text-sm text-secondary-foreground">Bu dönemde veri yok.</p>
+            )}
+            {cumulativeFlow.samples.length > 0 && (
+              <CumulativeFlowChart
+                key={`${cumulativeFlow.samples[0]?.date}-${cumulativeFlow.samples[cumulativeFlow.samples.length - 1]?.date}`}
+                points={cumulativeFlow.samples}
+                max={Math.max(
+                  1,
+                  ...cumulativeFlow.samples.flatMap((point) => [point.todo, point.inProgress, point.done]),
+                )}
+              />
+            )}
+          </div>
+          <div className="mt-2 flex shrink-0 gap-4 text-xs text-secondary-foreground">
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-todo" aria-hidden="true" />Yapılacak</span>
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-inprogress" aria-hidden="true" />Yapılıyor</span>
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done" aria-hidden="true" />Yapıldı</span>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -30,6 +30,8 @@ const taskTagsSchema = z.array(z.string().trim().min(1).max(32)).max(10).transfo
 export const createTaskSchema = z.object({
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().max(5000).optional(),
+  scopeItems: scopeItemsSchema.optional(),
+  expectedOutput: taskDetailTextSchema,
   deadline: calendarDateSchema.optional(),
   estimateMinutes: estimateMinutesSchema,
   priority: taskPrioritySchema,

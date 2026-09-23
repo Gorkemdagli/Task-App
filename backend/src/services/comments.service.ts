@@ -82,6 +82,7 @@ export async function createComment(
     db,
     { id: task.id, title: task.title, assignerId: task.assignerId, assigneeIds },
     actor.id,
+    comment.author.fullName,
   );
 
   return toComment(comment);

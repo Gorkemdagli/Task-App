@@ -1,9 +1,9 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
+import { GlobalErrorPage } from './layout/GlobalErrorPage';
 import { useAuthStore } from '../stores/authStore';
 
 export function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
-  const location = useLocation();
-  if (!token) return <Navigate to="/login" state={{ next: location.pathname }} replace />;
+  if (!token) return <GlobalErrorPage kind="sign-in-required" />;
   return <Outlet />;
 }

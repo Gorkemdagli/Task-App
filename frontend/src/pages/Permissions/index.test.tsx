@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -93,7 +93,6 @@ describe('PermissionsPage', () => {
     state.usersQuery.isFetching = false;
     state.teamsQuery.isLoading = false;
     state.teamsQuery.isError = false;
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     useAuthStore.setState({
       accessToken: 'token',
       user: {
@@ -173,19 +172,21 @@ describe('PermissionsPage', () => {
 
   it('guards a draft before changing the selected user', async () => {
     const u = userEvent.setup();
-    const confirm = vi.mocked(window.confirm);
+    const nativeConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
 
     await u.click(screen.getByRole('option', { name: /User B/ }));
     await u.selectOptions(screen.getByRole('combobox', { name: 'Şirket rolü' }), 'companyAdmin');
-    confirm.mockReturnValueOnce(false);
     await u.click(within(screen.getByRole('listbox', { name: 'Kullanıcı defteri' })).getByRole('option', { name: /^Admin,/ }));
     expect(screen.getByRole('heading', { name: 'User B' })).toBeInTheDocument();
-    expect(confirm).toHaveBeenCalledWith('Kaydedilmemiş değişiklikler var. Bu değişiklikleri iptal edip devam etmek ister misiniz?');
+    expect(screen.getByRole('alert')).toHaveTextContent('Kaydedilmemiş değişiklikler var.');
+    await u.click(screen.getByRole('button', { name: 'Düzenlemeye Devam Et' }));
+    expect(screen.getByRole('combobox', { name: 'Şirket rolü' })).toHaveValue('companyAdmin');
 
-    confirm.mockReturnValueOnce(true);
     await u.click(within(screen.getByRole('listbox', { name: 'Kullanıcı defteri' })).getByRole('option', { name: /^Admin,/ }));
+    await u.click(screen.getByRole('button', { name: 'Değişiklikleri İptal Et ve Devam Et' }));
     expect(screen.getByRole('heading', { name: 'Admin' })).toBeInTheDocument();
+    expect(nativeConfirm).not.toHaveBeenCalled();
   });
 
   it('shows an old-to-new diff and sends one atomic update', async () => {
@@ -202,7 +203,9 @@ describe('PermissionsPage', () => {
     expect(dialog).toHaveTextContent('Alpha: Yok → Takım Admini');
     expect(state.mutateAsync).not.toHaveBeenCalled();
 
+    const dialogRemoval = waitForElementToBeRemoved(dialog);
     await u.click(within(dialog).getByRole('button', { name: 'Değişiklikleri Kaydet' }));
+    await dialogRemoval;
     expect(state.mutateAsync).toHaveBeenCalledWith({
       userId: 'user-b',
       role: 'companyAdmin',
@@ -218,23 +221,26 @@ describe('PermissionsPage', () => {
     await u.click(screen.getByRole('option', { name: /User B/ }));
     await u.selectOptions(screen.getByRole('combobox', { name: 'Şirket rolü' }), 'companyAdmin');
     await u.click(screen.getByRole('button', { name: 'Değişiklikleri İncele' }));
-    await u.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Değişiklikleri Kaydet' }));
+    const dialog = screen.getByRole('dialog');
+    const dialogRemoval = waitForElementToBeRemoved(dialog);
+    await u.click(within(dialog).getByRole('button', { name: 'Değişiklikleri Kaydet' }));
+    await dialogRemoval;
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Yetkiler güncellenemedi.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Yetkiler güncellenemedi.');
     expect(screen.getByRole('combobox', { name: 'Şirket rolü' })).toHaveValue('companyAdmin');
     expect(screen.getByRole('button', { name: 'Değişiklikleri İptal Et' })).toBeInTheDocument();
   });
 
   it('does not lose a draft when search would hide the selected user', async () => {
     const u = userEvent.setup();
-    const confirm = vi.mocked(window.confirm);
     renderPage();
 
     await u.click(screen.getByRole('option', { name: /User B/ }));
     await u.selectOptions(screen.getByRole('combobox', { name: 'Şirket rolü' }), 'companyAdmin');
-    confirm.mockReturnValue(false);
     await u.type(screen.getByRole('textbox', { name: 'Kullanıcı ara' }), 'Z');
 
+    expect(screen.getByRole('alert')).toHaveTextContent('Kaydedilmemiş değişiklikler var.');
+    await u.click(screen.getByRole('button', { name: 'Düzenlemeye Devam Et' }));
     expect(screen.getByRole('heading', { name: 'User B' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Şirket rolü' })).toHaveValue('companyAdmin');
     expect(screen.getByRole('textbox', { name: 'Kullanıcı ara' })).toHaveValue('');
@@ -279,7 +285,9 @@ describe('PermissionsPage', () => {
     await u.click(saveButton);
     expect(state.mutateAsync).not.toHaveBeenCalled();
 
+    const dialogRemoval = waitForElementToBeRemoved(dialog);
     await u.click(within(dialog).getByRole('button', { name: 'İptal' }));
+    await dialogRemoval;
     expect(screen.getByRole('button', { name: 'Değişiklikleri İncele' })).toBeDisabled();
   });
 
@@ -311,26 +319,28 @@ describe('PermissionsPage', () => {
     expect(saveButton).toBeDisabled();
     await u.click(saveButton);
     expect(state.mutateAsync).not.toHaveBeenCalled();
+    const dialogRemoval = waitForElementToBeRemoved(dialog);
     await u.click(within(dialog).getByRole('button', { name: 'İptal' }));
+    await dialogRemoval;
     expect(screen.getByRole('combobox', { name: 'Şirket rolü' })).toBeDisabled();
   });
 
   it('restores rejected role and team filter values', async () => {
     const u = userEvent.setup();
-    const confirm = vi.mocked(window.confirm);
     renderPage();
 
     await u.click(screen.getByRole('option', { name: /User B/ }));
     await u.selectOptions(screen.getByRole('combobox', { name: 'Şirket rolü' }), 'companyAdmin');
-    confirm.mockReturnValue(false);
-
     const roleFilter = screen.getByRole('combobox', { name: 'Şirket rolü filtresi' });
     await u.selectOptions(roleFilter, 'companyAdmin');
     expect(roleFilter).toHaveValue('');
+    await u.click(screen.getByRole('button', { name: 'Düzenlemeye Devam Et' }));
 
     const teamFilter = screen.getByRole('combobox', { name: 'Takım filtresi' });
     await u.selectOptions(teamFilter, 'team-a');
     expect(teamFilter).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent('Kaydedilmemiş değişiklikler var.');
+    await u.click(screen.getByRole('button', { name: 'Düzenlemeye Devam Et' }));
   });
 
   it('shows retry and empty states without a central spinner', () => {

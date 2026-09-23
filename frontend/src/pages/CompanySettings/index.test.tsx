@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => ({
   useCompanyInvitationAdmin: vi.fn(),
   useCreateCompanyInvitation: vi.fn(),
   useCancelCompanyInvitation: vi.fn(),
+  useCompanyUsers: vi.fn(),
+  useTeams: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/useCompanySettings', () => ({
@@ -49,6 +51,14 @@ vi.mock('@/hooks/queries/useCompanyInvitations', () => ({
   useCompanyInvitationAdmin: mocks.useCompanyInvitationAdmin,
   useCreateCompanyInvitation: mocks.useCreateCompanyInvitation,
   useCancelCompanyInvitation: mocks.useCancelCompanyInvitation,
+}));
+
+vi.mock('@/hooks/queries/useCompanyUsers', () => ({
+  useCompanyUsers: mocks.useCompanyUsers,
+}));
+
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeams: mocks.useTeams,
 }));
 
 function renderPage() {
@@ -108,6 +118,12 @@ describe('CompanySettingsPage', () => {
       mutateAsync: vi.fn().mockResolvedValue(pendingInvitation),
       isPending: false,
     });
+    mocks.useTeams.mockReturnValue({ data: [{ id: 'team-1' }, { id: 'team-2' }], isPending: false, isError: false });
+    mocks.useCompanyUsers.mockReturnValue({
+      data: [{ id: 'user-1' }, { id: 'user-2' }, { id: 'user-3' }],
+      isPending: false,
+      isError: false,
+    });
   });
 
   it('exposes reusable settings content without a second role guard', () => {
@@ -135,7 +151,41 @@ describe('CompanySettingsPage', () => {
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByLabelText(/display ID/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Davet Gönder' })).toBeInTheDocument();
+    const summary = screen.getByTestId('company-settings-summary');
+    expect(summary).toHaveTextContent('Şirket durumu');
+    expect(summary).toHaveTextContent('Mevcut');
+    expect(summary).toHaveTextContent('Takım sayısı2');
+    expect(summary).toHaveTextContent('Üye sayısı3');
     expect(screen.queryByText(/fatura|billing|takım oluştur/i)).not.toBeInTheDocument();
+  });
+
+  it('does not show counts while the summary queries are unavailable', () => {
+    mocks.useTeams.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    mocks.useCompanyUsers.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderPage();
+
+    const summary = screen.getByTestId('company-settings-summary');
+    expect(summary).toHaveTextContent('Mevcut');
+    expect(summary).toHaveTextContent('Takım sayısı—');
+    expect(summary).toHaveTextContent('Üye sayısı—');
+  });
+
+  it('uses the profile rail and full-width operations queue composition', () => {
+    renderPage();
+
+    expect(screen.getByTestId('company-settings-page')).toHaveClass('max-w-6xl');
+    expect(screen.getByTestId('company-settings-main-grid')).toHaveClass(
+      'grid-cols-1',
+      'lg:grid-cols-[17rem_minmax(0,1fr)]',
+    );
+    expect(screen.getByTestId('company-settings-identity-rail')).toContainElement(
+      screen.getByText('Acme Corp'),
+    );
+    expect(screen.getByTestId('company-settings-profile-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('company-settings-operations-queue')).toHaveClass('w-full');
+    expect(screen.getByTestId('company-settings-main-grid')).not.toContainElement(
+      screen.getByTestId('company-settings-operations-queue'),
+    );
   });
 
   it('submits name and trimmed nullable description independently', async () => {
@@ -166,20 +216,25 @@ describe('CompanySettingsPage', () => {
 
     const tooLarge = new File(['logo'], 'large.png', { type: 'image/png' });
     Object.defineProperty(tooLarge, 'size', { value: 25 * 1024 * 1024 + 1 });
-    await user.upload(screen.getByLabelText('Şirket logosu'), tooLarge);
+    const logoInput = screen.getByLabelText('Şirket logosu');
+    expect(logoInput).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp');
+    expect(logoInput.closest('label')).toHaveClass('group', 'cursor-pointer');
+    const identityRail = screen.getByTestId('company-settings-identity-rail');
+    const profilePanel = screen.getByTestId('company-settings-profile-panel');
+    expect(identityRail).toContainElement(logoInput);
+    expect(within(identityRail).getByText('Logo yükle')).toBeInTheDocument();
+    expect(profilePanel).not.toContainElement(logoInput);
+    expect(within(profilePanel).queryByText('Logo yükle')).not.toBeInTheDocument();
+    await user.upload(logoInput, tooLarge);
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Logo dosyası 25 MB veya daha küçük olmalı.',
     );
     expect(mutateAsync).not.toHaveBeenCalled();
 
     const valid = new File(['logo'], 'logo.png', { type: 'image/png' });
-    await user.upload(screen.getByLabelText('Şirket logosu'), valid);
-    expect(screen.getByAltText('Şirket logosu önizleme')).toHaveAttribute(
-      'src',
-      'blob:logo-preview',
-    );
-    await user.click(screen.getByRole('button', { name: 'Logoyu yükle' }));
+    await user.upload(logoInput, valid);
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(valid));
+    expect(screen.queryByRole('button', { name: 'Logoyu yükle' })).not.toBeInTheDocument();
   });
 
   it('sends invitation, updates feedback on retry, and clears it after remount', async () => {

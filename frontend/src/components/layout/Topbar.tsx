@@ -56,7 +56,7 @@ function TopbarContent() {
   const navigate = useNavigate();
 
   const notifications = useNotifications();
-  const items = notifications.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = notifications.data?.pages[0]?.items ?? [];
   const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
   const companyInvitations = useCompanyInvitations();
   const invitations = companyInvitations.data ?? [];
@@ -68,8 +68,13 @@ function TopbarContent() {
   const [bellOpen, setBellOpen] = useState(false);
 
   function handleNotificationSelect(item: NotificationItem) {
-    if (item.type === 'message_received') return;
+    if (
+      item.type === 'message_received' ||
+      item.type === 'company_invite_accepted' ||
+      item.type === 'company_invite_rejected'
+    ) return;
     if (item.readAt === null) markRead.mutate(item.id);
+    if (!('taskId' in item.payload)) return;
     setBellOpen(false);
     navigate(`/tasks/${item.payload.taskId}`);
   }
@@ -182,14 +187,10 @@ function TopbarContent() {
             <NotificationPanel
               items={items}
               unreadCount={unreadCount}
-              hasNextPage={Boolean(notifications.hasNextPage)}
-              isFetchingNextPage={notifications.isFetchingNextPage}
-              onLoadMore={() => notifications.fetchNextPage()}
               onSelect={handleNotificationSelect}
               onMarkAllRead={() => markAllRead.mutate()}
               onViewAll={() => {
                 setBellOpen(false);
-                navigate('/notifications');
               }}
               invitations={invitations}
               onAcceptInvitation={handleAcceptInvitation}

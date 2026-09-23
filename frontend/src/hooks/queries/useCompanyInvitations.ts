@@ -5,10 +5,11 @@ import { useAuthStore } from '@/stores/authStore';
 
 export function useCompanyInvitations() {
   const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   return useQuery({
-    queryKey: queryKeys.companyInvitations.incoming(),
+    queryKey: queryKeys.companyInvitations.incoming(userId ?? 'anonymous'),
     queryFn: companyInvitationsService.listMyCompanyInvitations,
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && userId),
   });
 }
 
@@ -54,24 +55,31 @@ export function useAcceptCompanyInvitation() {
     mutationFn: companyInvitationsService.acceptCompanyInvitation,
     onSuccess: ({ user }) => {
       useAuthStore.getState().setUser(user);
-      queryClient.invalidateQueries({ queryKey: queryKeys.companyInvitations.incoming() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.companyInvitations.incoming(user.id),
+      });
       if (!user.tenantId) return;
       queryClient.invalidateQueries({
         queryKey: queryKeys.companyInvitations.admin(user.tenantId),
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.companyUsers(user.tenantId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.list(user.tenantId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications(user.tenantId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications(user.tenantId, user.id),
+      });
     },
   });
 }
 
 export function useRejectCompanyInvitation() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   return useMutation({
     mutationFn: companyInvitationsService.rejectCompanyInvitation,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.companyInvitations.incoming() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.companyInvitations.incoming(userId ?? 'anonymous'),
+      });
     },
   });
 }

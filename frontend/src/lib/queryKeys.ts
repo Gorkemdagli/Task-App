@@ -32,9 +32,12 @@ export const queryKeys = {
     history: (tenantId: string, taskId: string) =>
       ['tenant', tenantId, 'task', taskId, 'history'] as const,
   },
-  notifications: (tenantId: string) => ['tenant', tenantId, 'notifications'] as const,
+  notifications: (tenantId: string, userId?: string) =>
+    userId === undefined
+      ? (['tenant', tenantId, 'notifications'] as const)
+      : (['tenant', tenantId, 'notifications', userId] as const),
   companyInvitations: {
-    incoming: () => ['company-invitations', 'incoming'] as const,
+    incoming: (userId: string) => ['company-invitations', 'incoming', userId] as const,
     admin: (tenantId: string) => ['tenant', tenantId, 'company-invitations'] as const,
   },
   companyUsers: (tenantId: string) => ['tenant', tenantId, 'company-users'] as const,

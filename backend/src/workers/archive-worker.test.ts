@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   findTenants: vi.fn(),
   transaction: vi.fn(),
   archive: vi.fn(),
+  schedule: vi.fn(),
 }));
 
 vi.mock('../lib/maintenancePrisma', () => ({
@@ -17,6 +18,7 @@ vi.mock('../lib/maintenancePrisma', () => ({
 vi.mock('../services/tasks.archive', () => ({
   archiveExpiredTasks: state.archive,
 }));
+vi.mock('node-cron', () => ({ default: { schedule: state.schedule } }));
 
 describe('archive worker isolation', () => {
   beforeEach(() => {
@@ -24,6 +26,24 @@ describe('archive worker isolation', () => {
     state.findTenants.mockReset();
     state.transaction.mockReset();
     state.archive.mockReset();
+    state.schedule.mockReset();
+  });
+
+  it('registers the hourly job and runs the archive batch from its callback', async () => {
+    const job = { start: vi.fn() };
+    let callback: (() => void) | undefined;
+    state.findTenants.mockResolvedValue([]);
+    state.schedule.mockImplementation((_expression, scheduledCallback) => {
+      callback = scheduledCallback;
+      return job;
+    });
+
+    const { startArchiveWorker } = await import('../archive-worker');
+    expect(startArchiveWorker()).toBe(job);
+    expect(state.schedule).toHaveBeenCalledWith('0 * * * *', expect.any(Function));
+
+    callback?.();
+    expect(state.findTenants).toHaveBeenCalledWith({ select: { id: true } });
   });
 
   it('continues with the next tenant after a batch failure', async () => {

@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { TaskDetailPage } from './index';
 import type { Task, TaskStatus } from '@/hooks/tasks';
+import type { TeamMember } from '@/services/teams';
 
 // Radix DropdownMenu portal'i jsdom'da güvenilmez (plan §3 "StatusDropdown
 // onChange'i triggerlemek için Radix DropdownMenu'nun portal davranışı test'te
@@ -74,27 +75,18 @@ vi.mock('@/components/tasks/ProposeConfirmDialog', () => ({
     ) : null,
 }));
 
-// PendingAckModal davranışı bu sayfada kontrollü açık/kapalı state ile bağlanır.
-vi.mock('@/components/tasks/PendingAckModal', () => ({
-  PendingAckModal: ({ onClose }: { onClose: () => void }) => (
-    <div data-testid="pending-ack-modal">
-      <button type="button" data-testid="pending-ack-close" onClick={onClose}>
-        Kapat
-      </button>
-    </div>
-  ),
-}));
-
-vi.mock('@/hooks/queries/useTeams', () => ({
-  useTeam: () => ({ data: { members: [] }, isLoading: false, isError: false }),
-}));
-
 let mockTask: Task | null = null;
+let mockTeamMembers: TeamMember[] = [];
+vi.mock('@/hooks/queries/useTeams', () => ({
+  useTeam: () => ({ data: { members: mockTeamMembers }, isLoading: false, isError: false }),
+}));
+
 // Dialog kapanış testi için proposeMock onSettled callback'ini invoke etsin.
 // vi.clearAllMocks() implementation'ı siler, beforeEach'te tekrar bağlanır.
 const proposeMock = vi.fn();
 const updateMock = vi.fn();
 const blockMock = vi.fn();
+const deleteMock = vi.fn();
 const restoreMock = vi.fn();
 const updateFieldsMock = vi.fn();
 let updateFieldsPending = false;
@@ -130,7 +122,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
       isPending: updateFieldsPending,
     }),
     useRestoreTask: () => ({ mutate: restoreMock, mutateAsync: restoreMock, isPending: false }),
-    useDeleteTask: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+    useDeleteTask: () => ({ mutate: deleteMock, mutateAsync: deleteMock, isPending: false }),
   };
 });
 
@@ -185,33 +177,89 @@ function makeTask(overrides: Partial<Task>): Task {
 describe('TaskDetailPage — approved workbench', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTeamMembers = [];
     updateFieldsMock.mockReset();
     updateFieldsPending = false;
     useAuthStore.setState({ accessToken: 't', user: admin });
   });
 
-  it('renders the semantic desktop regions and real task context without a display id', () => {
+  it('renders the semantic desktop regions and real task context with the task reference', () => {
     mockTask = makeTask({
+      id: '2841',
       title: 'Launch brief',
-      scopeItems: ['Research', 'Draft'],
+      scopeItems: ['Research', 'Research'],
       targetAudience: 'Product team',
       expectedOutput: 'Approved brief',
       tags: ['launch', 'brief'],
     });
     renderTaskDetail();
 
+    const taskDetailPage = screen.getByTestId('task-detail-page');
+    expect(taskDetailPage).toHaveClass('lg:h-[calc(100dvh-3.5rem)]', 'lg:min-h-0', 'lg:flex-col');
+    expect(taskDetailPage).toHaveClass('lg:pb-4');
+    const workbench = taskDetailPage.querySelector('.task-detail-workbench');
+    expect(workbench).toHaveClass('lg:min-h-0', 'lg:flex-1');
     expect(screen.getByRole('complementary', { name: 'Görev bilgileri ve geçmiş' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Görev içeriği' })).toBeInTheDocument();
+    const taskContent = screen.getByRole('region', { name: 'Görev içeriği' });
+    expect(taskContent).toBeInTheDocument();
+    expect(taskContent).toHaveClass('max-h-[calc(100dvh-10rem)]', 'overflow-y-auto');
+    expect(taskContent).not.toHaveClass('overscroll-contain');
+    expect(taskContent).toHaveClass('lg:overscroll-contain');
     expect(screen.getByRole('complementary', { name: 'Dosyalar ve yorumlar' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Dosyalar' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Yorumlar' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Geçmiş' })).toBeInTheDocument();
-    expect(screen.getByText('Research')).toBeInTheDocument();
-    expect(screen.getByText('Product team')).toBeInTheDocument();
+    expect(screen.getAllByText('Research')).toHaveLength(2);
     expect(screen.getByText('Approved brief')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Hedef kitle' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Etiketler' })).toBeInTheDocument();
+    expect(screen.getByText('Product team')).toBeInTheDocument();
     expect(screen.getByText('launch')).toBeInTheDocument();
-    expect(screen.queryByText(/#TF-/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Düzenle' })).toBeInTheDocument();
+
+    const filesRegion = screen.getByTestId('task-files-region');
+    const filesScrollRegion = filesRegion.querySelector('div');
+    expect(filesRegion).toHaveClass('max-h-[24rem]', 'overflow-hidden');
+    expect(filesScrollRegion).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(filesScrollRegion).not.toHaveClass('overscroll-contain');
+    expect(filesScrollRegion).toHaveClass('lg:overflow-y-auto');
+    expect(filesScrollRegion).toHaveClass('lg:overscroll-contain');
+    expect(filesScrollRegion).not.toHaveClass('lg:overflow-y-scroll');
+
+    const taskInfo = screen.getByRole('heading', { name: 'Görev bilgileri' }).closest('section');
+    const historyRegion = screen.getByRole('region', { name: 'Görev geçmişi' });
+    const taskInfoAndHistory = screen.getByRole('complementary', {
+      name: 'Görev bilgileri ve geçmiş',
+    });
+    expect(taskInfo?.parentElement).toBe(taskInfoAndHistory);
+    expect(historyRegion.closest('aside')).toBe(taskInfoAndHistory);
+    expect(taskInfoAndHistory).toHaveClass('flex', 'rounded-lg', 'border', 'overflow-hidden');
+    expect(taskInfo).not.toHaveClass('overflow-y-auto', 'max-h-[24rem]');
+    expect(historyRegion).toHaveClass('max-h-[18rem]', 'overflow-y-auto');
+    expect(historyRegion).not.toHaveClass('overscroll-contain');
+    expect(historyRegion).toHaveClass('lg:overscroll-contain');
+
+    const commentsRegion = screen.getByTestId('task-comments-region');
+    expect(commentsRegion).toHaveClass('max-h-[28rem]', 'overflow-hidden');
+    expect(commentsRegion).toHaveClass('lg:flex', 'lg:min-h-0', 'lg:flex-col');
+    const commentsScrollRegion = commentsRegion.querySelector('h2 + div');
+    expect(commentsScrollRegion).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(commentsScrollRegion).not.toHaveClass('overscroll-contain');
+    expect(commentsScrollRegion).toHaveClass('lg:overscroll-contain');
+    expect(commentsScrollRegion).toHaveClass('lg:flex-1', 'lg:min-h-0', 'lg:overflow-y-auto');
+    const commentComposer = screen.getByTestId('comment-input').closest('form');
+    expect(commentComposer?.parentElement).toHaveClass('shrink-0');
+  });
+
+  it('uses the shared avatar stack when more than two assignees are present', () => {
+    mockTask = makeTask({
+      assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin'), makeAssignee('u3', 'Mert')],
+    });
+    renderTaskDetail();
+
+    expect(screen.getByTestId('assignee-avatar-stack')).toBeInTheDocument();
+    expect(screen.getByLabelText('+1 kişi daha')).toBeInTheDocument();
+    expect(screen.queryByText('Mert')).not.toBeInTheDocument();
   });
 
   it('keeps task context read-only for a member and hides the edit action', () => {
@@ -221,6 +269,59 @@ describe('TaskDetailPage — approved workbench', () => {
 
     expect(screen.getByText('Member scope')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Düzenle' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Sorumlu Ekle')).not.toBeInTheDocument();
+  });
+
+  it('lets an admin stage assignee additions and removals and saves the final assignee ids', async () => {
+    mockTeamMembers = [
+      {
+        userId: 'u1', displayId: 'AAAAA', fullName: 'Ada', avatarUrl: null,
+        role: 'member', joinedAt: new Date().toISOString(),
+      },
+      {
+        userId: 'u2', displayId: 'BBBBB', fullName: 'Selin', avatarUrl: null,
+        role: 'member', joinedAt: new Date().toISOString(),
+      },
+    ];
+    updateFieldsMock.mockImplementation((_variables, options) => options?.onSuccess?.());
+    mockTask = makeTask({ assignees: [makeAssignee('u1', 'Ada')] });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    await user.click(screen.getByTestId('assignee-picker-trigger'));
+    await user.click(await screen.findByTestId('assignee-option-u2'));
+    expect(screen.getByTestId('assignee-chip-u2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ada kaldır' }));
+    expect(screen.queryByTestId('assignee-chip-u1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('assignee-chip-u2')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }));
+
+    expect(updateFieldsMock.mock.calls[0][0]).toMatchObject({
+      taskId: 't1',
+      assigneeIds: ['u2'],
+    });
+  });
+
+  it('prevents removing the final assignee in edit mode', async () => {
+    mockTeamMembers = [
+      {
+        userId: 'u1', displayId: 'AAAAA', fullName: 'Ada', avatarUrl: null,
+        role: 'member', joinedAt: new Date().toISOString(),
+      },
+    ];
+    mockTask = makeTask({ assignees: [makeAssignee('u1', 'Ada')] });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+    expect(screen.getByRole('button', { name: 'Ada kaldır' })).toBeDisabled();
+    await user.click(screen.getByTestId('assignee-picker-trigger'));
+    const finalAssigneeOption = screen.getByTestId('assignee-option-u1');
+    expect(finalAssigneeOption).toHaveAttribute('aria-disabled', 'true');
+    await user.click(finalAssigneeOption);
+    expect(screen.getByTestId('assignee-chip-u1')).toBeInTheDocument();
   });
 
   it('keeps the admin edit form open and shows an inline error when saving fails', async () => {
@@ -243,6 +344,81 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(screen.getByTestId('task-edit-form')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Değişiklikler kaydedilemedi.');
     expect(screen.getByLabelText('Başlık')).toHaveValue('Test task');
+  });
+
+  it('edits audience and tags and includes them in the edit payload', async () => {
+    updateFieldsMock.mockImplementation((_variables, options) => {
+      options?.onSuccess?.();
+    });
+    mockTask = makeTask({ targetAudience: 'Members', tags: ['initial'] });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }));
+
+    expect(screen.getByLabelText('Hedef kitle')).toHaveValue('Members');
+    expect(screen.getByLabelText('Etiketler (virgülle ayır)')).toHaveValue('initial');
+
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }));
+
+    const [payload] = updateFieldsMock.mock.calls[0];
+    expect(payload).toEqual({
+      taskId: 't1',
+      title: 'Test task',
+      description: null,
+      scopeItems: [],
+      targetAudience: 'Members',
+      expectedOutput: null,
+      tags: ['initial'],
+      assigneeIds: ['u1'],
+    });
+  });
+
+  it('requires delete confirmation and cancel does not mutate', async () => {
+    mockTask = makeTask({ title: 'Delete me' });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    expect(screen.getAllByRole('button', { name: 'Görevi sil' })).toHaveLength(1);
+    expect(screen.getByTestId('task-title-section')).toContainElement(
+      screen.getByTestId('task-delete-trigger'),
+    );
+    expect(screen.getByRole('banner')).not.toContainElement(screen.getByTestId('task-delete-trigger'));
+    await user.click(screen.getByTestId('task-delete-trigger'));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Delete me');
+    expect(deleteMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('task-delete-cancel'));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('task-delete-trigger')).toHaveFocus();
+
+    await user.click(screen.getByTestId('task-delete-trigger'));
+    await user.click(screen.getByTestId('task-delete-confirm'));
+    expect(deleteMock).toHaveBeenCalledWith('t1');
+    await waitFor(() => expect(screen.getByTestId('task-delete-trigger')).toHaveFocus());
+  });
+
+  it('cancels delete confirmation on Escape without mutating and restores trigger focus', async () => {
+    mockTask = makeTask({ title: 'Delete me' });
+    renderTaskDetail();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId('task-delete-trigger'));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('task-delete-trigger')).toHaveFocus();
+  });
+
+  it('hides delete and block actions from an unauthorized member', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockTask = makeTask({ assignees: [makeAssignee('u2', 'Selin')] });
+    renderTaskDetail();
+
+    expect(screen.queryByTestId('task-delete-trigger')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-block-toggle')).not.toBeInTheDocument();
   });
 
   it('closes and resets the admin edit form only after a successful save', async () => {
@@ -390,19 +566,17 @@ describe('TaskDetailPage — status change intercept', () => {
     expect(proposeMock).not.toHaveBeenCalled();
   });
 
-  it('pending ack modal close hides modal without canceling request', async () => {
+  it('does not auto-open an ack modal and pulses the pending banner', () => {
     mockTask = makeTask({
       pendingStatus: 'in_progress',
       pendingProposedBy: 'u2',
       pendingProposer: { id: 'u2', displayId: 'U2', fullName: 'Selin', avatarUrl: null },
       assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin')],
     });
-    const user = userEvent.setup();
     renderTaskDetail();
 
-    expect(screen.getByTestId('pending-ack-modal')).toBeInTheDocument();
-    await user.click(screen.getByTestId('pending-ack-close'));
     expect(screen.queryByTestId('pending-ack-modal')).toBeNull();
+    expect(screen.getByTestId('pending-banner')).toHaveClass('task-pending-banner--pulse');
   });
 
   it('single-assignee + member: dropdown onChange calls proposeStatus.mutate, no dialog', async () => {
@@ -420,21 +594,47 @@ describe('TaskDetailPage — status change intercept', () => {
   it('assigned member can block and unblock a task from the detail page', async () => {
     mockTask = makeTask({ blockedReason: null });
     const user = userEvent.setup();
-    vi.spyOn(window, 'prompt').mockReturnValue('API bekleniyor');
     const rendered = renderTaskDetail();
 
     await user.click(screen.getByTestId('task-block-toggle'));
+    expect(screen.getByTestId('task-block-confirmation')).toBeInTheDocument();
+    expect(blockMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('task-block-cancel'));
+    expect(screen.queryByTestId('task-block-confirmation')).not.toBeInTheDocument();
+    expect(blockMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('task-block-toggle')).toHaveFocus();
+
+    await user.click(screen.getByTestId('task-block-toggle'));
+    await user.type(screen.getByLabelText('Engel nedeni (isteğe bağlı)'), '  API bekleniyor  ');
+    expect(screen.getByLabelText('Engel nedeni (isteğe bağlı)')).toHaveAttribute('maxLength', '500');
+    await user.click(screen.getByTestId('task-block-confirm'));
+
     expect(blockMock).toHaveBeenCalledWith({
       taskId: 't1',
       isBlocked: true,
       blockedReason: 'API bekleniyor',
     });
+    expect(screen.getByTestId('task-block-toggle')).toHaveFocus();
 
     mockTask = makeTask({ isBlocked: true, blockedReason: 'API bekleniyor' });
     rendered.unmount();
     renderTaskDetail();
     await user.click(screen.getByTestId('task-block-toggle'));
     expect(blockMock).toHaveBeenLastCalledWith({ taskId: 't1', isBlocked: false });
+  });
+
+  it('cancels block confirmation on Escape without mutating and restores trigger focus', async () => {
+    mockTask = makeTask({ blockedReason: null });
+    const user = userEvent.setup();
+    renderTaskDetail();
+
+    await user.click(screen.getByTestId('task-block-toggle'));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('task-block-confirmation')).not.toBeInTheDocument();
+    expect(blockMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('task-block-toggle')).toHaveFocus();
   });
 
   it('member without team admin membership uses proposal flow', async () => {

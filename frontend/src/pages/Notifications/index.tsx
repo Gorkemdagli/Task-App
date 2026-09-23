@@ -74,8 +74,13 @@ export function NotificationsPage() {
   const isNotificationLoading = notifications.isPending && notifications.fetchStatus !== 'idle';
 
   function handleSelect(item: NotificationItemType) {
-    if (item.type === 'message_received') return;
+    if (
+      item.type === 'message_received' ||
+      item.type === 'company_invite_accepted' ||
+      item.type === 'company_invite_rejected'
+    ) return;
     if (item.readAt === null) markRead.mutate(item.id);
+    if (!('taskId' in item.payload)) return;
     navigate(`/tasks/${item.payload.taskId}`);
   }
 

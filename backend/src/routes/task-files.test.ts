@@ -133,7 +133,7 @@ describe('task file routes', () => {
   });
 
   it('keeps deletion behind signed URL issuance for the same file row', async () => {
-    const { member, memberAccessToken, task } = await makeFixture();
+    const { memberAccessToken, task } = await makeFixture();
     const app = createApp();
     const uploadResponse = await request(app)
       .post(`/api/v1/tasks/${task.id}/files`)
@@ -180,7 +180,7 @@ describe('task file routes', () => {
   });
 
   it('denies another member and cross-tenant users, while allowing uploader deletion', async () => {
-    const { admin, member, memberAccessToken, task } = await makeFixture();
+    const { admin, memberAccessToken, task } = await makeFixture();
     const secondRegistration = await register({
       fullName: 'Route Other Member',
       email: 'route-task-files-other@example.com',
@@ -231,7 +231,7 @@ describe('task file routes', () => {
   });
 
   it('keeps deleted metadata hidden when post-commit storage removal fails', async () => {
-    const { admin, member, adminAccessToken, memberAccessToken, task } = await makeFixture();
+    const { admin, adminAccessToken, memberAccessToken, task } = await makeFixture();
     const app = createApp();
     const uploadResponse = await request(app)
       .post(`/api/v1/tasks/${task.id}/files`)
@@ -248,6 +248,25 @@ describe('task file routes', () => {
     expect(await prisma.taskFile.findUnique({ where: { id: uploadResponse.body.id } })).toMatchObject({
       deletedById: admin.id,
     });
+    expect(await prisma.taskEvent.count({ where: { taskId: task.id, eventType: 'file_deleted' } })).toBe(1);
+
+    const outsiderRegistration = await register({
+      fullName: 'Cleanup Outsider',
+      email: 'route-task-files-cleanup-outsider@example.com',
+      password: 'hunter22',
+      companyName: 'Cleanup Other Co',
+    });
+    const outsiderDelete = await request(app)
+      .delete(`/api/v1/tasks/${task.id}/files/${uploadResponse.body.id}`)
+      .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`);
+    expect(outsiderDelete.status).toBe(404);
+
+    const retryResponse = await request(app)
+      .delete(`/api/v1/tasks/${task.id}/files/${uploadResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAccessToken}`);
+    expect(retryResponse.status).toBe(204);
+    expect(storageState.storage.remove).toHaveBeenCalledTimes(2);
+    expect(storageState.removed).toEqual(storageState.uploaded);
     expect(await prisma.taskEvent.count({ where: { taskId: task.id, eventType: 'file_deleted' } })).toBe(1);
   });
 });

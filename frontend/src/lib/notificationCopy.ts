@@ -3,9 +3,17 @@ export type NotificationType =
   | 'task_commented'
   | 'message_received'
   | 'task_status_pending'
-  | 'task_status_changed';
+  | 'task_status_changed'
+  | 'company_invite_accepted'
+  | 'company_invite_rejected';
 
-export type TaskNotificationType = Exclude<NotificationType, 'message_received'>;
+export type CompanyInvitationNotificationType =
+  | 'company_invite_accepted'
+  | 'company_invite_rejected';
+export type TaskNotificationType = Exclude<
+  NotificationType,
+  'message_received' | CompanyInvitationNotificationType
+>;
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 
@@ -26,11 +34,22 @@ export interface TaskNotificationPayload extends BaseNotificationPayload {
 
 export type MessageNotificationPayload = BaseNotificationPayload;
 
-export type NotificationPayload = TaskNotificationPayload | MessageNotificationPayload;
+export interface CompanyInvitationNotificationPayload extends BaseNotificationPayload {
+  companyName: string;
+}
+
+export type NotificationPayload =
+  | TaskNotificationPayload
+  | MessageNotificationPayload
+  | CompanyInvitationNotificationPayload;
 
 export type NotificationLike =
   | { type: TaskNotificationType; payload: TaskNotificationPayload }
-  | { type: 'message_received'; payload: MessageNotificationPayload };
+  | { type: 'message_received'; payload: MessageNotificationPayload }
+  | {
+      type: CompanyInvitationNotificationType;
+      payload: CompanyInvitationNotificationPayload;
+    };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: 'Yapılacak',
@@ -49,11 +68,20 @@ export function notificationCopy(n: NotificationLike): string {
     }
     case 'task_commented': {
       const actor = (n.payload.actorName ?? '').trim();
-      return actor ? `${actor} göreve yorum ekledi` : 'Göreve yeni bir yorum eklendi';
+      const title = n.payload.taskTitle;
+      return actor
+        ? `${actor}, "${title}" görevine yorum yaptı`
+        : `"${title}" görevine yeni bir yorum eklendi`;
     }
     case 'message_received': {
       const actor = (n.payload.actorName ?? '').trim();
       return actor ? `${actor} sana mesaj gönderdi` : 'Yeni mesaj';
+    }
+    case 'company_invite_accepted':
+    case 'company_invite_rejected': {
+      const actor = (n.payload.actorName ?? '').trim() || 'Davetli';
+      const outcome = n.type === 'company_invite_accepted' ? 'kabul etti' : 'reddetti';
+      return `${actor}, ${n.payload.companyName} şirketine katılma davetini ${outcome}`;
     }
     case 'task_status_pending': {
       const title = n.payload.taskTitle;
@@ -65,8 +93,11 @@ export function notificationCopy(n: NotificationLike): string {
     }
     case 'task_status_changed': {
       const title = n.payload.taskTitle;
+      const actor = (n.payload.actorName ?? '').trim();
       const newStatus = n.payload.newStatus ? STATUS_LABEL[n.payload.newStatus] : '';
-      return `"${title}" görevinin durumu ${newStatus} olarak güncellendi`;
+      return actor
+        ? `${actor}, "${title}" görevinin durumunu ${newStatus} olarak güncelledi`
+        : `"${title}" görevinin durumu ${newStatus} olarak güncellendi`;
     }
   }
 }

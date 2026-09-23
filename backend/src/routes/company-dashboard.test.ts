@@ -408,7 +408,9 @@ describe('company dashboard routes', () => {
       'backlogChange',
       'throughput',
       'createdVsCompleted',
+      'cumulativeFlow',
       'scope',
+      'health',
       'summary',
       'risk',
       'riskTasks',
@@ -457,6 +459,15 @@ describe('company dashboard routes', () => {
     expect(response.body.statusBreakdown.total).toBe(0);
     expect(response.body.priorityBreakdown.total).toBe(0);
     expect(response.body.createdVsCompleted).toHaveLength(30);
+    expect(response.body.cumulativeFlow.samples).toHaveLength(30);
+    expect(response.body.cumulativeFlow.bottleneck).toEqual({
+      inProgressDelta: 0,
+      inProgressGrowthPct: null,
+      agingInProgressCount: 0,
+      unknownStartedAtCount: 0,
+      blockedRate: null,
+      cycleDegradationPct: null,
+    });
     expect(
       response.body.createdVsCompleted.every(
         (point: { created: number; completed: number }) =>

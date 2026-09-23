@@ -142,6 +142,11 @@ describe('proposeTaskStatus (multi-assignee)', () => {
     });
     expect(notifs).toHaveLength(1);
     expect(notifs[0].type).toBe('task_status_pending');
+    expect(notifs[0].payload).toMatchObject({
+      taskTitle: task.title,
+      proposedByName: b.fullName,
+      actorName: b.fullName,
+    });
     // B proposer → kendine task_status_pending bildirimi yok
     const bNotifs = await prisma.notification.findMany({
       where: { userId: b.id, type: 'task_status_pending' },
@@ -259,7 +264,21 @@ describe('ackTaskStatus', () => {
   });
 
   it('tüm assignees ack → apply + notify + acks cleared', async () => {
-    const { b, c, task } = await makeMultiAssigneeTask();
+    const { admin, b, c, team, task } = await makeMultiAssigneeTask();
+    const relatedTeamAdmin = await makeMember('related-team-admin@a.com', admin.tenantId!);
+    await addMemberByDisplayId(team.id, relatedTeamAdmin.displayId, admin);
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: team.id, userId: relatedTeamAdmin.id } },
+      data: { role: 'teamAdmin' },
+    });
+    const otherTeamMember = await makeMember('other-team-admin@a.com', admin.tenantId!);
+    const otherTeam = await createTeam({ name: 'Other team' }, admin);
+    await addMemberByDisplayId(otherTeam.id, otherTeamMember.displayId, admin);
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: otherTeam.id, userId: otherTeamMember.id } },
+      data: { role: 'teamAdmin' },
+    });
+    const foreignAdmin = await makeAdmin('foreign-admin@other.com', 'Other');
     await prisma.user.update({
       where: { id: c.id },
       data: {
@@ -281,13 +300,25 @@ describe('ackTaskStatus', () => {
     const acks = await prisma.taskStatusAck.findMany({ where: { taskId: task.id } });
     expect(acks).toHaveLength(0);
 
-    // Bildirim: actor=proposer b, recipients=[b,c]. b hariç → c.
+    // Assignees and Team Admins of this exact team receive status changes.
     const notifs = await prisma.notification.findMany({
       where: { type: 'task_status_changed' },
     });
-    expect(notifs).toHaveLength(1);
-    expect(notifs[0].userId).toBe(c.id);
-    expect(notifs[0].payload).toMatchObject({ oldStatus: 'todo', newStatus: 'in_progress' });
+    expect(notifs.map((notification) => notification.userId).sort()).toEqual(
+      [c.id, relatedTeamAdmin.id].sort(),
+    );
+    expect(
+      notifs.every(
+        (notification) =>
+          ![admin.id, otherTeamMember.id, foreignAdmin.id].includes(notification.userId),
+      ),
+    ).toBe(true);
+    expect(notifs[0].payload).toMatchObject({
+      taskTitle: task.title,
+      oldStatus: 'todo',
+      newStatus: 'in_progress',
+      actorName: b.fullName,
+    });
 
     const events = await prisma.taskEvent.findMany({ where: { taskId: task.id } });
     expect(events).toHaveLength(4);

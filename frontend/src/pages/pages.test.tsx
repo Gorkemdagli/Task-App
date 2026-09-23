@@ -233,7 +233,7 @@ describe('placeholder pages', () => {
 
   it('TaskDetail renders fixture task title', () => {
     renderAt('/tasks/t-99');
-    expect(screen.getByText('Stub Title')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Stub Title', level: 1 })).toBeInTheDocument();
   });
 
   it('Chat renders title and shows id param', () => {

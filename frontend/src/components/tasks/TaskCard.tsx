@@ -109,13 +109,23 @@ export function TaskCard({
         aria-current={selected ? 'true' : undefined}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium',
-              PRIORITY_BG[task.priority],
+          <span className="flex items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium',
+                PRIORITY_BG[task.priority],
+              )}
+            >
+              {PRIORITY_LABEL[task.priority]}
+            </span>
+            {task.isBlocked && (
+              <span
+                data-testid={`task-card-blocked-badge-${task.id}`}
+                className="inline-flex items-center rounded-sm border border-priority-high/40 bg-priority-high/10 px-1.5 py-0.5 text-xs font-medium text-priority-high"
+              >
+                Engellendi
+              </span>
             )}
-          >
-            {PRIORITY_LABEL[task.priority]}
           </span>
           <span className="flex min-w-0 items-center gap-2">
             {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}

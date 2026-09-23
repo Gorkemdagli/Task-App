@@ -45,7 +45,11 @@ export function NotificationItem({ item, onSelect }: NotificationItemProps) {
     </>
   );
 
-  if (item.type === 'message_received') {
+  if (
+    item.type === 'message_received' ||
+    item.type === 'company_invite_accepted' ||
+    item.type === 'company_invite_rejected'
+  ) {
     return (
       <div
         data-testid={`notification-item-${item.id}`}

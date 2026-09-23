@@ -1,11 +1,19 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthLayout } from './pages/Auth/AuthLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RouteFallback } from './components/layout/RouteFallback';
+import { GlobalErrorPage } from './components/layout/GlobalErrorPage';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
+import {
+  classifyGlobalError,
+  clearGlobalError,
+  getGlobalError,
+  setGlobalError,
+  subscribeGlobalError,
+} from './lib/globalError';
 
 const LandingPage = lazy(() =>
   import('./pages/Landing/LandingPage').then((module) => ({ default: module.LandingPage })),
@@ -55,6 +63,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const setUser = useAuthStore((s) => s.setUser);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -70,14 +79,24 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         setAccessToken(data.accessToken);
         const canonicalUser = await getMe();
         setUser(canonicalUser);
-      } catch {
-        queryClient.clear();
-        clearAuth();
+      } catch (error) {
+        const kind = classifyGlobalError(error);
+        if (kind === 'session-expired') {
+          if (useAuthStore.getState().accessToken) setGlobalError(kind);
+          queryClient.clear();
+          clearAuth();
+        } else {
+          setGlobalError(kind, () => {
+            clearGlobalError();
+            setBootstrapped(false);
+            setBootstrapAttempt((attempt) => attempt + 1);
+          });
+        }
       } finally {
         setBootstrapped(true);
       }
     })();
-  }, [clearAuth, setAccessToken, setUser]);
+  }, [bootstrapAttempt, clearAuth, setAccessToken, setUser]);
 
   if (!bootstrapped) {
     return (
@@ -96,35 +115,45 @@ function RootRoute() {
   return accessToken ? <Navigate to="/dashboard" replace /> : <LandingPage />;
 }
 
+function AppRoutes() {
+  const globalError = useSyncExternalStore(subscribeGlobalError, getGlobalError);
+
+  if (globalError) return <GlobalErrorPage kind={globalError} />;
+
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/" element={<RootRoute />} />
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+        </Route>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppShell />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
+            <Route path="/teams/:id" element={<TeamDetailPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/chat/:id" element={<ChatPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/permissions" element={<PermissionsPage />} />
+            <Route path="/company" element={<CompanyManagementPage />} />
+            <Route path="/company/settings" element={<Navigate to="/company" replace />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<GlobalErrorPage kind="not-found" />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
 export default function App() {
   return (
     <AuthBootstrap>
       <BrowserRouter>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/" element={<RootRoute />} />
-            <Route element={<AuthLayout />}>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-            </Route>
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppShell />}>
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/teams" element={<TeamsPage />} />
-                <Route path="/teams/:id" element={<TeamDetailPage />} />
-                <Route path="/tasks" element={<TasksPage />} />
-                <Route path="/tasks/:id" element={<TaskDetailPage />} />
-                <Route path="/notifications" element={<NotificationsPage />} />
-                <Route path="/chat/:id" element={<ChatPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/permissions" element={<PermissionsPage />} />
-                <Route path="/company" element={<CompanyManagementPage />} />
-                <Route path="/company/settings" element={<Navigate to="/company" replace />} />
-              </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </Suspense>
+        <AppRoutes />
       </BrowserRouter>
     </AuthBootstrap>
   );

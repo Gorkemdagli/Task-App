@@ -309,6 +309,7 @@ export function CompanyDashboard() {
       <PeriodTrendCharts
         createdVsCompleted={data.createdVsCompleted}
         throughput={data.throughput}
+        cumulativeFlow={data.cumulativeFlow}
       />
 
       <section

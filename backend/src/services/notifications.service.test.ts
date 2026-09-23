@@ -41,7 +41,7 @@ async function cleanDb() {
   await prisma.user.deleteMany();
 }
 
-async function seedTwoUsers() {
+async function seedTwoUsers(aliceRole: 'member' | 'companyAdmin' = 'member') {
   const tenant = await prisma.tenant.create({
     data: { name: 'Acme', slug: 'acme', nameKey: 'acme' },
   });
@@ -51,7 +51,7 @@ async function seedTwoUsers() {
       passwordHash: 'h',
       fullName: 'Alice',
       displayId: 'ALICE1',
-      role: 'companyAdmin',
+      role: aliceRole,
       tenantId: tenant.id,
     },
   });
@@ -92,6 +92,42 @@ describe('listNotifications', () => {
     expect(res.nextCursor).toBeNull();
   });
 
+  it('hides disallowed stored notification types from company admin pages and counts', async () => {
+    const { alice } = await seedTwoUsers('companyAdmin');
+    const types = [
+      'task_assigned',
+      'task_commented',
+      'message_received',
+      'task_status_pending',
+      'task_status_changed',
+      'company_invite_accepted',
+      'company_invite_rejected',
+    ] as const;
+    for (const type of types) {
+      await prisma.notification.create({ data: { userId: alice.id, type, payload: {} } });
+    }
+
+    const result = await listNotifications(alice.id, { limit: 10 });
+    expect(result.items.map((notification) => notification.type).sort()).toEqual(
+      ['company_invite_accepted', 'company_invite_rejected', 'task_status_changed'].sort(),
+    );
+    expect(result.unreadCount).toBe(3);
+    expect(result.nextCursor).toBeNull();
+
+    await markAllRead(alice.id);
+    const stored = await prisma.notification.findMany({ where: { userId: alice.id } });
+    const allowed = new Set<string>([
+      'company_invite_accepted',
+      'company_invite_rejected',
+      'task_status_changed',
+    ]);
+    expect(
+      stored
+        .filter((notification) => !allowed.has(notification.type))
+        .every((notification) => notification.readAt === null),
+    ).toBe(true);
+  });
+
   it('excludes read notifications from unreadCount', async () => {
     const { alice } = await seedTwoUsers();
     await prisma.notification.create({
@@ -109,6 +145,22 @@ describe('listNotifications', () => {
     const res = await listNotifications(alice.id, { limit: 10 });
     expect(res.unreadCount).toBe(1);
     expect(res.items).toHaveLength(2);
+  });
+
+  it('orders same-timestamp notifications by id descending', async () => {
+    const { alice } = await seedTwoUsers();
+    const createdAt = new Date('2026-09-21T00:00:00.000Z');
+    const olderId = '00000000-0000-0000-0000-000000000001';
+    const newerId = '00000000-0000-0000-0000-000000000002';
+    await prisma.notification.create({
+      data: { id: olderId, userId: alice.id, type: 'task_assigned', payload: {}, createdAt },
+    });
+    await prisma.notification.create({
+      data: { id: newerId, userId: alice.id, type: 'task_assigned', payload: {}, createdAt },
+    });
+
+    const res = await listNotifications(alice.id, { limit: 10 });
+    expect(res.items.map((n) => n.id)).toEqual([newerId, olderId]);
   });
 
   it('paginates with cursor — next page starts after cursor, no overlap', async () => {
@@ -249,6 +301,21 @@ describe('markNotificationRead', () => {
     const { alice, bob } = await seedTwoUsers();
     const target = await prisma.notification.create({
       data: { userId: bob.id, type: 'task_assigned', payload: {} },
+    });
+
+    await expect(markNotificationRead(alice.id, target.id)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'NOTIFICATION_NOT_FOUND',
+    });
+
+    const stored = await prisma.notification.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.readAt).toBeNull();
+  });
+
+  it('returns 404 without marking a disallowed stored notification for company admin', async () => {
+    const { alice } = await seedTwoUsers('companyAdmin');
+    const target = await prisma.notification.create({
+      data: { userId: alice.id, type: 'task_commented', payload: {} },
     });
 
     await expect(markNotificationRead(alice.id, target.id)).rejects.toMatchObject({

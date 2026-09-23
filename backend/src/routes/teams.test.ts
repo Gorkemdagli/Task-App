@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import {
@@ -392,6 +394,40 @@ describe('removeMember', () => {
 
 describe('updateTeam', () => {
   beforeEach(cleanDb);
+
+  it('denies a Team Admin from another team over HTTP', async () => {
+    const adminRegistration = await register({
+      fullName: 'Company Admin',
+      email: 'route-company-admin@teams.test',
+      password: 'hunter22',
+      companyName: 'Route Teams Co',
+    });
+    const admin = adminRegistration.user as Actor;
+    const teamAdminRegistration = await register({
+      fullName: 'Team Admin',
+      email: 'route-team-admin@teams.test',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: teamAdminRegistration.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
+    const ownTeam = await createTeam({ name: 'Own' }, admin);
+    const otherTeam = await createTeam({ name: 'Other' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: ownTeam.id, userId: teamAdminRegistration.user.id, role: 'teamAdmin' },
+    });
+
+    const response = await request(createApp())
+      .patch(`/api/v1/teams/${otherTeam.id}`)
+      .set('Authorization', `Bearer ${teamAdminRegistration.accessToken}`)
+      .send({ name: 'Changed', description: null });
+
+    expect(response.status).toBe(403);
+    await expect(prisma.team.findUnique({ where: { id: otherTeam.id } })).resolves.toMatchObject({
+      name: 'Other',
+    });
+  });
 
   it('company admin updates name and description inside their tenant', async () => {
     const admin = await makeAdmin('admin@a.com', 'Acme');
