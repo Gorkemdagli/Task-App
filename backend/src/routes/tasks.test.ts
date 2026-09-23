@@ -229,6 +229,33 @@ describe('createTask', () => {
     const notifs = await prisma.notification.findMany({ where: { userId: member.id } });
     expect(notifs).toHaveLength(1);
     expect(notifs[0].type).toBe('task_assigned');
+    expect(notifs[0].payload).toMatchObject({
+      taskTitle: 'Notif test',
+      actorName: admin.fullName,
+    });
+  });
+
+  it('does not send assignment notifications to company admins', async () => {
+    const { admin, team } = await makeTeamWithRegularMember();
+    const companyAdmin = await makeMember('coadmin@a.com', admin.tenantId!);
+    await prisma.user.update({ where: { id: companyAdmin.id }, data: { role: 'companyAdmin' } });
+    await addMemberByDisplayId(team.id, companyAdmin.displayId, admin);
+
+    await tasksService.createTask(
+      {
+        title: 'Admin assignee',
+        priority: 'low',
+        assigneeIds: [companyAdmin.id],
+        teamId: team.id,
+      },
+      admin,
+    );
+
+    expect(
+      await prisma.notification.findMany({
+        where: { userId: companyAdmin.id, type: 'task_assigned' },
+      }),
+    ).toHaveLength(0);
   });
 
   it('suppresses assignment notification when preference is disabled', async () => {
@@ -356,6 +383,27 @@ describe('listTasks', () => {
 
 describe('updateTaskStatus', () => {
   beforeEach(cleanDb);
+
+  it('notifies a company admin only when they are an assignee of the changed task', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    await prisma.user.update({ where: { id: member.id }, data: { role: 'companyAdmin' } });
+    const task = await tasksService.createTask(
+      { title: 'Admin assignee status', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    await tasksService.updateTaskStatus(task.id, { status: 'in_progress' }, admin);
+
+    const notifications = await prisma.notification.findMany({
+      where: { userId: member.id, type: 'task_status_changed' },
+    });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].payload).toMatchObject({
+      taskTitle: task.title,
+      actorName: admin.fullName,
+      newStatus: 'in_progress',
+    });
+  });
 
   it('assignee can update own task status', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
@@ -668,6 +716,150 @@ describe('task block route validation', () => {
     expect(response.status).toBe(400);
     expect(updateTaskBlocked).not.toHaveBeenCalled();
     updateTaskBlocked.mockRestore();
+  });
+});
+
+describe('task role boundaries over HTTP', () => {
+  beforeEach(cleanDb);
+
+  it('denies Member task creation and status changes on another member task', async () => {
+    const { admin, member, memberAccessToken, task, team } = await makeRouteTaskFixture();
+    const otherRegistration = await register({
+      fullName: 'Other Route Member',
+      email: 'other-route-member@example.com',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: otherRegistration.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
+    await addMemberByDisplayId(team.id, otherRegistration.user.displayId, admin);
+    const otherTask = await tasksService.createTask(
+      {
+        title: 'Other member task',
+        priority: 'low',
+        assigneeIds: [otherRegistration.user.id],
+        teamId: team.id,
+      },
+      admin,
+    );
+    const app = createApp();
+
+    const creation = await request(app)
+      .post('/api/v1/tasks')
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ title: 'Forbidden task', priority: 'low', assigneeIds: [member.id], teamId: team.id });
+    expect(creation.status).toBe(403);
+
+    const ownStatus = await request(app)
+      .patch(`/api/v1/tasks/${task.id}/status`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ status: 'in_progress' });
+    expect(ownStatus.status).toBe(200);
+    expect(ownStatus.body.status).toBe('in_progress');
+
+    const otherStatus = await request(app)
+      .patch(`/api/v1/tasks/${otherTask.id}/status`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ status: 'in_progress' });
+    expect(otherStatus.status).toBe(403);
+    await expect(prisma.task.findUnique({ where: { id: otherTask.id } })).resolves.toMatchObject({
+      status: 'todo',
+    });
+  });
+});
+
+describe('task creation structured fields over HTTP', () => {
+  beforeEach(cleanDb);
+
+  it('creates a task with scope items and expected output', async () => {
+    const { adminAccessToken, member, team } = await makeRouteTaskFixture();
+    const response = await request(createApp())
+      .post('/api/v1/tasks')
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({
+        title: 'Task with structured fields',
+        priority: 'medium',
+        assigneeIds: [member.id],
+        teamId: team.id,
+        scopeItems: ['  Research  ', 'Draft'],
+        expectedOutput: '  Approved brief  ',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      scopeItems: ['Research', 'Draft'],
+      expectedOutput: 'Approved brief',
+    });
+  });
+
+  it('allows blank optional structured fields', async () => {
+    const { adminAccessToken, member, team } = await makeRouteTaskFixture();
+    const response = await request(createApp())
+      .post('/api/v1/tasks')
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({
+        title: 'Task with blank fields',
+        priority: 'medium',
+        assigneeIds: [member.id],
+        teamId: team.id,
+        scopeItems: [],
+        expectedOutput: null,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ scopeItems: [], expectedOutput: null });
+  });
+});
+
+describe('task status proposal routes over HTTP', () => {
+  beforeEach(cleanDb);
+
+  it('proposes a status change and applies it after the remaining assignee acknowledges', async () => {
+    const { admin, member, memberAccessToken, task, team } = await makeRouteTaskFixture();
+    const secondRegistration = await register({
+      fullName: 'Second Route Member',
+      email: 'second-route-member@example.com',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: secondRegistration.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
+    await addMemberByDisplayId(team.id, secondRegistration.user.displayId, admin);
+    await tasksService.updateTaskFields(
+      task.id,
+      { assigneeIds: [member.id, secondRegistration.user.id] },
+      admin,
+    );
+
+    const app = createApp();
+    const proposal = await request(app)
+      .post(`/api/v1/tasks/${task.id}/status/propose`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ status: 'in_progress' });
+
+    expect(proposal.status).toBe(200);
+    expect(proposal.body).toMatchObject({
+      status: 'todo',
+      pendingStatus: 'in_progress',
+      pendingVersion: 1,
+    });
+
+    const acknowledgement = await request(app)
+      .post(`/api/v1/tasks/${task.id}/status/ack`)
+      .set('Authorization', `Bearer ${secondRegistration.accessToken}`)
+      .send({ pendingVersion: proposal.body.pendingVersion });
+
+    expect(acknowledgement.status).toBe(200);
+    expect(acknowledgement.body).toMatchObject({
+      applied: true,
+      task: { status: 'in_progress', pendingStatus: null },
+    });
+    await expect(prisma.task.findUnique({ where: { id: task.id } })).resolves.toMatchObject({
+      status: 'in_progress',
+      pendingStatus: null,
+    });
   });
 });
 

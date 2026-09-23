@@ -200,8 +200,8 @@ export async function markTaskFileDeleted(
 ): Promise<string> {
   const task = await loadViewableTask(db, taskId, actor);
   const file = await db.taskFile.findFirst({
-    where: { id: fileId, tenantId: task.team.tenantId, taskId: task.id, deletedAt: null },
-    select: { id: true, uploaderId: true, objectPath: true, originalName: true },
+    where: { id: fileId, tenantId: task.team.tenantId, taskId: task.id },
+    select: { id: true, uploaderId: true, objectPath: true, originalName: true, deletedAt: true },
   });
   if (!file) throw new AppError(404, 'Dosya bulunamadı', 'NOT_FOUND');
 
@@ -209,17 +209,20 @@ export async function markTaskFileDeleted(
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }
 
-  const deleted = await db.taskFile.updateMany({
-    where: { id: file.id, tenantId: task.team.tenantId, taskId: task.id, deletedAt: null },
-    data: { deletedAt: new Date(), deletedById: actor.id },
-  });
-  if (deleted.count !== 1) throw new AppError(404, 'Dosya bulunamadı', 'NOT_FOUND');
+  if (!file.deletedAt) {
+    const deleted = await db.taskFile.updateMany({
+      where: { id: file.id, tenantId: task.team.tenantId, taskId: task.id, deletedAt: null },
+      data: { deletedAt: new Date(), deletedById: actor.id },
+    });
+    if (deleted.count === 1) {
+      await appendTaskEvent(db, {
+        taskId: task.id,
+        actorId: actor.id,
+        eventType: 'file_deleted',
+        metadata: { fileId: file.id, originalName: file.originalName },
+      });
+    }
+  }
 
-  await appendTaskEvent(db, {
-    taskId: task.id,
-    actorId: actor.id,
-    eventType: 'file_deleted',
-    metadata: { fileId: file.id, originalName: file.originalName },
-  });
   return file.objectPath;
 }

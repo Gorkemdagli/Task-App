@@ -3,6 +3,7 @@ import type { TenantDb } from '../db/types';
 import { AppError } from '../lib/appError';
 import type { Actor } from '../lib/permissions';
 import { assertCompanyAdmin } from './company-users.service';
+import { notifyCompanyInvitationOutcome } from '../lib/notifications';
 import type { AuthUser } from './auth.service';
 import type { AddCompanyInvitationInput } from '../schemas/company-invitations.schema';
 import { commitThenThrow } from '../db/withUser';
@@ -331,6 +332,11 @@ export async function rejectInvitation(
   }
 
   const rejected = await loadRecipientInvitation(db, actor.id, invitation.id);
+  const actorName =
+    (actor as Actor & { fullName?: string }).fullName ??
+    (await db.user.findFirst({ where: { id: actor.id }, select: { fullName: true } }))?.fullName ??
+    'Davetli';
+  await notifyCompanyInvitationOutcome(db, invitation, 'rejected', actorName);
   return toInvitationDTO(rejected);
 }
 
@@ -400,6 +406,8 @@ export async function acceptInvitation(
   });
   if (!user)
     throw new AppError(409, 'Davet hedefi artık uygun değil', 'INVITATION_TARGET_NOT_AVAILABLE');
+
+  await notifyCompanyInvitationOutcome(db, invitation, 'accepted', user.fullName);
 
   return {
     invitation: toInvitationDTO(accepted),

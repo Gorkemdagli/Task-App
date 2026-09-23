@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
@@ -77,6 +79,86 @@ async function makeSetup() {
   return { admin, assignee, team, task };
 }
 
+async function makeRouteSetup() {
+  const adminRegistration = await register({
+    fullName: 'Route Admin',
+    email: 'route-admin@comments.test',
+    password: 'hunter22',
+    companyName: 'Comments Co',
+  });
+  const admin = adminRegistration.user as Actor;
+  const memberRegistration = await register({
+    fullName: 'Route Member',
+    email: 'route-member@comments.test',
+    password: 'hunter22',
+  });
+  await prisma.user.update({
+    where: { id: memberRegistration.user.id },
+    data: { tenantId: admin.tenantId, role: 'member' },
+  });
+  const assignee = {
+    ...memberRegistration.user,
+    role: 'member' as const,
+    tenantId: admin.tenantId,
+  };
+  const team = await createTeam({ name: 'Comments' }, admin);
+  await addMemberByDisplayId(team.id, assignee.displayId, admin);
+  const task = await tasksService.createTask(
+    { title: 'Comment route task', priority: 'low', assigneeIds: [assignee.id], teamId: team.id },
+    admin,
+  );
+  return { task, memberAccessToken: memberRegistration.accessToken };
+}
+
+describe('comment routes', () => {
+  beforeEach(cleanDb);
+
+  it('creates and lists comments over HTTP', async () => {
+    const { task, memberAccessToken } = await makeRouteSetup();
+    const app = createApp();
+    const created = await request(app)
+      .post(`/api/v1/tasks/${task.id}/comments`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ body: ' Hello ' });
+
+    expect(created.status).toBe(201);
+    expect(created.body.body).toBe('Hello');
+
+    const listed = await request(app)
+      .get(`/api/v1/tasks/${task.id}/comments`)
+      .set('Authorization', `Bearer ${memberAccessToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.comments.map((comment: { body: string }) => comment.body)).toEqual(['Hello']);
+  });
+
+  it('rejects an empty comment body over HTTP', async () => {
+    const { task, memberAccessToken } = await makeRouteSetup();
+    const response = await request(createApp())
+      .post(`/api/v1/tasks/${task.id}/comments`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ body: '   ' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Bad Request');
+  });
+
+  it('does not reveal comments to a different tenant over HTTP', async () => {
+    const { task } = await makeRouteSetup();
+    const outsider = await register({
+      fullName: 'Foreign Admin',
+      email: 'foreign-admin@comments.test',
+      password: 'hunter22',
+      companyName: 'Other Comments Co',
+    });
+    const response = await request(createApp())
+      .get(`/api/v1/tasks/${task.id}/comments`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).not.toHaveProperty('comments');
+  });
+});
+
 describe('createComment', () => {
   beforeEach(cleanDb);
 
@@ -101,16 +183,16 @@ describe('createComment', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('notifies assigner and assignee', async () => {
+  it('does not notify company admins about comments', async () => {
     const { admin, assignee, task } = await makeSetup();
     // Önceki task_assigned bildirimlerini temizle (test izolasyonu)
     await prisma.notification.deleteMany();
     await commentsService.createComment(task.id, { body: 'Hi' }, assignee);
-    // assignee yazdı → assigner (admin) bildirim almalı
+    // Company Admin task assigner olsa da comment notification almaz.
     const adminNotifs = await prisma.notification.findMany({
       where: { userId: admin.id, type: 'task_commented' },
     });
-    expect(adminNotifs).toHaveLength(1);
+    expect(adminNotifs).toHaveLength(0);
     // Kendine bildirim gitmemeli
     const selfNotifs = await prisma.notification.findMany({
       where: { userId: assignee.id, type: 'task_commented' },
@@ -119,14 +201,22 @@ describe('createComment', () => {
   });
 
   it('suppresses comment notification when preference is disabled', async () => {
-    const { admin, assignee, task } = await makeSetup();
-    await prisma.user.update({ where: { id: admin.id }, data: { notifyTaskCommented: false } });
+    const { admin, assignee, team, task } = await makeSetup();
+    const priorCommenter = await makeMember('prior-commenter@a.com', admin.tenantId!);
+    await addMemberByDisplayId(team.id, priorCommenter.displayId, admin);
+    await commentsService.createComment(task.id, { body: 'First' }, priorCommenter);
+    await prisma.user.update({
+      where: { id: priorCommenter.id },
+      data: { notifyTaskCommented: false },
+    });
     await prisma.notification.deleteMany();
 
     await commentsService.createComment(task.id, { body: 'Muted' }, assignee);
 
     expect(
-      await prisma.notification.findMany({ where: { userId: admin.id, type: 'task_commented' } }),
+      await prisma.notification.findMany({
+        where: { userId: priorCommenter.id, type: 'task_commented' },
+      }),
     ).toHaveLength(0);
   });
 
@@ -144,14 +234,14 @@ describe('createComment', () => {
     // Sadece bu test'ten gelen bildirimleri say: temizle, 1 yorum yap, kontrol et
     await prisma.notification.deleteMany();
     await commentsService.createComment(task.id, { body: 'only' }, m2);
-    // m2 yazdı → assigner=admin + assignee=m1 + önceki yorumcu yok → admin + m1 (dedupe: assignee + önceki yorumcu = m1)
+    // Company Admin assigner is filtered; only the other member receives the comment.
     const adminNotifs = await prisma.notification.findMany({
       where: { userId: admin.id, type: 'task_commented' },
     });
     const m1Notifs = await prisma.notification.findMany({
       where: { userId: m1.id, type: 'task_commented' },
     });
-    expect(adminNotifs).toHaveLength(1);
+    expect(adminNotifs).toHaveLength(0);
     expect(m1Notifs).toHaveLength(1);
   });
 });

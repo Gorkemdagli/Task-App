@@ -202,6 +202,23 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('column-done')).not.toHaveClass('w-[85vw]', 'shrink-0');
   });
 
+  it('bounds the desktop dashboard shell without changing mobile flow', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderDashboard();
+
+    const page = screen.getByTestId('dashboard-page');
+    expect(page).toHaveClass(
+      'lg:h-[calc(100dvh-7.5rem)]',
+      'lg:min-h-0',
+      'lg:flex-col',
+      'lg:overflow-hidden',
+    );
+
+    const board = screen.getByTestId('column-todo').parentElement;
+    expect(board).toHaveClass('lg:flex-1', 'lg:min-h-0', 'lg:overflow-hidden');
+    expect(board?.parentElement).toHaveClass('lg:flex-1', 'lg:min-h-0', 'lg:flex-col');
+  });
+
   it('registers each status column as a drop target', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     renderDashboard();
@@ -306,6 +323,34 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('task-card-t1')).toBeInTheDocument();
     expect(screen.getByTestId('task-card-t2')).toBeInTheDocument();
     expect(screen.getByTestId('task-card-t3')).toBeInTheDocument();
+  });
+
+  it('bounds and scrolls a desktop status column when it has more than three tasks', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = Array.from({ length: 4 }, (_, index) =>
+      makeTask({ id: `todo-${index}`, status: 'todo' }),
+    );
+    renderDashboard();
+
+    expect(screen.getByTestId('column-todo')).toHaveClass(
+      'lg:h-full',
+      'lg:min-h-0',
+      'lg:flex-col',
+    );
+    expect(screen.getByTestId('task-carousel-todo')).toHaveClass(
+      'lg:min-h-0',
+      'lg:flex-1',
+      'lg:overflow-y-auto',
+    );
+  });
+
+  it('keeps status columns in natural flow with three or fewer tasks', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = [makeTask({ id: 'todo-1' }), makeTask({ id: 'todo-2' }), makeTask({ id: 'todo-3' })];
+    renderDashboard();
+
+    expect(screen.getByTestId('column-todo')).not.toHaveClass('lg:h-full');
+    expect(screen.getByTestId('task-carousel-todo')).not.toHaveClass('lg:overflow-y-auto');
   });
 
   it('shows empty placeholder when column has no tasks', () => {
@@ -545,6 +590,69 @@ describe('DashboardPage', () => {
       'href',
       '/tasks/selected-task',
     );
+  });
+
+  it('shows task context, blocked reason, and split scroll regions in the detail panel', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'context-task',
+      description: 'Açıklama metni',
+      scopeItems: ['İlk kapsam maddesi', 'İlk kapsam maddesi'],
+      expectedOutput: 'Beklenen çıktı metni',
+      isBlocked: true,
+      blockedReason: 'API bekleniyor',
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-context-task').querySelector('a')!);
+
+    const panel = screen.getByTestId('member-task-detail-panel');
+    expect(within(panel).getByText('Açıklama metni')).toBeInTheDocument();
+    expect(within(panel).getAllByText('İlk kapsam maddesi')).toHaveLength(2);
+    expect(within(panel).getByText('Beklenen çıktı metni')).toBeInTheDocument();
+
+    const blockedBadge = within(panel).getByTestId('member-task-blocked-badge');
+    expect(blockedBadge).toHaveTextContent('Engellendi');
+    expect(blockedBadge).toHaveAttribute('title', 'API bekleniyor');
+    expect(blockedBadge).toHaveAttribute('aria-label', 'Engellendi: API bekleniyor');
+    expect(blockedBadge).toHaveAttribute('tabindex', '0');
+
+    expect(within(panel).getByTestId('member-task-information-region')).toHaveClass(
+      'min-h-0',
+      'overflow-y-auto',
+    );
+    expect(within(panel).getByTestId('member-task-comments-region')).toHaveClass(
+      'min-h-0',
+      'overflow-hidden',
+    );
+    expect(within(panel).getByTestId('member-task-comments-scroll')).toHaveClass(
+      'min-h-0',
+      'overflow-y-auto',
+    );
+    expect(panel).toHaveClass('overflow-hidden', 'lg:flex');
+    expect(panel).not.toHaveClass('overflow-y-auto');
+    expect(within(panel).getByTestId('member-task-information-region').parentElement).toHaveClass(
+      'grid-rows-[minmax(0,1fr)_minmax(0,1fr)]',
+    );
+  });
+
+  it('omits empty scope and expected output sections', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    mockSelectedTask = makeTask({
+      id: 'empty-context-task',
+      scopeItems: [],
+      expectedOutput: null,
+    });
+    mockTasks = [mockSelectedTask];
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('task-card-empty-context-task').querySelector('a')!);
+
+    const panel = screen.getByTestId('member-task-detail-panel');
+    expect(within(panel).getByRole('heading', { name: 'Açıklama' })).toBeInTheDocument();
+    expect(within(panel).queryByRole('heading', { name: 'Kapsam' })).toBeNull();
+    expect(within(panel).queryByRole('heading', { name: 'Beklenen çıktı' })).toBeNull();
   });
 
   it('lets an unacknowledged assignee approve a pending task from the detail panel', () => {

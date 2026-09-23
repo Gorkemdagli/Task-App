@@ -6,6 +6,7 @@ import { redis } from '../lib/redis';
 import { register } from '../services/auth.service';
 
 async function cleanDb() {
+  await prisma.notification.deleteMany();
   await prisma.companyInvitation.deleteMany();
   await prisma.taskComment.deleteMany();
   await prisma.message.deleteMany();
@@ -233,6 +234,78 @@ describe('company invitation routes', () => {
       user: { id: recipient.user.id, tenantId: admin.user.tenantId, role: 'member' },
     });
     expect(await prisma.teamMember.count({ where: { userId: recipient.user.id } })).toBe(0);
+  });
+
+  it('notifies every same-tenant company admin of accepted and rejected invitations', async () => {
+    const admin = await register({
+      fullName: 'Admin',
+      email: 'outcome-admin@company.test',
+      password: 'hunter22',
+      companyName: 'Acme',
+    });
+    const coAdmin = await register({
+      fullName: 'Co Admin',
+      email: 'outcome-coadmin@company.test',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: coAdmin.user.id },
+      data: { tenantId: admin.user.tenantId, role: 'companyAdmin' },
+    });
+    const foreignAdmin = await register({
+      fullName: 'Foreign Admin',
+      email: 'outcome-foreign-admin@company.test',
+      password: 'hunter22',
+      companyName: 'Other Co',
+    });
+    const acceptedRecipient = await register({
+      fullName: 'Accepted User',
+      email: 'outcome-accepted@company.test',
+      password: 'hunter22',
+    });
+    const rejectedRecipient = await register({
+      fullName: 'Rejected User',
+      email: 'outcome-rejected@company.test',
+      password: 'hunter22',
+    });
+    const app = createApp();
+
+    const acceptedInvitation = await request(app)
+      .post('/api/v1/company/invitations')
+      .set(auth(admin.accessToken))
+      .send({ email: acceptedRecipient.user.email });
+    const rejectedInvitation = await request(app)
+      .post('/api/v1/company/invitations')
+      .set(auth(admin.accessToken))
+      .send({ email: rejectedRecipient.user.email });
+    expect(acceptedInvitation.status).toBe(201);
+    expect(rejectedInvitation.status).toBe(201);
+
+    const accepted = await request(app)
+      .post(`/api/v1/users/me/company-invitations/${acceptedInvitation.body.id}/accept`)
+      .set(auth(acceptedRecipient.accessToken));
+    const rejected = await request(app)
+      .post(`/api/v1/users/me/company-invitations/${rejectedInvitation.body.id}/reject`)
+      .set(auth(rejectedRecipient.accessToken));
+    expect(accepted.status).toBe(200);
+    expect(rejected.status).toBe(200);
+
+    const notifications = await prisma.notification.findMany({
+      where: { type: { in: ['company_invite_accepted', 'company_invite_rejected'] } },
+    });
+    expect(notifications).toHaveLength(4);
+    expect(new Set(notifications.map((notification) => notification.userId))).toEqual(
+      new Set([admin.user.id, coAdmin.user.id]),
+    );
+    expect(
+      notifications.some((notification) => notification.userId === foreignAdmin.user.id),
+    ).toBe(false);
+    expect(
+      notifications.find((notification) => notification.type === 'company_invite_accepted')?.payload,
+    ).toMatchObject({ actorName: acceptedRecipient.user.fullName, companyName: 'Acme' });
+    expect(
+      notifications.find((notification) => notification.type === 'company_invite_rejected')?.payload,
+    ).toMatchObject({ actorName: rejectedRecipient.user.fullName, companyName: 'Acme' });
   });
 
   it('returns 410 and expires a stale invitation before responding', async () => {

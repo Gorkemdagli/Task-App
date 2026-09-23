@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ProtectedRoute } from './ProtectedRoute';
 import { useAuthStore } from '../stores/authStore';
 
 describe('ProtectedRoute', () => {
   beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }));
-  it('redirects to /login when no token', () => {
+  it('shows sign-in required and offers the login route when no token', async () => {
     render(
       <MemoryRouter initialEntries={['/p']}>
         <Routes>
@@ -17,7 +17,14 @@ describe('ProtectedRoute', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByText('Login')).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('heading', { name: 'Bu sayfaya erişmek için giriş yapın' }),
+    ).toBeInTheDocument();
+    const loginLink = screen.getByRole('link', { name: 'Giriş yap' });
+    expect(loginLink).toHaveAttribute('href', '/login');
+    fireEvent.click(loginLink);
+    expect(await screen.findByText('Login')).toBeInTheDocument();
   });
   it('renders children when token present', () => {
     useAuthStore.getState().setAccessToken('t');

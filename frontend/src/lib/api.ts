@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { queryClient } from './react-query';
 import { useAuthStore, type AuthUser } from '../stores/authStore';
+import { classifyGlobalError, setGlobalError } from './globalError';
 
 const API_PREFIX = '/api/v1';
 const apiOrigin = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
@@ -37,9 +38,13 @@ async function doRefresh(): Promise<string | null> {
     const token = response.data.accessToken as string;
     useAuthStore.getState().setAccessToken(token);
     return token;
-  } catch {
-    queryClient.clear();
-    useAuthStore.getState().clearAuth();
+  } catch (error) {
+    const kind = classifyGlobalError(error);
+    setGlobalError(kind);
+    if (kind === 'session-expired') {
+      queryClient.clear();
+      useAuthStore.getState().clearAuth();
+    }
     return null;
   }
 }
@@ -57,10 +62,7 @@ api.interceptors.response.use(
     refreshInFlight ??= doRefresh();
     const token = await refreshInFlight;
     refreshInFlight = null;
-    if (!token) {
-      if (typeof window !== 'undefined') window.location.href = '/login';
-      return Promise.reject(error);
-    }
+    if (!token) return Promise.reject(error);
 
     original.headers.set('Authorization', `Bearer ${token}`);
     return api(original);

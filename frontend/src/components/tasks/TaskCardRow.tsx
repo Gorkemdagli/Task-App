@@ -119,9 +119,9 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-xs lg:block">
+      <div className="flex min-w-0 items-center justify-between gap-3 text-xs lg:block">
         <span className="text-secondary-foreground lg:hidden">Durum</span>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <StatusBadge status={task.status} />
           {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
         </div>

@@ -39,7 +39,12 @@ function invitation(overrides: Record<string, unknown> = {}) {
 
 function mockDb() {
   return {
-    user: { findFirst: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
+    user: {
+      findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
     tenant: { findFirst: vi.fn() },
     companyInvitation: {
       create: vi.fn(),

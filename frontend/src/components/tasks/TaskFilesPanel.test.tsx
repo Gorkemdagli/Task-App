@@ -82,7 +82,29 @@ describe('TaskFilesPanel', () => {
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('uploads a valid file and reports progress while the upload is active', async () => {
+  it('keeps file metadata under the name with simplified list headers', () => {
+    files = [file()];
+    render(<TaskFilesPanel taskId="task-1" />);
+
+    expect(screen.getByText('Ad')).toBeInTheDocument();
+    expect(screen.getByText('Ekleyen')).toBeInTheDocument();
+    expect(screen.getByText('İşlemler')).toBeInTheDocument();
+    expect(screen.queryByText('Tür / Boyut')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ekleyen · Tarih')).not.toBeInTheDocument();
+    expect(screen.getByText('PDF · 1 KB')).toBeInTheDocument();
+    expect(screen.getByText('Ada')).toBeInTheDocument();
+  });
+
+  it('keeps the upload icon inline with its label and helper text below', () => {
+    render(<TaskFilesPanel taskId="task-1" />);
+    const label = screen.getByText('Dosya ekle').parentElement;
+
+    expect(label).toHaveClass('flex', 'items-center');
+    expect(label?.querySelector('svg')).toBeInTheDocument();
+    expect(screen.getByText('Dosya başına en fazla 25 MB')).toBeInTheDocument();
+  });
+
+  it('stages a valid file, then uploads it after confirmation with progress', async () => {
     const user = userEvent.setup();
     render(<TaskFilesPanel taskId="task-1" />);
     const input = screen.getByLabelText('Dosya seç');
@@ -90,6 +112,11 @@ describe('TaskFilesPanel', () => {
 
     await user.upload(input, selected);
 
+    expect(screen.getByText('Dosya gönderilsin mi?')).toBeInTheDocument();
+    expect(screen.getByText('brief.pdf')).toBeInTheDocument();
+    expect(uploadMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Gönder' }));
     expect(uploadMock).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'task-1', file: selected, onUploadProgress: expect.any(Function) }),
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
@@ -97,7 +124,24 @@ describe('TaskFilesPanel', () => {
     const variables = uploadMock.mock.calls[0][0];
     act(() => variables.onUploadProgress({ loaded: 50, total: 100 }));
     expect(screen.getByText('Yükleniyor… %50')).toBeInTheDocument();
-    expect(screen.getByLabelText('Dosya seç')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Yükleniyor…' })).toBeDisabled();
+  });
+
+  it('stages a dropped valid file and cancels without uploading', () => {
+    render(<TaskFilesPanel taskId="task-1" />);
+    const dropzone = screen.getByTestId('task-file-dropzone');
+    const selected = new File(['brief'], 'brief.pdf', { type: 'application/pdf' });
+
+    fireEvent.dragEnter(dropzone, { dataTransfer: { files: [selected] } });
+    expect(dropzone).toHaveClass('border-primary');
+
+    fireEvent.drop(dropzone, { dataTransfer: { files: [selected] } });
+    expect(screen.getByText('Dosya gönderilsin mi?')).toBeInTheDocument();
+    expect(uploadMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vazgeç' }));
+    expect(screen.queryByText('Dosya gönderilsin mi?')).not.toBeInTheDocument();
+    expect(uploadMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid type and size before upload', async () => {

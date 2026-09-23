@@ -12,6 +12,8 @@ interface AssigneePickerProps {
   members: AssigneeOption[];
   value: string[];
   onChange: (next: string[]) => void;
+  label?: string;
+  minSelected?: number;
   disabled?: boolean;
   invalid?: boolean;
 }
@@ -59,6 +61,8 @@ export function AssigneePicker({
   members,
   value,
   onChange,
+  label = 'Atanan Kişiler',
+  minSelected = 0,
   disabled,
   invalid,
 }: AssigneePickerProps) {
@@ -68,11 +72,13 @@ export function AssigneePicker({
     .filter((m): m is AssigneeOption => !!m);
 
   const toggle = (id: string) => {
+    if (selectedSet.has(id) && value.length <= minSelected) return;
     const next = selectedSet.has(id) ? value.filter((x) => x !== id) : [...value, id];
     onChange(next);
   };
 
   const remove = (id: string) => {
+    if (value.length <= minSelected) return;
     onChange(value.filter((x) => x !== id));
   };
 
@@ -85,7 +91,7 @@ export function AssigneePicker({
 
   return (
     <div>
-      <label className="mb-1 block text-xs text-muted-foreground">Atanan Kişiler</label>
+      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
       {/* Dialog içinde Radix DropdownMenu modal=false — focus trap + onInteractOutside çakışmasını önler */}
       <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
@@ -122,6 +128,7 @@ export function AssigneePicker({
                   <DropdownMenu.CheckboxItem
                     key={m.id}
                     checked={checked}
+                    disabled={checked && value.length <= minSelected}
                     onCheckedChange={() => toggle(m.id)}
                     onSelect={(e) => e.preventDefault()}
                     data-testid={`assignee-option-${m.id}`}
@@ -155,8 +162,9 @@ export function AssigneePicker({
               <button
                 type="button"
                 aria-label={`${m.fullName} kaldır`}
+                disabled={value.length <= minSelected}
                 onClick={() => remove(m.id)}
-                className="text-muted-foreground hover:text-destructive"
+                className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✕
               </button>

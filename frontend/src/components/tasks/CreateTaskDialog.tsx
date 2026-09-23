@@ -17,6 +17,8 @@ interface CreateTaskDialogProps {
 export function CreateTaskDialog({ open, onOpenChange, teamId, members }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [scopeText, setScopeText] = useState('');
+  const [expectedOutput, setExpectedOutput] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [deadline, setDeadline] = useState<string | null>(null);
   const [estimateMinutes, setEstimateMinutes] = useState('');
@@ -28,6 +30,8 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
   const reset = () => {
     setTitle('');
     setDescription('');
+    setScopeText('');
+    setExpectedOutput('');
     setPriority('medium');
     setDeadline(null);
     setEstimateMinutes('');
@@ -48,6 +52,11 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
       await create.mutateAsync({
         title: title.trim(),
         description: description.trim() || undefined,
+        scopeItems: scopeText
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        expectedOutput: expectedOutput.trim() || null,
         deadline: deadline ?? undefined,
         estimateMinutes: estimateMinutes === '' ? null : Number(estimateMinutes),
         priority,
@@ -76,9 +85,20 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
         <Dialog.Overlay className="fixed inset-0 z-50 bg-overlay/60 backdrop-blur-sm animate-in fade-in" />
         <Dialog.Content
           data-testid="create-task-dialog"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-modal animate-in fade-in zoom-in-95"
+          className="fixed left-1/2 top-1/2 z-50 max-h-screen w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-card p-6 text-card-foreground shadow-modal animate-in fade-in zoom-in-95"
         >
-          <Dialog.Title className="mb-4 text-lg font-semibold">Yeni Görev</Dialog.Title>
+          <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-4 flex items-center justify-between bg-card px-6 pb-2 pt-6">
+            <Dialog.Title className="text-lg font-semibold">Yeni Görev</Dialog.Title>
+            <Dialog.Close asChild>
+              <button
+                type="button"
+                aria-label="Kapat"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <span aria-hidden="true" className="text-xl leading-none">×</span>
+              </button>
+            </Dialog.Close>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Başlık *</label>
@@ -100,7 +120,32 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={5000}
                 rows={3}
-                className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label htmlFor="task-create-scope" className="mb-1 block text-xs text-muted-foreground">
+                Kapsam (her satır bir madde, isteğe bağlı)
+              </label>
+              <textarea
+                id="task-create-scope"
+                value={scopeText}
+                onChange={(e) => setScopeText(e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label htmlFor="task-create-expected-output" className="mb-1 block text-xs text-muted-foreground">
+                Beklenen çıktı (isteğe bağlı)
+              </label>
+              <textarea
+                id="task-create-expected-output"
+                value={expectedOutput}
+                onChange={(e) => setExpectedOutput(e.target.value)}
+                maxLength={2000}
+                rows={3}
+                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">

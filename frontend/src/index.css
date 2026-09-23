@@ -232,6 +232,31 @@
   }
 }
 
+@keyframes task-pending-banner-pulse {
+  0%,
+  100% {
+    background-color: var(--task-pending-banner-background);
+  }
+
+  50% {
+    background-color: transparent;
+  }
+}
+
+.task-pending-banner--pulse {
+  --task-pending-banner-background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  background-color: var(--task-pending-banner-background);
+  animation: task-pending-banner-pulse 900ms ease-in-out 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-pending-banner--pulse {
+    animation-duration: 700ms;
+    animation-iteration-count: 1;
+    animation-timing-function: ease-out;
+  }
+}
+
 /* Editorial landing overrides */
 .theme-landing .landing-nav {
   position: sticky;

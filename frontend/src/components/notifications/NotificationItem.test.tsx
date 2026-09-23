@@ -25,6 +25,16 @@ function messageItem(): NotificationItemType {
   };
 }
 
+function invitationItem(): NotificationItemType {
+  return {
+    id: 'invite-1',
+    type: 'company_invite_accepted',
+    payload: { companyName: 'Acme', actorName: 'Deniz' },
+    readAt: null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 describe('NotificationItem', () => {
   it('renders task notification as button and selects whole item', async () => {
     const onSelect = vi.fn();
@@ -39,6 +49,13 @@ describe('NotificationItem', () => {
     render(<NotificationItem item={messageItem()} onSelect={vi.fn()} />);
 
     expect(screen.getByTestId('notification-item-m1')).not.toHaveAttribute('type', 'button');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('renders invitation outcomes as passive non-button rows', () => {
+    render(<NotificationItem item={invitationItem()} onSelect={vi.fn()} />);
+
+    expect(screen.getByTestId('notification-item-invite-1')).not.toHaveAttribute('type', 'button');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 

@@ -135,3 +135,5 @@ frontend/.impeccable/
 /PRODUCT.md
 .codex
 .playwright-mcp
+.agents
+.impeccable

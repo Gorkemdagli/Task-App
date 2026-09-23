@@ -55,10 +55,12 @@ function formatFileSize(sizeBytes: number): string {
 }
 
 function formatFileDate(createdAt: string): string {
-  return new Date(createdAt).toLocaleDateString('tr-TR', {
+  return new Date(createdAt).toLocaleString('tr-TR', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone: 'Europe/Istanbul',
   });
 }
@@ -87,32 +89,57 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const uploadConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [confirmingFileId, setConfirmingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const busy = isUploading || uploadFile.isPending;
 
   useEffect(() => {
-    if (!confirmingFileId) return;
-    confirmButtonRef.current?.focus();
+    if (!confirmingFileId && !stagedFile) return;
+    if (stagedFile) {
+      uploadConfirmButtonRef.current?.focus();
+    } else {
+      confirmButtonRef.current?.focus();
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setConfirmingFileId(null);
-        setDeleteError(null);
+        if (stagedFile) {
+          setStagedFile(null);
+          setUploadError(null);
+          setUploadProgress(null);
+          if (inputRef.current) inputRef.current.value = '';
+        }
+        if (confirmingFileId) {
+          setConfirmingFileId(null);
+          setDeleteError(null);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [confirmingFileId]);
+  }, [confirmingFileId, stagedFile]);
 
   const handleFiles = (fileList: FileList | null) => {
+    if (busy || stagedFile) return;
     const file = fileList?.[0];
     if (!file) return;
     const validationError = validateFile(file);
     setUploadError(validationError);
     if (validationError) return;
 
+    setUploadProgress(null);
+    setStagedFile(file);
+  };
+
+  const handleConfirmUpload = () => {
+    if (!stagedFile || busy) return;
+    const file = stagedFile;
+    setUploadError(null);
     setUploadProgress(0);
     setIsUploading(true);
     uploadFile.mutate(
@@ -127,50 +154,112 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
         onSuccess: () => {
           setIsUploading(false);
           setUploadProgress(null);
+          setStagedFile(null);
           if (inputRef.current) inputRef.current.value = '';
         },
         onError: () => {
           setIsUploading(false);
+          setUploadProgress(null);
           setUploadError('Dosya yüklenemedi. Tekrar deneyin.');
         },
       },
     );
   };
 
+  const handleCancelUpload = () => {
+    if (busy) return;
+    setStagedFile(null);
+    setUploadError(null);
+    setUploadProgress(null);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
   const files = data?.files ?? [];
-  const busy = isUploading || uploadFile.isPending;
 
   return (
     <section aria-labelledby="files-heading" data-testid="task-files-panel">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 id="files-heading" className="text-lg font-semibold">
-            Dosyalar
+            Dosyalar <span aria-hidden="true">({files.length})</span>
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">Görev bağlamındaki dosyalar</p>
         </div>
         {busy && <span className="text-xs text-primary">Yükleniyor…</span>}
       </div>
 
       <div
-        onDragOver={(event) => event.preventDefault()}
+        data-testid="task-file-dropzone"
+        onDragEnter={(event) => {
+          event.preventDefault();
+          if (!busy && !stagedFile) setIsDragActive(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!busy && !stagedFile) {
+            event.dataTransfer.dropEffect = 'copy';
+            setIsDragActive(true);
+          }
+        }}
+        onDragLeave={() => setIsDragActive(false)}
         onDrop={(event) => {
           event.preventDefault();
-          handleFiles(event.dataTransfer.files);
+          setIsDragActive(false);
+          if (!busy && !stagedFile) handleFiles(event.dataTransfer.files);
         }}
-        className="rounded-md border border-dashed border-border bg-muted/30 p-4"
+        className={`overflow-hidden rounded-md border transition-colors ${
+          isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-muted/30'
+        }`}
       >
-        <div className="flex items-start gap-3">
-          <UploadCloud aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Dosya ekle</p>
-            <p className="mt-1 text-xs text-muted-foreground">PDF, görsel, Office, ZIP veya metin · 25 MB</p>
+        {stagedFile ? (
+          <div role="status" aria-live="polite" className="flex min-h-[84px] flex-col justify-center gap-3 p-4 text-left">
+            <div className="flex min-w-0 items-start gap-3">
+              <UploadCloud aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Dosya gönderilsin mi?</p>
+                <p className="truncate text-xs text-muted-foreground" title={stagedFile.name}>
+                  {stagedFile.name}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                ref={uploadConfirmButtonRef}
+                type="button"
+                onClick={handleConfirmUpload}
+                disabled={busy}
+                className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {busy ? 'Yükleniyor…' : 'Gönder'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelUpload}
+                disabled={busy}
+                className="h-8 rounded-md border border-border bg-card px-3 text-xs font-medium disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+            </div>
           </div>
+        ) : (
           <label
             htmlFor={inputId}
-            className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:border-primary/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary"
+            tabIndex={busy ? -1 : 0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                inputRef.current?.click();
+              }
+            }}
+            className="flex min-h-[84px] w-full cursor-pointer flex-col items-center justify-center gap-1 px-4 py-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
           >
-            Seç
+            <span className="flex items-center gap-2">
+              <UploadCloud aria-hidden="true" className="h-5 w-5 text-foreground" />
+              <span className="text-sm font-semibold">Dosya ekle</span>
+            </span>
+            <span id={`${inputId}-hint`} className="text-xs text-muted-foreground">
+              Dosya başına en fazla 25 MB
+            </span>
             <input
               ref={inputRef}
               id={inputId}
@@ -182,9 +271,9 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
               className="sr-only"
             />
           </label>
-        </div>
+        )}
         {busy && uploadProgress !== null && (
-          <div className="mt-3" aria-live="polite">
+          <div className="border-t border-border px-4 pb-3 pt-3" aria-live="polite">
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
               <span>Yükleniyor… %{uploadProgress}</span>
               <span>{uploadProgress}%</span>
@@ -222,20 +311,30 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
       ) : files.length === 0 ? (
         <p className="mt-4 text-sm italic text-muted-foreground">Henüz dosya yok.</p>
       ) : (
-        <ul className="mt-4 divide-y divide-border" aria-label="Görev dosyaları">
+        <div className="mt-4 overflow-x-auto">
+          <div className="min-w-[520px]">
+            <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] gap-3 border-b border-border px-1 pb-2 text-[11px] text-muted-foreground">
+              <span>Ad</span>
+              <span>Ekleyen</span>
+              <span className="text-right">İşlemler</span>
+            </div>
+            <ul aria-label="Görev dosyaları" className="divide-y divide-border">
           {files.map((file) => (
-            <li key={file.id} className="py-3 first:pt-0 last:pb-0" data-testid={`task-file-${file.id}`}>
-              <div className="flex items-start gap-3">
-                <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
+            <li key={file.id} className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] items-center gap-3 px-1 py-3" data-testid={`task-file-${file.id}`}>
+              <div className="flex min-w-0 items-start gap-2">
+                <FileText aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div className="min-w-0">
                   <p className="truncate text-sm font-medium" title={file.originalName}>
                     {file.originalName}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {fileTypeLabel(file)} · {file.uploader.name} · {formatFileDate(file.createdAt)}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{fileTypeLabel(file)}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+              </div>
+              <p className="min-w-0 text-xs text-muted-foreground">
+                <span className="block truncate text-foreground">{file.uploader.name}</span>
+                <span className="block truncate">{formatFileDate(file.createdAt)}</span>
+              </p>
+              <div className="flex shrink-0 items-center justify-end gap-1">
                   <button
                     type="button"
                     aria-label={`${file.originalName} indir`}
@@ -258,10 +357,9 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                       <Trash2 aria-hidden="true" className="h-4 w-4" />
                     </button>
                   )}
-                </div>
               </div>
               {confirmingFileId === file.id && (
-                <div className="mt-2 flex items-center justify-end gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2">
+                <div className="col-span-full flex items-center justify-end gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2">
                   <span className="mr-auto text-xs font-medium">Silinsin mi?</span>
                   <button
                     ref={confirmButtonRef}
@@ -294,7 +392,9 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
               )}
             </li>
           ))}
-        </ul>
+            </ul>
+          </div>
+        </div>
       )}
     </section>
   );

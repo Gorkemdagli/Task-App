@@ -12,11 +12,13 @@ import {
   type MessageNotificationPayload,
   type TaskNotificationPayload,
   type TaskNotificationType,
+  type CompanyInvitationNotificationType,
+  type CompanyInvitationNotificationPayload,
   type NotificationType,
 } from '../lib/notificationCopy';
 
 export const NOTIFICATIONS_PAGE_SIZE = 10;
-export const NOTIFICATIONS_KEY = queryKeys.notifications('tenant-test');
+export const NOTIFICATIONS_KEY = queryKeys.notifications('tenant-test', 'user-1');
 
 interface NotificationBase {
   id: string;
@@ -32,6 +34,10 @@ export type NotificationItem =
   | (NotificationBase & {
       type: 'message_received';
       payload: MessageNotificationPayload;
+    })
+  | (NotificationBase & {
+      type: CompanyInvitationNotificationType;
+      payload: CompanyInvitationNotificationPayload;
     });
 
 export interface NotificationsPageData {
@@ -42,7 +48,8 @@ export interface NotificationsPageData {
 
 export function useNotifications() {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless');
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless', userId ?? 'anonymous');
   return useInfiniteQuery({
     queryKey: notificationsKey,
     initialPageParam: null as string | null,
@@ -75,7 +82,8 @@ function updateNotificationCache(
 export function useMarkNotificationRead() {
   const queryClient = useQueryClient();
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless');
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless', userId ?? 'anonymous');
   return useMutation({
     mutationFn: async (notificationId: string) => {
       await api.patch(`/notifications/${notificationId}/read`);
@@ -111,7 +119,8 @@ export function useMarkNotificationRead() {
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless');
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless', userId ?? 'anonymous');
   return useMutation({
     mutationFn: async () => {
       await api.patch('/notifications/read-all');

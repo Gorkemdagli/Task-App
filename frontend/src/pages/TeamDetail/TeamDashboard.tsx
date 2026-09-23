@@ -277,6 +277,7 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
           <PeriodTrendCharts
             createdVsCompleted={data.createdVsCompleted}
             throughput={data.throughput}
+            cumulativeFlow={data.cumulativeFlow}
           />
         </>
       )}

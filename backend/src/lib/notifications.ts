@@ -1,33 +1,47 @@
 import type { NotificationType, TaskStatus } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 
+export const COMPANY_ADMIN_NOTIFICATION_TYPES: readonly NotificationType[] = [
+  'task_status_changed',
+  'company_invite_accepted',
+  'company_invite_rejected',
+];
+
+export const COMPANY_INVITATION_OUTCOME_TYPES: readonly NotificationType[] = [
+  'company_invite_accepted',
+  'company_invite_rejected',
+];
+
 async function allowsNotification(
   db: TenantDb,
   userId: string,
   type: NotificationType,
 ): Promise<boolean> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      tenantId: true,
+      notifyTaskAssigned: true,
+      notifyTaskCommented: true,
+      notifyMessageReceived: true,
+    },
+  });
+  if (!user || (user.role === 'companyAdmin' && user.tenantId === null)) return false;
+  if (
+    (user.role === 'companyAdmin' && !COMPANY_ADMIN_NOTIFICATION_TYPES.includes(type)) ||
+    (user.role !== 'companyAdmin' && COMPANY_INVITATION_OUTCOME_TYPES.includes(type))
+  ) {
+    return false;
+  }
+
   switch (type) {
-    case 'task_assigned': {
-      const user = await db.user.findUnique({
-        where: { id: userId },
-        select: { notifyTaskAssigned: true },
-      });
-      return user?.notifyTaskAssigned ?? false;
-    }
-    case 'task_commented': {
-      const user = await db.user.findUnique({
-        where: { id: userId },
-        select: { notifyTaskCommented: true },
-      });
-      return user?.notifyTaskCommented ?? false;
-    }
-    case 'message_received': {
-      const user = await db.user.findUnique({
-        where: { id: userId },
-        select: { notifyMessageReceived: true },
-      });
-      return user?.notifyMessageReceived ?? false;
-    }
+    case 'task_assigned':
+      return user.notifyTaskAssigned;
+    case 'task_commented':
+      return user.notifyTaskCommented;
+    case 'message_received':
+      return user.notifyMessageReceived;
     default:
       return true;
   }
@@ -59,9 +73,14 @@ export async function notifyTaskAssigned(
   assigneeId: string,
   taskId: string,
   taskTitle: string,
+  actorName?: string,
 ): Promise<void> {
   if (!assigneeId) return;
-  await notifyUser(db, assigneeId, 'task_assigned', { taskId, taskTitle });
+  await notifyUser(db, assigneeId, 'task_assigned', {
+    taskId,
+    taskTitle,
+    ...(actorName ? { actorName } : {}),
+  });
 }
 
 /**
@@ -72,6 +91,7 @@ export async function notifyTaskCommented(
   db: TenantDb,
   task: { id: string; title: string; assignerId: string; assigneeIds: string[] },
   commentAuthorId: string,
+  commentAuthorName: string,
 ): Promise<void> {
   const recipientIds = new Set<string>();
   if (task.assignerId !== commentAuthorId) recipientIds.add(task.assignerId);
@@ -93,7 +113,11 @@ export async function notifyTaskCommented(
 
   await Promise.all(
     Array.from(recipientIds).map((userId) =>
-      notifyUser(db, userId, 'task_commented', { taskId: task.id, taskTitle: task.title }),
+      notifyUser(db, userId, 'task_commented', {
+        taskId: task.id,
+        taskTitle: task.title,
+        actorName: commentAuthorName,
+      }),
     ),
   );
 }
@@ -122,26 +146,44 @@ export async function notifyTaskStatusPending(
         proposedStatus,
         proposedBy: proposedById,
         proposedByName,
+        actorName: proposedByName,
       }),
     ),
   );
 }
 
 /**
- * Status değişikliği tüm assignees'e bildirim (actor hariç).
+ * Status değişikliği assignees ve task team adminlerine bildirim (actor hariç).
  */
 export async function notifyTaskStatusChanged(
   db: TenantDb,
   recipientIds: string[],
-  task: { id: string; title: string },
+  task: { id: string; title: string; teamId: string; team: { tenantId: string } },
   oldStatus: TaskStatus,
   newStatus: TaskStatus,
   actorId: string,
 ): Promise<void> {
+  const teamAdmins = await db.teamMember.findMany({
+    where: {
+      teamId: task.teamId,
+      role: 'teamAdmin',
+      team: { tenantId: task.team.tenantId },
+    },
+    select: { userId: true },
+  });
   const targets = new Set<string>();
   for (const uid of recipientIds) {
     if (uid !== actorId) targets.add(uid);
   }
+  for (const admin of teamAdmins) {
+    if (admin.userId !== actorId) targets.add(admin.userId);
+  }
+  if (targets.size === 0) return;
+
+  const actor = await db.user.findFirst({
+    where: { id: actorId, tenantId: task.team.tenantId },
+    select: { fullName: true },
+  });
   await Promise.all(
     Array.from(targets).map((userId) =>
       notifyUser(db, userId, 'task_status_changed', {
@@ -149,6 +191,32 @@ export async function notifyTaskStatusChanged(
         taskTitle: task.title,
         oldStatus,
         newStatus,
+        ...(actor ? { actorName: actor.fullName } : {}),
+      }),
+    ),
+  );
+}
+
+export async function notifyCompanyInvitationOutcome(
+  db: TenantDb,
+  invitation: { id: string; tenantId: string; companyName: string },
+  status: 'accepted' | 'rejected',
+  actorName: string,
+): Promise<void> {
+  // Tenant is taken from the recipient invitation already verified by the caller.
+  await db.$executeRaw`SELECT set_config('app.tenant_id', ${invitation.tenantId}, true)`;
+  const admins = await db.user.findMany({
+    where: { tenantId: invitation.tenantId, role: 'companyAdmin' },
+    select: { id: true },
+  });
+  const type: NotificationType =
+    status === 'accepted' ? 'company_invite_accepted' : 'company_invite_rejected';
+  await Promise.all(
+    admins.map(({ id }) =>
+      notifyUser(db, id, type, {
+        invitationId: invitation.id,
+        companyName: invitation.companyName,
+        actorName,
       }),
     ),
   );

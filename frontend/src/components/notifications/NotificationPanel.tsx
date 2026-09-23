@@ -1,5 +1,5 @@
-import { Button } from '@/components/ui/button';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Link } from 'react-router-dom';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
 import type { CompanyInvitationDTO } from '@/services/companyInvitations';
 import { CompanyInvitationCard } from '@/components/company/CompanyInvitationCard';
@@ -9,9 +9,6 @@ import { NotificationItem } from './NotificationItem';
 interface NotificationPanelProps {
   items: NotificationItemType[];
   unreadCount: number;
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  onLoadMore: () => void;
   onSelect: (item: NotificationItemType) => void;
   onMarkAllRead: () => void;
   onViewAll: () => void;
@@ -26,9 +23,6 @@ interface NotificationPanelProps {
 export function NotificationPanel({
   items,
   unreadCount,
-  hasNextPage,
-  isFetchingNextPage,
-  onLoadMore,
   onSelect,
   onMarkAllRead,
   onViewAll,
@@ -94,34 +88,20 @@ export function NotificationPanel({
             ))}
           </ul>
 
-          {hasNextPage && (
-            <div className="border-t border-border px-2 py-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onLoadMore}
-                disabled={isFetchingNextPage}
-                className="w-full"
-              >
-                Daha fazla
-              </Button>
-            </div>
-          )}
         </>
       ) : !hasInvitations ? (
         <EmptyNotifications />
       ) : null}
 
       <div className="border-t border-border px-4 py-2">
-        <button
-          type="button"
+        <Link
           onClick={onViewAll}
           data-testid="view-all-notifications"
+          to="/notifications"
           className="w-full text-center text-xs font-medium text-primary hover:underline"
         >
-          Tümünü gör
-        </button>
+          Tüm bildirimleri gör
+        </Link>
       </div>
     </div>
   );

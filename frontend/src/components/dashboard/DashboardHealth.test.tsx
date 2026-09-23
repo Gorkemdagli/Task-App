@@ -32,9 +32,9 @@ describe('DashboardHealth', () => {
 
     expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent('Risk altında');
     expect(screen.getByText(health.explanation)).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Sağlık sinyalleri' })).toHaveTextContent(
-      'Gecikme oranı %20',
-    );
+    const insights = screen.getByRole('list', { name: 'Sağlık sinyalleri' });
+    expect(insights).toHaveTextContent('Gecikme oranı %20');
+    expect(insights).toHaveClass('grid', 'gap-3', 'lg:grid-cols-2');
     expect(screen.getByText(/Metrik: overdueRate.*Eşik: %20/)).toBeInTheDocument();
     expect(screen.getByText(/Dönem: 2026-07-22 – 2026-08-21.*Kapsam: Alpha/)).toBeInTheDocument();
   });

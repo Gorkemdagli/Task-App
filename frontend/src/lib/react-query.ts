@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryCache, QueryClient } from '@tanstack/react-query';
+import { reportGlobalError } from './globalError';
 
 /**
  * Tek instance — `main.tsx` içinde `QueryClientProvider`'a verilir.
@@ -8,6 +9,11 @@ import { QueryClient } from '@tanstack/react-query';
  * 401 durumu api.ts interceptor'ında handle edilir (token refresh); burada tekrar denemiyoruz.
  */
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (query.state.data === undefined) reportGlobalError(error);
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

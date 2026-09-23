@@ -142,6 +142,8 @@ export async function createTask(
       teamId: team.id,
       title: input.title,
       description: input.description ?? null,
+      scopeItems: input.scopeItems ?? [],
+      expectedOutput: input.expectedOutput ?? null,
       deadline: input.deadline ?? null,
       estimateMinutes: input.estimateMinutes ?? null,
       priority: input.priority,
@@ -160,7 +162,9 @@ export async function createTask(
   const recipientIds = new Set(uniqueIds);
   recipientIds.delete(actor.id);
   await Promise.all(
-    Array.from(recipientIds).map((userId) => notifyTaskAssigned(db, userId, task.id, task.title)),
+    Array.from(recipientIds).map((userId) =>
+      notifyTaskAssigned(db, userId, task.id, task.title, task.assigner.fullName),
+    ),
   );
 
   return task as TaskWithRelations;
@@ -782,9 +786,13 @@ export async function updateTaskFields(
         updated.pendingProposer?.fullName ?? 'Birisi',
       );
     } else {
+      const assigningActor = await db.user.findFirst({
+        where: { id: actor.id, tenantId: task.tenantId },
+        select: { fullName: true },
+      });
       await Promise.all(
         Array.from(recipients).map((userId) =>
-          notifyTaskAssigned(db, userId, updated.id, updated.title),
+          notifyTaskAssigned(db, userId, updated.id, updated.title, assigningActor?.fullName),
         ),
       );
     }

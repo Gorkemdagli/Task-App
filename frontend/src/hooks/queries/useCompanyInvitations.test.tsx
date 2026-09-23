@@ -65,7 +65,9 @@ describe('company invitation query hooks', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(list).toHaveBeenCalledTimes(1);
-    expect(client.getQueryData(queryKeys.companyInvitations.incoming())).toEqual([invitation]);
+    expect(client.getQueryData(queryKeys.companyInvitations.incoming('user-1'))).toEqual([
+      invitation,
+    ]);
   });
 
   it('uses tenant-scoped admin query key', async () => {
@@ -101,13 +103,15 @@ describe('company invitation query hooks', () => {
 
     expect(useAuthStore.getState().user).toEqual(acceptedUser);
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.companyInvitations.incoming(),
+      queryKey: queryKeys.companyInvitations.incoming('user-1'),
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.companyUsers('tenant-a'),
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.teams.list('tenant-a') });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.notifications('tenant-a') });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.notifications('tenant-a', 'user-1'),
+    });
   });
 
   it('invalidates correct invitation scopes after create, cancel, and reject', async () => {
@@ -148,7 +152,7 @@ describe('company invitation query hooks', () => {
       queryKey: queryKeys.companyInvitations.admin('tenant-a'),
     });
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.companyInvitations.incoming(),
+      queryKey: queryKeys.companyInvitations.incoming('user-1'),
     });
   });
 });

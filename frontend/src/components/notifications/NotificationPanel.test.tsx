@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { NotificationPanel } from './NotificationPanel';
 
@@ -26,20 +27,19 @@ const items = [
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof NotificationPanel>> = {}) {
   return render(
-    <NotificationPanel
-      items={items}
-      unreadCount={1}
-      hasNextPage={false}
-      isFetchingNextPage={false}
-      onLoadMore={vi.fn()}
-      onSelect={vi.fn()}
-      onMarkAllRead={vi.fn()}
-      onViewAll={vi.fn()}
-      invitations={[]}
-      onAcceptInvitation={vi.fn()}
-      onRejectInvitation={vi.fn()}
-      {...overrides}
-    />,
+    <MemoryRouter>
+      <NotificationPanel
+        items={items}
+        unreadCount={1}
+        onSelect={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onViewAll={vi.fn()}
+        invitations={[]}
+        onAcceptInvitation={vi.fn()}
+        onRejectInvitation={vi.fn()}
+        {...overrides}
+      />
+    </MemoryRouter>,
   );
 }
 
@@ -50,31 +50,23 @@ describe('NotificationPanel', () => {
     expect(screen.getByTestId('view-all-notifications')).toBeInTheDocument();
   });
 
-  it('shows load-more only when another page exists', () => {
-    renderPanel({ hasNextPage: true });
-    expect(screen.getByRole('button', { name: /daha fazla/i })).toBeInTheDocument();
+  it('has no load-more control and links to the full notifications page', async () => {
+    const onViewAll = vi.fn();
+    renderPanel({ onViewAll });
+    expect(screen.queryByRole('button', { name: /daha fazla/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tüm bildirimleri gör' })).toHaveAttribute(
+      'href',
+      '/notifications',
+    );
+    await userEvent.click(screen.getByRole('link', { name: 'Tüm bildirimleri gör' }));
+    expect(onViewAll).toHaveBeenCalledTimes(1);
   });
 
-  it('loads more once and disables while fetching', async () => {
-    const onLoadMore = vi.fn();
-    const view = renderPanel({ hasNextPage: true, isFetchingNextPage: true, onLoadMore });
-    const button = view.getByRole('button', { name: /daha fazla/i });
-    expect(button).toBeDisabled();
+  it('does not render pagination controls for the compact notification slice', () => {
+    renderPanel();
 
-    view.rerender(
-      <NotificationPanel
-        items={items}
-        unreadCount={1}
-        hasNextPage
-        isFetchingNextPage={false}
-        onLoadMore={onLoadMore}
-        onSelect={vi.fn()}
-        onMarkAllRead={vi.fn()}
-        onViewAll={vi.fn()}
-      />,
-    );
-    await userEvent.click(view.getByRole('button', { name: /daha fazla/i }));
-    expect(onLoadMore).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Sayfa 2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tüm bildirimleri gör' })).toBeInTheDocument();
   });
 
   it('renders pending invitations before normal notifications', async () => {

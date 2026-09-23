@@ -1,18 +1,27 @@
-import type { Prisma } from '@prisma/client';
+import type { NotificationType, Prisma } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 import type { Actor } from '../lib/permissions';
 import { logger } from '../lib/logger';
 import { AppError } from '../lib/appError';
+import {
+  COMPANY_ADMIN_NOTIFICATION_TYPES,
+  COMPANY_INVITATION_OUTCOME_TYPES,
+} from '../lib/notifications';
+
+function visibleNotificationsWhere(actor: Actor): Prisma.NotificationWhereInput {
+  return {
+    userId: actor.id,
+    type:
+      actor.role === 'companyAdmin'
+        ? { in: [...COMPANY_ADMIN_NOTIFICATION_TYPES] }
+        : { notIn: [...COMPANY_INVITATION_OUTCOME_TYPES] },
+  };
+}
 
 export type NotificationDTO = {
   id: string;
   userId: string;
-  type:
-    | 'task_assigned'
-    | 'task_commented'
-    | 'message_received'
-    | 'task_status_pending'
-    | 'task_status_changed';
+  type: NotificationType;
   payload: Prisma.JsonValue;
   readAt: Date | null;
   createdAt: Date;
@@ -42,17 +51,15 @@ export async function listNotifications(
   actor: Actor,
   opts: { limit: number; cursor?: string },
 ): Promise<{ items: NotificationDTO[]; unreadCount: number; nextCursor: string | null }> {
-  const where: {
-    userId: string;
-    OR?: Array<{ createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }>;
-  } = { userId: actor.id };
+  const baseWhere = visibleNotificationsWhere(actor);
+  const where: Prisma.NotificationWhereInput = { ...baseWhere };
 
   if (opts.cursor) {
     const c = decodeCursor(opts.cursor);
     if (c) {
       where.OR = [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }];
     }
-    // Malformed cursor → fall through (first page, no OR clause).
+    // Malformed cursor → first page.
   }
 
   const [rows, unreadCount] = await Promise.all([
@@ -61,7 +68,7 @@ export async function listNotifications(
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: opts.limit + 1,
     }),
-    db.notification.count({ where: { userId: actor.id, readAt: null } }),
+    db.notification.count({ where: { ...baseWhere, readAt: null } }),
   ]);
 
   const hasMore = rows.length > opts.limit;
@@ -77,7 +84,6 @@ export async function listNotifications(
 
   const last = sliced[sliced.length - 1];
   const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
-
   return { items, unreadCount, nextCursor };
 }
 
@@ -85,7 +91,7 @@ export async function listNotifications(
 export async function markAllRead(db: TenantDb, actor: Actor): Promise<number> {
   const start = Date.now();
   const result = await db.notification.updateMany({
-    where: { userId: actor.id, readAt: null },
+    where: { ...visibleNotificationsWhere(actor), readAt: null },
     data: { readAt: new Date() },
   });
   logger.info(
@@ -102,14 +108,14 @@ export async function markNotificationRead(
   notificationId: string,
 ): Promise<void> {
   const result = await db.notification.updateMany({
-    where: { id: notificationId, userId: actor.id, readAt: null },
+    where: { ...visibleNotificationsWhere(actor), id: notificationId, readAt: null },
     data: { readAt: new Date() },
   });
 
   if (result.count === 1) return;
 
   const exists = await db.notification.count({
-    where: { id: notificationId, userId: actor.id },
+    where: { ...visibleNotificationsWhere(actor), id: notificationId },
   });
   if (exists === 0) {
     throw new AppError(404, 'Bildirim bulunamad\u0131', 'NOTIFICATION_NOT_FOUND');

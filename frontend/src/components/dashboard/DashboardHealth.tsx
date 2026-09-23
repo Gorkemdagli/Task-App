@@ -45,7 +45,7 @@ export function DashboardHealth({ health }: { health: DashboardHealthModel }) {
       </div>
       <p className="mt-3 text-sm text-secondary-foreground">{health.explanation}</p>
       {health.insights.length > 0 ? (
-        <ul aria-label="Sağlık sinyalleri" className="mt-4 space-y-3">
+        <ul aria-label="Sağlık sinyalleri" className="mt-4 grid gap-3 lg:grid-cols-2">
           {health.insights.map((insight) => (
             <li key={`${insight.metric}-${insight.threshold}`} className="rounded-md bg-background/50 p-3">
               <p className="text-sm">{insight.message}</p>

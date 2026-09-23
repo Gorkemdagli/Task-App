@@ -49,6 +49,19 @@ describe('TaskCard', () => {
     expect(screen.getByText('Yüksek')).toBeInTheDocument();
   });
 
+  it('shows a blocked badge beside priority without exposing the reason', () => {
+    render(
+      <Wrap>
+        <TaskCard task={{ ...baseTask, isBlocked: true, blockedReason: 'API bekleniyor' }} />
+      </Wrap>,
+    );
+
+    const badge = screen.getByTestId('task-card-blocked-badge-t1');
+    expect(badge).toHaveTextContent('Engellendi');
+    expect(badge).not.toHaveAttribute('title');
+    expect(screen.getByText('Yüksek').parentElement).toContainElement(badge);
+  });
+
   it('shows assignee name', () => {
     render(
       <Wrap>

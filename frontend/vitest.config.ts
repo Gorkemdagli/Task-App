@@ -16,5 +16,13 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      thresholds: {
+        'src/hooks/tasks.ts': { perFile: { lines: 52 } },
+        'src/hooks/useTaskFilters.ts': { perFile: { lines: 95 } },
+        'src/components/tasks/CreateTaskDialog.tsx': { perFile: { lines: 85 } },
+        'src/components/comments/CommentInput.tsx': { perFile: { lines: 95 } },
+      },
+    },
   },
 });

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
 import { api, authApi, getMe } from './api';
+import { queryClient } from './react-query';
+import { clearGlobalError, getGlobalError } from './globalError';
 import { useAuthStore } from '../stores/authStore';
 
 const apiMock = new MockAdapter(api);
@@ -9,6 +11,8 @@ let authApiMock: MockAdapter;
 describe('api interceptors', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: null, user: null });
+    clearGlobalError();
+    queryClient.clear();
     apiMock.reset();
     if (authApi) {
       authApiMock ??= new MockAdapter(authApi);
@@ -105,5 +109,55 @@ describe('api interceptors', () => {
     await Promise.all([api.get('/a'), api.get('/b')]);
 
     expect(authApiMock.history.post.filter((entry) => entry.url === '/refresh')).toHaveLength(1);
+  });
+
+  it('ends the session and reports an expired session after refresh returns 401', async () => {
+    useAuthStore.getState().setAccessToken('old');
+    apiMock.onGet('/protected').reply(401);
+    authApiMock.onPost('/refresh').reply(401, { message: 'sensitive backend detail' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['global-error', 'expired'],
+        queryFn: () => api.get('/protected'),
+        retry: false,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(getGlobalError()).toBe('session-expired');
+  });
+
+  it('keeps auth on refresh transport failure and reports a network error', async () => {
+    useAuthStore.getState().setAccessToken('still-usable');
+    apiMock.onGet('/protected').reply(401);
+    authApiMock.onPost('/refresh').networkError();
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['global-error', 'network'],
+        queryFn: () => api.get('/protected'),
+        retry: false,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(useAuthStore.getState().accessToken).toBe('still-usable');
+    expect(getGlobalError()).toBe('network');
+  });
+
+  it('keeps auth after a page-blocking 403 query and reports access denied', async () => {
+    useAuthStore.getState().setAccessToken('still-authorized');
+    apiMock.onGet('/forbidden').reply(403, { message: 'sensitive backend detail' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['global-error', 'forbidden'],
+        queryFn: () => api.get('/forbidden'),
+        retry: false,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(useAuthStore.getState().accessToken).toBe('still-authorized');
+    expect(getGlobalError()).toBe('access-denied');
   });
 });

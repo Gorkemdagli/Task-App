@@ -114,7 +114,7 @@ function WorkflowStrip({
   return (
     <div
       data-testid="workflow-strip"
-      className="mb-6 grid rounded-md border border-border bg-muted/40 md:flex md:overflow-hidden"
+      className="mb-6 grid rounded-md border border-border bg-muted/40 md:flex md:overflow-hidden lg:shrink-0"
     >
       <div className="flex min-w-0 flex-col justify-center border-b border-border px-4 py-3 md:min-w-[8rem] md:border-b-0 md:border-r">
         <span className="text-sm font-semibold text-foreground">İş Akışı</span>
@@ -174,6 +174,7 @@ function StatusColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
   const taskListRef = useRef<HTMLDivElement>(null);
+  const hasDesktopTaskOverflow = tasks.length > 3;
 
   const scrollTasks = (direction: -1 | 1) => {
     const taskList = taskListRef.current;
@@ -187,13 +188,23 @@ function StatusColumn({
       id={column.status}
       data-testid={`column-${column.status}`}
       data-status={column.status}
-      className={`min-w-0 rounded-md border-t-4 bg-card/30 p-4 ${column.color} ${isOver ? 'ring-2 ring-primary' : ''}`}
+      className={`min-w-0 rounded-md border-t-4 bg-card/30 p-4 ${column.color} ${
+        isOver ? 'ring-2 ring-primary' : ''
+      } ${
+        hasDesktopTaskOverflow
+          ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col'
+          : ''
+      }`}
     >
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground">{column.label}</h2>
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
-      <div className="min-h-[200px]">
+      <div
+        className={`min-h-[200px] ${
+          hasDesktopTaskOverflow ? 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : ''
+        }`}
+      >
         {isLoading ? (
           <div className="space-y-3" aria-label="Görevler yükleniyor">
             <Skeleton className="h-24 w-full rounded-md" />
@@ -202,12 +213,20 @@ function StatusColumn({
         ) : tasks.length === 0 ? (
           <p className="text-xs text-muted-foreground">Boş</p>
         ) : (
-          <div>
+          <div
+            className={
+              hasDesktopTaskOverflow ? 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : undefined
+            }
+          >
             <div
               ref={taskListRef}
               id={`task-carousel-${column.status}`}
               data-testid={`task-carousel-${column.status}`}
-              className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:block md:space-y-3 md:overflow-visible md:pb-0"
+              className={`flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:block md:space-y-3 md:overflow-visible md:pb-0 ${
+                hasDesktopTaskOverflow
+                  ? 'lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain'
+                  : ''
+              }`}
             >
               {tasks.map((task) => (
                 <div key={task.id} className="min-w-full snap-start md:min-w-0">
@@ -270,6 +289,7 @@ function MemberTaskDetailPanel({
   );
   const isProposer = task.pendingProposedBy === user?.id;
   const canAck = hasPending && youAreAssignee && !yourAcked && !isProposer;
+  const blockedReason = task.blockedReason?.trim() || null;
 
   return (
     <>
@@ -277,9 +297,9 @@ function MemberTaskDetailPanel({
         data-testid="member-task-detail-panel"
         role="dialog"
         aria-label="Görev ayrıntısı"
-        className="hidden overflow-y-auto border-l border-border bg-card text-card-foreground shadow-modal lg:fixed lg:bottom-0 lg:right-0 lg:top-14 lg:block lg:w-[min(38vw,32rem)] lg:shadow-none"
+        className="hidden overflow-hidden border-l border-border bg-card text-card-foreground shadow-modal lg:fixed lg:bottom-0 lg:right-0 lg:top-14 lg:flex lg:w-[min(38vw,32rem)] lg:flex-col lg:shadow-none"
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold">Görev ayrıntısı</span>
             <Link
@@ -300,71 +320,138 @@ function MemberTaskDetailPanel({
           </button>
         </div>
 
-        <div className="space-y-6 p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-sm border px-2 py-1 text-xs font-medium ${STATUS_BADGE_CLASS[task.status]}`}
-            >
-              {STATUS_LABEL[task.status]}
-            </span>
-            <span
-              className={`rounded-sm border px-2 py-1 text-xs font-medium ${PRIORITY_BADGE_CLASS[task.priority]}`}
-            >
-              {PRIORITY_LABEL[task.priority]}
-            </span>
-            {task.pendingStatus && task.pendingProposer?.id !== user?.id && (
-              <PendingStatusBadge status={task.pendingStatus} />
-            )}
-            {canAck && (
-              <button
-                type="button"
-                onClick={() =>
-                  ackStatus.mutate({ taskId: task.id, pendingVersion: task.pendingVersion })
-                }
-                disabled={ackStatus.isPending}
-                className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
+        <div className="flex min-h-0 flex-1 flex-col p-5">
+          <div className="shrink-0 space-y-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-sm border px-2 py-1 text-xs font-medium ${STATUS_BADGE_CLASS[task.status]}`}
               >
-                {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
-              </button>
-            )}
+                {STATUS_LABEL[task.status]}
+              </span>
+              <span
+                className={`rounded-sm border px-2 py-1 text-xs font-medium ${PRIORITY_BADGE_CLASS[task.priority]}`}
+              >
+                {PRIORITY_LABEL[task.priority]}
+              </span>
+              {task.isBlocked && (
+                <span
+                  data-testid="member-task-blocked-badge"
+                  title={blockedReason ?? undefined}
+                  aria-label={blockedReason ? `Engellendi: ${blockedReason}` : 'Engellendi'}
+                  tabIndex={blockedReason ? 0 : undefined}
+                  className="rounded-sm border border-priority-high/40 bg-priority-high/10 px-2 py-1 text-xs font-medium text-priority-high focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  Engellendi
+                </span>
+              )}
+              {task.pendingStatus && task.pendingProposer?.id !== user?.id && (
+                <PendingStatusBadge status={task.pendingStatus} />
+              )}
+              {canAck && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    ackStatus.mutate({ taskId: task.id, pendingVersion: task.pendingVersion })
+                  }
+                  disabled={ackStatus.isPending}
+                  className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
+                >
+                  {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
+                </button>
+              )}
+            </div>
+
+            <h2 className="text-xl font-semibold leading-tight">
+              <Link to={`/tasks/${task.id}`} className="transition-colors hover:text-primary">
+                {task.title}
+              </Link>
+            </h2>
+
+            <dl className="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="mb-1 text-xs text-muted-foreground">Son tarih</dt>
+                <dd className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  {formatCalendarDateDisplay(task.deadline)}
+                </dd>
+              </div>
+              <div>
+                <dt className="mb-1 text-xs text-muted-foreground">Sorumlu</dt>
+                <dd>{task.assignees.map((assignee) => assignee.user.fullName).join(', ') || '—'}</dd>
+              </div>
+            </dl>
           </div>
 
-          <h2 className="text-xl font-semibold leading-tight">
-            <Link to={`/tasks/${task.id}`} className="transition-colors hover:text-primary">
-              {task.title}
-            </Link>
-          </h2>
+          <div className="mt-6 grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
+            <section
+              data-testid="member-task-information-region"
+              className="min-h-0 overflow-y-auto overscroll-contain pr-1"
+            >
+              <section aria-labelledby="member-task-description-heading">
+                <h3 id="member-task-description-heading" className="mb-2 text-sm font-semibold">
+                  Açıklama
+                </h3>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                  {task.description || 'Açıklama eklenmemiş.'}
+                </p>
+              </section>
 
-          <dl className="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="mb-1 text-xs text-muted-foreground">Son tarih</dt>
-              <dd className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                {formatCalendarDateDisplay(task.deadline)}
-              </dd>
-            </div>
-            <div>
-              <dt className="mb-1 text-xs text-muted-foreground">Sorumlu</dt>
-              <dd>{task.assignees.map((assignee) => assignee.user.fullName).join(', ') || '—'}</dd>
-            </div>
-          </dl>
+              {task.scopeItems && task.scopeItems.length > 0 && (
+                <section aria-labelledby="member-task-scope-heading" className="mt-6">
+                  <h3 id="member-task-scope-heading" className="mb-2 text-sm font-semibold">
+                    Kapsam
+                  </h3>
+                  <ul className="space-y-2 text-sm leading-6 text-foreground/90">
+                    {task.scopeItems.map((item, index) => (
+                      <li key={`${item}-${index}`} className="flex gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                        />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
 
-          <section>
-            <h3 className="mb-2 text-sm font-semibold">Açıklama</h3>
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-              {task.description || 'Açıklama eklenmemiş.'}
-            </p>
-          </section>
+              {task.expectedOutput && (
+                <section aria-labelledby="member-task-output-heading" className="mt-6">
+                  <h3 id="member-task-output-heading" className="mb-2 text-sm font-semibold">
+                    Beklenen çıktı
+                  </h3>
+                  <p className="whitespace-pre-wrap text-sm text-foreground/90">
+                    {task.expectedOutput}
+                  </p>
+                </section>
+              )}
+            </section>
 
-          <section>
-            <h3 className="mb-3 text-sm font-semibold">Yorumlar ({comments.length})</h3>
-            {commentsLoading ? (
-              <p className="text-sm text-muted-foreground">Yükleniyor…</p>
-            ) : (
-              <CommentList comments={comments} />
-            )}
-            {canCommentOnTask(user, task, true) && <CommentInput taskId={task.id} />}
-          </section>
+            <section
+              aria-labelledby="member-task-comments-heading"
+              data-testid="member-task-comments-region"
+              className="flex min-h-0 flex-col overflow-hidden border-t border-border pt-4"
+            >
+              <h3 id="member-task-comments-heading" className="mb-3 shrink-0 text-sm font-semibold">
+                Yorumlar ({comments.length})
+              </h3>
+              {commentsLoading ? (
+                <p className="shrink-0 text-sm text-muted-foreground">Yükleniyor…</p>
+              ) : (
+                <div
+                  data-testid="member-task-comments-scroll"
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+                >
+                  <CommentList comments={comments} />
+                </div>
+              )}
+              {canCommentOnTask(user, task, true) && (
+                <div className="shrink-0">
+                  <CommentInput taskId={task.id} />
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </aside>
     </>
@@ -518,9 +605,9 @@ export function DashboardPage() {
   return (
     <div
       data-testid="dashboard-page"
-      className={`p-4 md:p-8 ${hasTaskDetail ? 'lg:pr-[min(38vw,32rem)]' : ''}`}
+      className={`p-4 md:p-8 lg:flex lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:flex-col lg:overflow-hidden ${hasTaskDetail ? 'lg:pr-[min(38vw,32rem)]' : ''}`}
     >
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
         <div>
           <h1 className="text-2xl font-semibold">{heading}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{visibleTasks.length} görev</p>
@@ -538,7 +625,7 @@ export function DashboardPage() {
       </div>
 
       {allSortedTeams.length > MAX_RENDERED_RECORDS && (
-        <p className="mb-2 text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+        <p className="mb-2 text-xs text-muted-foreground lg:shrink-0">{RECORD_CAP_MESSAGE}</p>
       )}
       {!isMemberSurface && (
         <WorkflowStrip
@@ -551,7 +638,7 @@ export function DashboardPage() {
         />
       )}
       {sortedTeams.length > 1 || isCompanyAdmin(user) ? (
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-6 flex flex-wrap gap-2 lg:shrink-0">
           {isCompanyAdmin(user) && sortedTeams.length > 0 && (
             <button
               type="button"
@@ -585,8 +672,8 @@ export function DashboardPage() {
       ) : null}
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+          <div className="grid min-h-0 grid-cols-1 gap-6 md:grid-cols-3 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden">
             {COLUMNS.map((column) => (
               <StatusColumn
                 key={column.status}

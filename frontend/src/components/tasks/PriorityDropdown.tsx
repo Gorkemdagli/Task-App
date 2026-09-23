@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 import type { TaskPriority } from '@/hooks/tasks';
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = {
@@ -36,7 +37,7 @@ export function PriorityDropdown({ value, onChange, disabled }: PriorityDropdown
           >
             {PRIORITY_LABEL[value]}
           </span>
-          <span className="text-xs">▾</span>
+          <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

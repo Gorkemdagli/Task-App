@@ -268,6 +268,8 @@ export function useCreateTask() {
     mutationFn: async (input: {
       title: string;
       description?: string;
+      scopeItems?: string[];
+      expectedOutput?: string | null;
       deadline?: string;
       estimateMinutes?: number | null;
       priority: TaskPriority;
