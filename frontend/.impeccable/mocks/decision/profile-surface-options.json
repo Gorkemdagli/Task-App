@@ -1,0 +1,43 @@
+{
+  "title": "TaskFlow /profile — Sayfa yapısı",
+  "question": "Mevcut profil işlevleri içinde hangi sayfa düzeni en anlaşılır hissettiriyor? Birini seçebilir veya yön verip yeniden deneyebilirsin.",
+  "options": [
+    {
+      "id": "profile-identity-rail",
+      "label": "Kimlik Rayı",
+      "kicker": "THE ROLL",
+      "lineage": "TaskFlow çalışma yüzeyinin profil sayfasına uzatılması",
+      "thesis": "Kimlik ve kopyalanabilir kullanıcı ID’si soldaki dar rayda; mevcut profil ve tercih akışları sağdaki tek çalışma alanında kalır.",
+      "palette": ["#171717", "#262626", "#404040", "#f59e0b"],
+      "materials": ["kömür tonlu paneller", "ince nötr ayraçlar"],
+      "viewport": "AppShell içinde solda avatar, ad, e-posta ve #TF-A3X9K2; sağda kişisel bilgiler, bildirim tercihleri ve parola aksiyonu. Amber çizgi yalnız aktif bağlamı ve odağı işaretler.",
+      "risk": "Ray dar ekranlarda içerik alanını sıkıştırabilir; mobilde kimlik bloğuna dönüşmesi gerekir.",
+      "comp": ".impeccable/mocks/decision/profile-identity-rail.png"
+    },
+    {
+      "id": "profile-section-index",
+      "label": "Bölüm Dizini",
+      "lineage": "TaskFlow çalışma yüzeyinin profil sayfasına uzatılması",
+      "thesis": "Profil bölümleri sayfa içi bir dizinle bulunur; tüm kontroller tek editör yüzeyinde görünür kalır.",
+      "palette": ["#171717", "#262626", "#404040", "#f59e0b"],
+      "materials": ["kömür tonlu paneller", "ince nötr ayraçlar"],
+      "viewport": "Ad, avatar ve kullanıcı ID’si üst başlıkta; solda Kişisel bilgiler, Bildirimler ve Güvenlik dizini; sağda mevcut alanlar tek akışta. Aktif bölüm TaskFlow amber sol çizgisiyle belirginleşir.",
+      "risk": "Kısa sayfada dizin gereksiz yer kaplayabilir; mobilde yatay bölüm bağlantılarına geçmelidir.",
+      "comp": ".impeccable/mocks/decision/profile-section-index.png"
+    },
+    {
+      "id": "profile-account-ledger",
+      "label": "Hesap Kaydı",
+      "lineage": "TaskFlow çalışma yüzeyinin profil sayfasına uzatılması",
+      "thesis": "Kimlik, kişisel alanlar, bildirimler ve parola tek sütunlu bir hesap kaydında yukarıdan aşağıya taranır.",
+      "palette": ["#171717", "#262626", "#404040", "#f59e0b"],
+      "materials": ["kömür tonlu paneller", "ince nötr ayraçlar"],
+      "viewport": "760px merkezli tek içerik sütunu; üstte avatar ve kullanıcı ID’si, ardından profil alanları, üç bildirim tercihi ve parola aksiyonu. Bölümler kart yığını yerine başlık ve ince kurallarla ayrılır.",
+      "risk": "Dikey akış, bildirim ve güvenlik aksiyonlarını ilk görünümün altına iter.",
+      "comp": ".impeccable/mocks/decision/profile-account-ledger.png"
+    }
+  ],
+  "reroll": true,
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}
