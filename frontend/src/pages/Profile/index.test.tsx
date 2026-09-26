@@ -70,27 +70,27 @@ describe('ProfilePage', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Ad soyad')).toHaveValue('Ada User');
+    expect(screen.getByLabelText('Ad Soyad')).toHaveValue('Ada User');
     expect(screen.getByLabelText('E-posta')).toHaveValue('user@example.com');
     expect(screen.getByText('ABCDE')).toBeInTheDocument();
-    expect(screen.getByLabelText('Mevcut şifre')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Görev atamaları' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Görev yorumları' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Yeni mesajlar' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Şifreyi Değiştir' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Görev atandığında' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Yorum geldiğinde' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Mesaj geldiğinde' })).toBeChecked();
   });
 
   it('copies display ID', async () => {
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Görünen ID kopyala' }));
+    fireEvent.click(screen.getByRole('button', { name: /Görünen ID kopyala/ }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ABCDE'));
   });
 
   it('guards avatar files over 25 MB on client', () => {
-    renderPage();
+    const { container } = renderPage();
     const file = new File(['avatar'], 'avatar.png', { type: 'image/png' });
     Object.defineProperty(file, 'size', { value: 25 * 1024 * 1024 + 1 });
 
-    fireEvent.change(screen.getByLabelText('Avatar dosyası'), { target: { files: [file] } });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
 
     expect(screen.getByText('Avatar dosyası 25 MB veya daha küçük olmalı.')).toBeInTheDocument();
   });
@@ -100,8 +100,10 @@ describe('ProfilePage', () => {
     updateMock.mockReturnValue({ mutateAsync, isPending: false, isError: false, error: null });
     renderPage();
 
-    fireEvent.change(screen.getByLabelText('Mevcut şifre'), { target: { value: 'hunter22' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Şifreyi Değiştir' }));
+    fireEvent.change(screen.getByLabelText('Eski şifre'), { target: { value: 'hunter22' } });
     fireEvent.change(screen.getByLabelText('Yeni şifre'), { target: { value: 'new-hunter22' } });
+    fireEvent.change(screen.getByLabelText('Yeni şifre onayı'), { target: { value: 'new-hunter22' } });
     fireEvent.click(screen.getByRole('button', { name: 'Şifreyi güncelle' }));
 
     await waitFor(() => expect(screen.getByText('Giriş')).toBeInTheDocument());

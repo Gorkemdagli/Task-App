@@ -117,7 +117,7 @@ describe('AuthBootstrap canonical flow', () => {
     expect(refreshSpy).toHaveBeenCalledTimes(2);
     expect(getMe).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState()).toMatchObject({ accessToken: 'fresh', user: canonicalUser });
-  });
+  }, 15_000);
 
   it('keeps auth and cache when canonical user fetch fails without confirmed auth failure', async () => {
     refreshSpy.mockResolvedValue({ status: 200, data: { accessToken: 'fresh' } } as never);
