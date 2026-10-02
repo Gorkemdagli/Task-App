@@ -1,9 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthLayout } from './pages/Auth/AuthLayout';
-import { ProtectedRoute } from './components/ProtectedRoute';
 import { RouteFallback } from './components/layout/RouteFallback';
-import { GlobalErrorPage } from './components/layout/GlobalErrorPage';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
@@ -16,6 +13,15 @@ import {
   subscribeGlobalError,
 } from './lib/globalError';
 
+const AuthLayout = lazy(() =>
+  import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
+);
+const ProtectedRoute = lazy(() =>
+  import('./components/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })),
+);
+const GlobalErrorPage = lazy(() =>
+  import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
+);
 const LandingPage = lazy(() =>
   import('./pages/Landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
@@ -120,7 +126,13 @@ function RootRoute() {
 function AppRoutes() {
   const globalError = useSyncExternalStore(subscribeGlobalError, getGlobalError);
 
-  if (globalError) return <GlobalErrorPage kind={globalError} />;
+  if (globalError) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <GlobalErrorPage kind={globalError} />
+      </Suspense>
+    );
+  }
 
   return (
     <Suspense fallback={<RouteFallback />}>
