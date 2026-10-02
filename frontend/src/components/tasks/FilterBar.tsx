@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronUp, ListFilter, X } from 'lucide-react';
 import { useTaskFilters, type TaskFilters } from '@/hooks/useTaskFilters';
 import { cn } from '@/lib/utils';
@@ -6,25 +7,9 @@ import type { TaskStatus, TaskPriority } from '@/hooks/tasks';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
-const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
-  { value: 'todo', label: 'Yapılacak' },
-  { value: 'in_progress', label: 'Yapılıyor' },
-  { value: 'done', label: 'Yapıldı' },
-];
-
-const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
-  { value: 'high', label: 'Yüksek' },
-  { value: 'medium', label: 'Orta' },
-  { value: 'low', label: 'Düşük' },
-];
-
-const DEADLINE_OPTIONS: { value: TaskFilters['deadline']; label: string }[] = [
-  { value: 'all', label: 'Tümü' },
-  { value: 'overdue', label: 'Geçmiş' },
-  { value: 'today', label: 'Bugün' },
-  { value: 'week', label: 'Bu hafta' },
-  { value: 'month', label: 'Bu ay' },
-];
+const STATUS_OPTIONS: TaskStatus[] = ['todo', 'in_progress', 'done'];
+const PRIORITY_OPTIONS: TaskPriority[] = ['high', 'medium', 'low'];
+const DEADLINE_OPTIONS: TaskFilters['deadline'][] = ['all', 'overdue', 'today', 'week', 'month'];
 
 interface AssigneeOption {
   id: string;
@@ -44,6 +29,7 @@ interface FilterOptionsProps extends FilterBarProps {
 }
 
 export function FilterBar({ teams = [], assignees = [], currentUserId }: FilterBarProps) {
+  const { t } = useTranslation();
   const { filters, updateFilters, resetFilters } = useTaskFilters();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -72,12 +58,12 @@ export function FilterBar({ teams = [], assignees = [], currentUserId }: FilterB
           <SheetTrigger asChild>
             <Button type="button" variant="secondary" className="w-full justify-start">
               <ListFilter className="h-4 w-4" />
-              Filtreler
+              {t('tasks.filters.title')}
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-[min(90vw,320px)] overflow-y-auto">
             <SheetHeader>
-              <SheetTitle>Filtreler</SheetTitle>
+              <SheetTitle>{t('tasks.filters.title')}</SheetTitle>
             </SheetHeader>
             <div className="mt-6">{options}</div>
           </SheetContent>
@@ -95,6 +81,7 @@ function FilterOptions({
   assignees = [],
   currentUserId,
 }: FilterOptionsProps) {
+  const { t } = useTranslation();
   const toggleStatus = (status: TaskStatus) => {
     const next = filters.status.includes(status)
       ? filters.status.filter((value) => value !== status)
@@ -135,7 +122,7 @@ function FilterOptions({
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <ListFilter className="h-4 w-4 text-secondary-foreground" />
-          <h2 className="text-sm font-semibold text-foreground">Filtreler</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t('tasks.filters.title')}</h2>
         </div>
         {hasActive && (
           <button
@@ -143,58 +130,58 @@ function FilterOptions({
             onClick={resetFilters}
             className="text-xs text-secondary-foreground underline underline-offset-2 hover:text-primary"
           >
-            Temizle
+            {t('tasks.filters.clear')}
           </button>
         )}
       </div>
 
-      <FilterGroup label="Durum">
+      <FilterGroup label={t('tasks.filters.status')}>
         <FilterChip
           active={filters.status.length === 0}
           onClick={() => updateFilters({ ...filters, status: [] })}
           testId="filter-status-all"
         >
-          Tümü
+          {t('tasks.common.all')}
         </FilterChip>
         {STATUS_OPTIONS.map((option) => (
           <FilterChip
-            key={option.value}
-            active={filters.status.includes(option.value)}
-            onClick={() => toggleStatus(option.value)}
-            testId={`filter-status-${option.value}`}
+            key={option}
+            active={filters.status.includes(option)}
+            onClick={() => toggleStatus(option)}
+            testId={`filter-status-${option}`}
           >
-            {option.label}
+            {t(`tasks.status.${option}`)}
           </FilterChip>
         ))}
       </FilterGroup>
 
-      <FilterGroup label="Öncelik">
+      <FilterGroup label={t('tasks.filters.priority')}>
         <FilterChip
           active={filters.priority.length === 0}
           onClick={() => updateFilters({ ...filters, priority: [] })}
           testId="filter-priority-all"
         >
-          Tümü
+          {t('tasks.common.all')}
         </FilterChip>
         {PRIORITY_OPTIONS.map((option) => (
           <FilterChip
-            key={option.value}
-            active={filters.priority.includes(option.value)}
-            onClick={() => togglePriority(option.value)}
-            testId={`filter-priority-${option.value}`}
+            key={option}
+            active={filters.priority.includes(option)}
+            onClick={() => togglePriority(option)}
+            testId={`filter-priority-${option}`}
           >
-            {option.label}
+            {t(`tasks.priority.${option}`)}
           </FilterChip>
         ))}
       </FilterGroup>
 
-      <FilterGroup label="Atanan">
+      <FilterGroup label={t('tasks.filters.assignee')}>
         <FilterChip
           active={filters.assigneeIds.length === 0}
           onClick={() => updateFilters({ ...filters, assigneeIds: [] })}
           testId="filter-assignee-all"
         >
-          Tümü
+          {t('tasks.common.all')}
         </FilterChip>
         {currentUserId && (
           <FilterChip
@@ -202,7 +189,7 @@ function FilterOptions({
             onClick={() => toggleAssignee(currentUserId)}
             testId="filter-assignee-current-user"
           >
-            Sadece bana ait
+            {t('tasks.filters.onlyMine')}
           </FilterChip>
         )}
         {visibleAssignees.map((assignee) => (
@@ -222,7 +209,7 @@ function FilterOptions({
             onClick={() => setShowAllAssignees((visible) => !visible)}
             className="flex min-h-8 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs text-secondary-foreground hover:text-foreground"
           >
-            {showAllAssignees ? 'Daha azı' : 'Daha fazlası'}
+            {showAllAssignees ? t('tasks.filters.less') : t('tasks.filters.more')}
             {showAllAssignees ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
@@ -233,13 +220,13 @@ function FilterOptions({
       </FilterGroup>
 
       {teams.length > 0 && (
-        <FilterGroup label="Takım filtresi">
+        <FilterGroup label={t('tasks.filters.team')}>
           <FilterChip
             active={!filters.teamId}
             onClick={() => updateFilters({ ...filters, teamId: null })}
             testId="filter-team-all"
           >
-            Tümü
+            {t('tasks.common.all')}
           </FilterChip>
           {teams.map((team) => (
             <FilterChip
@@ -254,15 +241,15 @@ function FilterOptions({
         </FilterGroup>
       )}
 
-      <FilterGroup label="Tarih">
+      <FilterGroup label={t('tasks.filters.date')}>
         {DEADLINE_OPTIONS.map((option) => (
           <FilterChip
-            key={option.value}
-            active={filters.deadline === option.value}
-            onClick={() => updateFilters({ ...filters, deadline: option.value })}
-            testId={`filter-deadline-${option.value}`}
+            key={option}
+            active={filters.deadline === option}
+            onClick={() => updateFilters({ ...filters, deadline: option })}
+            testId={`filter-deadline-${option}`}
           >
-            {option.label}
+            {t(`tasks.filters.deadline.${option}`)}
           </FilterChip>
         ))}
       </FilterGroup>
@@ -277,7 +264,7 @@ function FilterOptions({
             }
             className="h-4 w-4 rounded-sm border-border accent-primary"
           />
-          Arşivlenmiş
+          {t('tasks.filters.archived')}
         </label>
       </div>
     </div>
@@ -332,18 +319,19 @@ function FilterChip({
 }
 
 export function ActiveFilterChips({ teams = [], assignees = [], currentUserId }: FilterBarProps) {
+  const { t } = useTranslation();
   const { filters, updateFilters } = useTaskFilters();
   const chips: { id: string; label: string; remove: () => void }[] = [];
   const add = (id: string, label: string, remove: () => void) => chips.push({ id, label, remove });
 
   filters.status.forEach((value) => {
-    const label = STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
+    const label = t(`tasks.status.${value}`);
     add(`status-${value}`, label, () =>
       updateFilters({ ...filters, status: filters.status.filter((item) => item !== value) }),
     );
   });
   filters.priority.forEach((value) => {
-    const label = PRIORITY_OPTIONS.find((option) => option.value === value)?.label ?? value;
+    const label = t(`tasks.priority.${value}`);
     add(`priority-${value}`, label, () =>
       updateFilters({ ...filters, priority: filters.priority.filter((item) => item !== value) }),
     );
@@ -351,7 +339,7 @@ export function ActiveFilterChips({ teams = [], assignees = [], currentUserId }:
   filters.assigneeIds.forEach((value) => {
     const label =
       value === currentUserId
-        ? 'Sadece bana ait'
+        ? t('tasks.filters.onlyMine')
         : (assignees.find((assignee) => assignee.id === value)?.fullName ?? value);
     add(`assignee-${value}`, label, () =>
       updateFilters({
@@ -370,17 +358,17 @@ export function ActiveFilterChips({ teams = [], assignees = [], currentUserId }:
   if (filters.deadline !== 'all') {
     add(
       `deadline-${filters.deadline}`,
-      DEADLINE_OPTIONS.find((option) => option.value === filters.deadline)?.label ?? 'Tarih',
+      t(`tasks.filters.deadline.${filters.deadline}`),
       () => updateFilters({ ...filters, deadline: 'all', deadlineFrom: null, deadlineTo: null }),
     );
   }
   if (filters.deadlineFrom || filters.deadlineTo) {
-    add('deadline-custom', 'Özel tarih aralığı', () =>
+    add('deadline-custom', t('tasks.filters.customDate'), () =>
       updateFilters({ ...filters, deadline: 'all', deadlineFrom: null, deadlineTo: null }),
     );
   }
   if (filters.includeArchived) {
-    add('archived', 'Arşivlenmiş', () => updateFilters({ ...filters, includeArchived: false }));
+    add('archived', t('tasks.filters.archived'), () => updateFilters({ ...filters, includeArchived: false }));
   }
 
   if (chips.length === 0) return null;
@@ -397,7 +385,7 @@ export function ActiveFilterChips({ teams = [], assignees = [], currentUserId }:
             type="button"
             data-testid={`remove-filter-${chip.id}`}
             onClick={chip.remove}
-            aria-label={`${chip.label} filtresini kaldır`}
+              aria-label={t('tasks.filters.remove', { label: chip.label })}
             className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X className="h-3 w-3" aria-hidden />

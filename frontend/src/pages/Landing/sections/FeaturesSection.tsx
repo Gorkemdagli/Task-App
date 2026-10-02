@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Building2,
@@ -15,6 +16,7 @@ import { createFeatureMotion } from '../motion/createFeatureMotion';
 gsap.registerPlugin(useGSAP);
 
 export function FeaturesSection() {
+  const { t } = useTranslation();
   const scope = useRef<HTMLElement>(null);
 
   useGSAP(
@@ -35,31 +37,30 @@ export function FeaturesSection() {
       <div className="landing-section-shell">
         <div className="landing-context-layout">
           <div className="landing-context-copy">
-            <p className="landing-context-kicker">DAHA ODAKLI İŞ, DAHA SAĞLAM TAKIMLAR</p>
-            <h2 id="features-title" aria-label="İş ilerler. Bağlam yanında kalır.">
-              İş ilerler. <br />
-              Bağlam yanında kalır.
+            <p className="landing-context-kicker">{t('landing.features.kicker')}</p>
+            <h2 id="features-title" aria-label={t('landing.features.headline')}>
+              {t('landing.features.headlineFirst')} <br />
+              {t('landing.features.headlineSecond')}
             </h2>
             <p className="landing-context-lede">
-              TaskFlow, işleri sadece takip etmenizi değil, bağlamıyla birlikte ilerletmenizi
-              sağlar. Sorumluluk, yetki, termin ve konuşmalar tek bir yerde, her zaman görünür.
+              {t('landing.features.lede')}
             </p>
 
-            <div className="landing-context-proof-row" aria-label="TaskFlow ilkeleri">
+            <div className="landing-context-proof-row" aria-label={t('landing.features.principles')}>
               <span>
                 <Users aria-hidden />
-                <strong>Tüm ekipler için</strong>
-                <small>tek çalışma alanı</small>
+                <strong>{t('landing.features.allTeams')}</strong>
+                <small>{t('landing.features.oneWorkspace')}</small>
               </span>
               <span>
                 <Building2 aria-hidden />
-                <strong>Büyüyen kurumlara</strong>
-                <small>uygun yapı</small>
+                <strong>{t('landing.features.growingOrganizations')}</strong>
+                <small>{t('landing.features.suitableStructure')}</small>
               </span>
               <span>
                 <KeyRound aria-hidden />
-                <strong>Verileriniz güvende</strong>
-                <small>kontrol sizde</small>
+                <strong>{t('landing.features.dataSafe')}</strong>
+                <small>{t('landing.features.controlYours')}</small>
               </span>
             </div>
           </div>
@@ -108,9 +109,9 @@ export function FeaturesSection() {
                 />
               </svg>
               <div className="landing-context-annotation" aria-hidden>
-                Aynı iş.
+                {t('landing.features.annotationFirst')}
                 <br />
-                Daha fazla netlik.
+                {t('landing.features.annotationSecond')}
               </div>
 
               <article
@@ -120,9 +121,9 @@ export function FeaturesSection() {
               >
                 <Users aria-hidden />
                 <div>
-                  <strong>Sorumlu</strong>
+                  <strong>{t('landing.features.owner')}</strong>
                   <b>Zeynep Arslan</b>
-                  <small>Ürün Yöneticisi</small>
+                  <small>{t('landing.features.ownerRole')}</small>
                 </div>
               </article>
 
@@ -133,28 +134,25 @@ export function FeaturesSection() {
               >
                 <Building2 aria-hidden />
                 <div>
-                  <strong>Takım</strong>
-                  <b>Ürün Ekibi</b>
-                  <small>Platform Geliştirme</small>
+                  <strong>{t('landing.features.team')}</strong>
+                  <b>{t('landing.features.teamName')}</b>
+                  <small>{t('landing.features.teamArea')}</small>
                 </div>
                 <ArrowRight aria-hidden />
               </article>
 
-              <article className="landing-context-task" aria-label="Merkez görev">
+              <article className="landing-context-task" aria-label={t('landing.features.centralTask')}>
                 <header>
                   <span>TASK-2847</span>
-                  <span className="landing-context-status">Devam ediyor</span>
+                  <span className="landing-context-status">{t('landing.features.taskStatus')}</span>
                 </header>
-                <h3>Bildirim akışını sadeleştir</h3>
-                <p>
-                  Kullanıcının gerçekten önemli olan bildirimleri görmesini sağlayacak şekilde akışı
-                  sadeleştir, gereksiz bildirimleri filtrele ve ayarları netleştir.
-                </p>
+                <h3>{t('landing.features.taskTitle')}</h3>
+                <p>{t('landing.features.taskCopy')}</p>
                 <div className="landing-context-task__tags">
-                  <span>Bildirimler</span>
-                  <span>Kullanıcı Deneyimi</span>
-                  <span>Platform</span>
-                  <span aria-label="Etiket ekle">+</span>
+                  <span>{t('landing.features.tagNotifications')}</span>
+                  <span>{t('landing.features.tagUserExperience')}</span>
+                  <span>{t('landing.features.tagPlatform')}</span>
+                  <span aria-label={t('landing.features.addTag')}>+</span>
                 </div>
               </article>
 
@@ -165,27 +163,27 @@ export function FeaturesSection() {
               >
                 <MessageCircle aria-hidden />
                 <div>
-                  <strong>Konuşma</strong>
+                  <strong>{t('landing.features.conversation')}</strong>
                 </div>
                 <div className="landing-context-message-list">
                   <div>
                     <span aria-hidden>MK</span>
                     <p>
                       <b>Mert Kaya</b>
-                      <time>Bugün 10:24</time>
-                      <small>Filtreleme mantığı tamam, son bir gözden geçirelim mi?</small>
+                      <time>{t('landing.features.todayFirst')}</time>
+                      <small>{t('landing.features.messageFirst')}</small>
                     </p>
                   </div>
                   <div>
                     <span aria-hidden>ZA</span>
                     <p>
                       <b>Zeynep Arslan</b>
-                      <time>Bugün 11:03</time>
-                      <small>Evet, özellikle sessize alma ayarlarını da ekleyelim.</small>
+                      <time>{t('landing.features.todaySecond')}</time>
+                      <small>{t('landing.features.messageSecond')}</small>
                     </p>
                   </div>
                   <span className="landing-context-message-input">
-                    Mesaj yaz... <Send aria-hidden />
+                    {t('landing.features.writeMessage')} <Send aria-hidden />
                   </span>
                 </div>
               </article>
@@ -197,9 +195,9 @@ export function FeaturesSection() {
               >
                 <KeyRound aria-hidden />
                 <div>
-                  <strong>Yetki</strong>
-                  <b>Ürün ayarlarını düzenleyebilir</b>
-                  <small>Ürün alanı · Düzenleme yetkisi</small>
+                  <strong>{t('landing.features.permission')}</strong>
+                  <b>{t('landing.features.permissionAction')}</b>
+                  <small>{t('landing.features.permissionScope')}</small>
                 </div>
                 <ArrowRight aria-hidden />
               </article>
@@ -207,9 +205,9 @@ export function FeaturesSection() {
               <article className="landing-context-node landing-context-node--deadline">
                 <CalendarDays aria-hidden />
                 <div>
-                  <strong>Termin</strong>
-                  <b>23 Mayıs 2025</b>
-                  <small>5 gün kaldı</small>
+                  <strong>{t('landing.features.deadline')}</strong>
+                  <b>{t('landing.features.deadlineDate')}</b>
+                  <small>{t('landing.features.daysLeft')}</small>
                 </div>
               </article>
             </div>
@@ -217,10 +215,10 @@ export function FeaturesSection() {
         </div>
 
         <div className="landing-context-footer-line">
-          <span>BAĞLAM SÜREKLİ, İŞ AKIŞINDA</span>
-          <p>Her detay yerli yerinde, takımın hep aynı sayfada.</p>
+          <span>{t('landing.features.footerKicker')}</span>
+          <p>{t('landing.features.footerCopy')}</p>
           <a href="#workflow">
-            TaskFlow ile neler mümkün? <ArrowRight aria-hidden />
+            {t('landing.features.workflowQuestion')} <ArrowRight aria-hidden />
           </a>
         </div>
       </div>

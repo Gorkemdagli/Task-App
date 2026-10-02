@@ -1,14 +1,16 @@
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 interface NotificationBadgeProps {
   count: number;
 }
 
 export function NotificationBadge({ count }: NotificationBadgeProps) {
+  const { t } = useTranslation();
   if (count <= 0) return null;
 
   const display = count > 9 ? '9+' : String(count);
-  const label = count > 9 ? '9+ okunmamış bildirim' : `${count} okunmamış bildirim`;
+  const label = count > 9 ? t('9+ okunmamış bildirim') : t('{{count}} okunmamış bildirim', { count });
 
   return (
     <span

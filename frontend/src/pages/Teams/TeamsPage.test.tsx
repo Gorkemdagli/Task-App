@@ -1,9 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Team, TeamDetail } from '@/services/teams';
 import { TeamsPage } from './TeamsPage';
+import i18n from '@/i18n';
 
 const mocks = vi.hoisted(() => ({
   useTeams: vi.fn(),
@@ -28,6 +29,7 @@ const teams: Team[] = [
     id: 'team-1',
     name: 'Product',
     description: 'Ürün ekibi',
+    photoUrl: null,
     tenantId: 'tenant-1',
     memberCount: 2,
     createdAt: '2024-01-12',
@@ -36,6 +38,7 @@ const teams: Team[] = [
     id: 'team-2',
     name: 'Marketing',
     description: null,
+    photoUrl: null,
     tenantId: 'tenant-1',
     memberCount: 1,
     createdAt: '2024-02-12',
@@ -51,7 +54,7 @@ const details: Record<string, TeamDetail> = {
         userId: 'user-1',
         displayId: 'DK',
         fullName: 'Deniz Kaya',
-        avatarUrl: null,
+        avatarUrl: '/avatars/deniz.png',
         role: 'teamAdmin',
         joinedAt: '2024-01-12',
       },
@@ -97,7 +100,8 @@ function renderPage() {
 }
 
 describe('TeamsPage directory', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('tr');
     mocks.useTeams.mockReturnValue({ data: teams, isLoading: false, isError: false });
     mocks.useTeam.mockImplementation((id: string | undefined) => ({
       data: id ? details[id] : undefined,
@@ -106,7 +110,21 @@ describe('TeamsPage directory', () => {
     }));
   });
 
+  afterEach(async () => {
+    await i18n.changeLanguage('tr');
+    vi.restoreAllMocks();
+  });
+
   it('selects the first team and previews its detail', () => {
+    const loadedImage = document.createElement('img');
+    Object.defineProperties(loadedImage, {
+      complete: { value: true },
+      naturalWidth: { value: 1 },
+    });
+    vi.spyOn(window, 'Image').mockImplementation(function MockImage() {
+      return loadedImage;
+    });
+
     renderPage();
 
     expect(screen.getByTestId('team-directory-item-team-1')).toHaveAttribute(
@@ -115,6 +133,23 @@ describe('TeamsPage directory', () => {
     );
     expect(screen.getByTestId('team-preview-team-1')).toHaveTextContent('Product');
     expect(screen.getByText('Deniz Kaya')).toBeInTheDocument();
+    const membersSection = screen.getByRole('heading', { name: 'Üyeler' }).parentElement;
+    expect(membersSection?.querySelector('[title="Deniz Kaya"]')).toBeInTheDocument();
+    const manager = screen.getByText('Deniz Kaya').closest('dd');
+    expect(manager?.firstElementChild).toHaveAttribute('title', 'Deniz Kaya');
+    expect(manager?.firstElementChild?.querySelector('img')).toHaveAttribute(
+      'src',
+      '/avatars/deniz.png',
+    );
+  });
+
+  it('renders the team directory in English when selected', async () => {
+    await i18n.changeLanguage('en');
+    renderPage();
+
+    expect(screen.getByRole('heading', { name: 'Teams' })).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Team directory' })).toBeInTheDocument();
+    expect(screen.getByTestId('team-preview-team-1')).toHaveTextContent('2 members');
   });
 
   it('changes the preview without changing the URL', async () => {

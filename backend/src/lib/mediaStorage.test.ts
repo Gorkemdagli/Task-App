@@ -3,8 +3,10 @@ import {
   createMediaStorage,
   deleteOwnedAvatar,
   deleteOwnedLogo,
+  deleteOwnedTeamPhoto,
   parseOwnedAvatarPath,
   parseOwnedLogoPath,
+  parseOwnedTeamPhotoPath,
 } from './mediaStorage';
 
 describe('mediaStorage', () => {
@@ -77,6 +79,40 @@ describe('mediaStorage', () => {
       contentType: 'image/webp',
       upsert: false,
     });
+  });
+
+  it('uploads team photos under tenant and team scoped paths', async () => {
+    const adapter = {
+      upload: vi.fn().mockResolvedValue(undefined),
+      getPublicUrl: vi.fn((path: string) => `https://storage.test/${path}`),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = createMediaStorage(adapter);
+    const result = await storage.uploadTeamPhoto('tenant-a', 'team-1', Buffer.from('webp'));
+    expect(result.path).toMatch(/^teams\/tenant-a\/team-1\/[0-9a-f-]{36}\.webp$/);
+    expect(adapter.upload).toHaveBeenCalledWith(result.path, Buffer.from('webp'), {
+      contentType: 'image/webp',
+      upsert: false,
+    });
+  });
+
+  it('deletes only the photo owned by the matching tenant and team', async () => {
+    const adapter = {
+      upload: vi.fn(),
+      getPublicUrl: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = createMediaStorage(adapter);
+    const url = 'https://storage.test/storage/v1/object/public/taskflow-media/teams/tenant-a/team-1/photo.webp';
+    expect(parseOwnedTeamPhotoPath(url, 'tenant-a', 'team-1')).toBe(
+      'teams/tenant-a/team-1/photo.webp',
+    );
+    expect(parseOwnedTeamPhotoPath(url, 'tenant-b', 'team-1')).toBeNull();
+    expect(parseOwnedTeamPhotoPath(url, 'tenant-a', 'team-2')).toBeNull();
+    await deleteOwnedTeamPhoto(storage, url, 'tenant-a', 'team-1');
+    await deleteOwnedTeamPhoto(storage, url, 'tenant-a', 'team-2');
+    expect(adapter.remove).toHaveBeenCalledTimes(1);
+    expect(adapter.remove).toHaveBeenCalledWith('teams/tenant-a/team-1/photo.webp');
   });
 
   it('parses and removes only tenant-owned logo paths', async () => {

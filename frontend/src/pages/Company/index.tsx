@@ -1,4 +1,5 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { CompanySettingsContentPage } from '@/pages/CompanySettings';
@@ -7,11 +8,12 @@ import { CompanyDashboard } from './CompanyDashboard';
 type CompanyTab = 'dashboard' | 'settings';
 
 const tabs = [
-  { id: 'dashboard', label: 'Şirket Dashboardu' },
-  { id: 'settings', label: 'Şirket Ayarları' },
+  { id: 'dashboard', label: 'company.navigation.dashboard' },
+  { id: 'settings', label: 'company.navigation.settings' },
 ] as const;
 
 export function CompanyManagementPage() {
+  const { t } = useTranslation();
   const { isCompanyAdmin } = useAuth();
   const [tab, setTab] = useState<CompanyTab>('dashboard');
   const tabRefs = useRef<Record<CompanyTab, HTMLButtonElement | null>>({
@@ -47,7 +49,7 @@ export function CompanyManagementPage() {
 
   return (
     <div className="space-y-6 p-4 md:p-8">
-      <div role="tablist" aria-label="Şirket yönetimi">
+      <div role="tablist" aria-label={t('company.navigation.tabs')}>
         {tabs.map((item) => (
           <button
             key={item.id}
@@ -68,7 +70,7 @@ export function CompanyManagementPage() {
                 : 'border-transparent text-secondary-foreground hover:text-foreground'
             }`}
           >
-            {item.label}
+            {t(item.label)}
           </button>
         ))}
       </div>

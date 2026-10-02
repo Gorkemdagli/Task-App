@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 import type { CompanyInvitationDTO } from '@/services/companyInvitations';
 
 type CompanyInvitationCardProps = {
@@ -10,8 +11,8 @@ type CompanyInvitationCardProps = {
   error?: string;
 };
 
-function formatExpiry(expiresAt: string): string {
-  return new Intl.DateTimeFormat('tr-TR', {
+function formatExpiry(expiresAt: string, language: string): string {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'tr-TR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -26,6 +27,7 @@ export function CompanyInvitationCard({
   isRejecting = false,
   error,
 }: CompanyInvitationCardProps) {
+  const { t, i18n } = useTranslation();
   const isResponding = isAccepting || isRejecting;
 
   return (
@@ -36,9 +38,13 @@ export function CompanyInvitationCard({
       <div className="flex flex-col gap-2">
         <div>
           <h4 className="text-sm font-semibold text-foreground">{invitation.companyName}</h4>
-          <p className="text-xs text-muted-foreground">{invitation.inviterName} davet etti</p>
           <p className="text-xs text-muted-foreground">
-            Son geçerlilik: {formatExpiry(invitation.expiresAt)}
+            {t('company.invitations.invitedBy', { name: invitation.inviterName })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t('company.invitations.expires', {
+              date: formatExpiry(invitation.expiresAt, i18n.language),
+            })}
           </p>
         </div>
         <div className="flex gap-2">
@@ -49,7 +55,7 @@ export function CompanyInvitationCard({
             loading={isAccepting}
             disabled={isRejecting}
           >
-            Kabul Et
+            {t('company.invitations.accept')}
           </Button>
           <Button
             type="button"
@@ -59,7 +65,7 @@ export function CompanyInvitationCard({
             loading={isRejecting}
             disabled={isAccepting}
           >
-            Reddet
+            {t('company.invitations.reject')}
           </Button>
         </div>
         {error && (
@@ -67,7 +73,7 @@ export function CompanyInvitationCard({
             {error}
           </p>
         )}
-        {isResponding && <span className="sr-only">Davet yanıtı gönderiliyor</span>}
+        {isResponding && <span className="sr-only">{t('company.invitations.responding')}</span>}
       </div>
     </article>
   );

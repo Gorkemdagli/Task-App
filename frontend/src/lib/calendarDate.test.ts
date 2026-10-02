@@ -16,6 +16,7 @@ describe('calendar date helpers', () => {
 
   it('formats public dates for display', () => {
     expect(formatCalendarDateDisplay('2026-08-13')).toBe('13-08-2026');
+    expect(formatCalendarDateDisplay('2026-08-13', 'en')).toBe('08/13/2026');
     expect(formatCalendarDateDisplay(null)).toBe('—');
   });
 });

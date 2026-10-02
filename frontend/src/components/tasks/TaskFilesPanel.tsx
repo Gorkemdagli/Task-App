@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { AxiosProgressEvent } from 'axios';
 import { AlertCircle, Download, FileText, Trash2, UploadCloud } from 'lucide-react';
 import {
@@ -54,8 +55,8 @@ function formatFileSize(sizeBytes: number): string {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatFileDate(createdAt: string): string {
-  return new Date(createdAt).toLocaleString('tr-TR', {
+function formatFileDate(createdAt: string, locale: string): string {
+  return new Date(createdAt).toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -65,23 +66,24 @@ function formatFileDate(createdAt: string): string {
   });
 }
 
-function fileTypeLabel(file: TaskFile): string {
+function fileTypeLabel(file: TaskFile, fallback: string): string {
   const extension = file.originalName.includes('.')
     ? file.originalName.slice(file.originalName.lastIndexOf('.') + 1).toUpperCase()
-    : file.mimeType.split('/').at(-1)?.toUpperCase() ?? 'DOSYA';
+    : file.mimeType.split('/').at(-1)?.toUpperCase() ?? fallback;
   return `${extension} · ${formatFileSize(file.sizeBytes)}`;
 }
 
-function validateFile(file: File): string | null {
-  if (file.size > MAX_FILE_BYTES) return 'Dosya boyutu 25 MB sınırını aşıyor.';
+function validateFile(file: File): 'tasks.files.sizeError' | 'tasks.files.typeError' | null {
+  if (file.size > MAX_FILE_BYTES) return 'tasks.files.sizeError';
   const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   if (!ACCEPTED_FILE_TYPES.includes(file.type.toLowerCase()) || !ACCEPTED_EXTENSIONS.includes(extension)) {
-    return 'Bu dosya türü desteklenmiyor.';
+    return 'tasks.files.typeError';
   }
   return null;
 }
 
 export function TaskFilesPanel({ taskId }: { taskId: string }) {
+  const { t, i18n } = useTranslation();
   const { data, error, isError, isLoading, refetch } = useTaskFiles(taskId);
   const uploadFile = useUploadTaskFile();
   const downloadFile = useDownloadTaskFile();
@@ -129,7 +131,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
     const file = fileList?.[0];
     if (!file) return;
     const validationError = validateFile(file);
-    setUploadError(validationError);
+    setUploadError(validationError ? t(validationError) : null);
     if (validationError) return;
 
     setUploadProgress(null);
@@ -160,7 +162,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
         onError: () => {
           setIsUploading(false);
           setUploadProgress(null);
-          setUploadError('Dosya yüklenemedi. Tekrar deneyin.');
+          setUploadError(t('tasks.files.uploadError'));
         },
       },
     );
@@ -181,10 +183,10 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 id="files-heading" className="text-lg font-semibold">
-            Dosyalar <span aria-hidden="true">({files.length})</span>
+            {t('tasks.files.title')} <span aria-hidden="true">({files.length})</span>
           </h2>
         </div>
-        {busy && <span className="text-xs text-primary">Yükleniyor…</span>}
+        {busy && <span className="text-xs text-primary">{t('tasks.files.loading')}</span>}
       </div>
 
       <div
@@ -215,7 +217,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
             <div className="flex min-w-0 items-start gap-3">
               <UploadCloud aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="min-w-0">
-                <p className="text-sm font-semibold">Dosya gönderilsin mi?</p>
+                <p className="text-sm font-semibold">{t('tasks.files.submitQuestion')}</p>
                 <p className="truncate text-xs text-muted-foreground" title={stagedFile.name}>
                   {stagedFile.name}
                 </p>
@@ -229,7 +231,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                 disabled={busy}
                 className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {busy ? 'Yükleniyor…' : 'Gönder'}
+                {busy ? t('tasks.files.loading') : t('tasks.files.send')}
               </button>
               <button
                 type="button"
@@ -237,7 +239,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                 disabled={busy}
                 className="h-8 rounded-md border border-border bg-card px-3 text-xs font-medium disabled:opacity-50"
               >
-                Vazgeç
+                {t('tasks.files.cancel')}
               </button>
             </div>
           </div>
@@ -255,16 +257,16 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
           >
             <span className="flex items-center gap-2">
               <UploadCloud aria-hidden="true" className="h-5 w-5 text-foreground" />
-              <span className="text-sm font-semibold">Dosya ekle</span>
+              <span className="text-sm font-semibold">{t('tasks.files.upload')}</span>
             </span>
             <span id={`${inputId}-hint`} className="text-xs text-muted-foreground">
-              Dosya başına en fazla 25 MB
+              {t('tasks.files.maxSize')}
             </span>
             <input
               ref={inputRef}
               id={inputId}
               type="file"
-              aria-label="Dosya seç"
+              aria-label={t('tasks.files.select')}
               accept={ACCEPTED_EXTENSIONS}
               disabled={busy}
               onChange={(event) => handleFiles(event.target.files)}
@@ -275,7 +277,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
         {busy && uploadProgress !== null && (
           <div className="border-t border-border px-4 pb-3 pt-3" aria-live="polite">
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>Yükleniyor… %{uploadProgress}</span>
+              <span>{t('tasks.files.uploading')}{uploadProgress}</span>
               <span>{uploadProgress}%</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
@@ -293,32 +295,32 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
       )}
 
       {isLoading ? (
-        <p className="mt-4 text-sm text-muted-foreground">Dosyalar yükleniyor…</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t('tasks.files.loadingFiles')}</p>
       ) : isError ? (
         <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-4">
           <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
             <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            {getApiErrorMessage(error, 'Dosyalar yüklenemedi.')}
+            {getApiErrorMessage(error, t('tasks.files.loadError'))}
           </p>
           <button
             type="button"
             onClick={() => void refetch()}
             className="mt-3 h-8 rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-secondary"
           >
-            Tekrar dene
+            {t('tasks.files.retry')}
           </button>
         </div>
       ) : files.length === 0 ? (
-        <p className="mt-4 text-sm italic text-muted-foreground">Henüz dosya yok.</p>
+        <p className="mt-4 text-sm italic text-muted-foreground">{t('tasks.files.empty')}</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <div className="min-w-[520px]">
             <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] gap-3 border-b border-border px-1 pb-2 text-[11px] text-muted-foreground">
-              <span>Ad</span>
-              <span>Ekleyen</span>
-              <span className="text-right">İşlemler</span>
+              <span>{t('tasks.files.name')}</span>
+              <span>{t('tasks.files.uploader')}</span>
+              <span className="text-right">{t('tasks.files.actions')}</span>
             </div>
-            <ul aria-label="Görev dosyaları" className="divide-y divide-border">
+            <ul aria-label={t('tasks.files.aria')} className="divide-y divide-border">
           {files.map((file) => (
             <li key={file.id} className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] items-center gap-3 px-1 py-3" data-testid={`task-file-${file.id}`}>
               <div className="flex min-w-0 items-start gap-2">
@@ -327,17 +329,17 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                   <p className="truncate text-sm font-medium" title={file.originalName}>
                     {file.originalName}
                   </p>
-                  <p className="text-xs text-muted-foreground">{fileTypeLabel(file)}</p>
+                  <p className="text-xs text-muted-foreground">{fileTypeLabel(file, t('tasks.files.unknownType'))}</p>
                 </div>
               </div>
               <p className="min-w-0 text-xs text-muted-foreground">
                 <span className="block truncate text-foreground">{file.uploader.name}</span>
-                <span className="block truncate">{formatFileDate(file.createdAt)}</span>
+                <span className="block truncate">{formatFileDate(file.createdAt, i18n.language === 'en' ? 'en-US' : 'tr-TR')}</span>
               </p>
               <div className="flex shrink-0 items-center justify-end gap-1">
                   <button
                     type="button"
-                    aria-label={`${file.originalName} indir`}
+                    aria-label={t('tasks.files.download', { name: file.originalName })}
                     onClick={() => downloadFile.mutate({ taskId, fileId: file.id })}
                     disabled={downloadFile.isPending}
                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
@@ -347,7 +349,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                   {file.canDelete && confirmingFileId !== file.id && (
                     <button
                       type="button"
-                      aria-label={`${file.originalName} sil`}
+                      aria-label={t('tasks.files.delete', { name: file.originalName })}
                       onClick={() => {
                         setDeleteError(null);
                         setConfirmingFileId(file.id);
@@ -360,7 +362,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
               </div>
               {confirmingFileId === file.id && (
                 <div className="col-span-full flex items-center justify-end gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2">
-                  <span className="mr-auto text-xs font-medium">Silinsin mi?</span>
+                  <span className="mr-auto text-xs font-medium">{t('tasks.files.deleteQuestion')}</span>
                   <button
                     ref={confirmButtonRef}
                     type="button"
@@ -369,14 +371,14 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                         { taskId, fileId: file.id },
                         {
                           onSuccess: () => setConfirmingFileId(null),
-                          onError: () => setDeleteError('Dosya silinemedi. Tekrar deneyin.'),
+                          onError: () => setDeleteError(t('tasks.files.deleteError')),
                         },
                       )
                     }
                     disabled={deleteFile.isPending}
                     className="h-8 rounded-md bg-destructive px-3 text-xs font-medium text-destructive-foreground disabled:opacity-50"
                   >
-                    {deleteFile.isPending ? 'Siliniyor…' : 'Sil'}
+                    {deleteFile.isPending ? t('tasks.files.deleting') : t('tasks.files.deleteAction')}
                   </button>
                   <button
                     type="button"
@@ -386,7 +388,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                     }}
                     className="h-8 rounded-md border border-border bg-card px-3 text-xs font-medium"
                   >
-                    Vazgeç
+                    {t('tasks.files.cancelDelete')}
                   </button>
                 </div>
               )}

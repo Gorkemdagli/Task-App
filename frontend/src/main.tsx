@@ -5,6 +5,7 @@ import App from './App';
 import { bootstrapTheme } from './stores/themeStore';
 import { bootstrapTeamStore } from './stores/teamStore';
 import { queryClient } from './lib/react-query';
+import './i18n';
 import '@fontsource-variable/geist/wght.css';
 import './index.css';
 

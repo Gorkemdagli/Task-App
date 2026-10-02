@@ -25,6 +25,7 @@ const profile: CurrentUserProfile = {
   role: 'member',
   tenantId: null,
   tenantName: null,
+  tenantLogoUrl: null,
   avatarUrl: null,
   notifyTaskAssigned: true,
   notifyTaskCommented: true,

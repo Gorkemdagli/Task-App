@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n, { LANGUAGE_STORAGE_KEY } from '@/i18n';
 import { useAuthStore } from '@/stores/authStore';
 import { LandingPage } from './LandingPage';
 
@@ -68,6 +69,11 @@ describe('LandingPage', () => {
     expect(within(hero).getByRole('link', { name: 'Ücretsiz başla' })).toBeInTheDocument();
     expect(within(hero).getByRole('link', { name: 'İş akışını gör' })).toBeInTheDocument();
     expect(within(header).queryByRole('link', { name: 'Ücretsiz başla' })).not.toBeInTheDocument();
+    expect(within(header).getByRole('link', { name: 'Hesap oluştur' })).toHaveAttribute(
+      'href',
+      '/register',
+    );
+    expect(within(header).getByRole('link', { name: 'Giriş yap' })).toHaveAttribute('href', '/login');
     expect(within(footer).getByRole('link', { name: 'Ücretsiz başla' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Ücretsiz başla' })).toHaveLength(2);
     expect(screen.getAllByRole('link', { name: 'İş akışını gör' })).toHaveLength(1);
@@ -139,6 +145,44 @@ describe('LandingPage', () => {
     ]) {
       expect(within(mobileMenu).getByRole('link', { name: label })).toHaveAttribute('href', href);
     }
+    expect(within(mobileMenu).getByRole('link', { name: 'Hesap oluştur' })).toHaveAttribute(
+      'href',
+      '/register',
+    );
+    expect(within(mobileMenu).getByRole('link', { name: 'Giriş yap' })).toHaveAttribute(
+      'href',
+      '/login',
+    );
+  });
+
+  it('switches landing language with the active flag in desktop and mobile navigation', async () => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage('tr');
+    renderLanding();
+    const header = document.querySelector<HTMLElement>('.landing-nav')!;
+
+    const desktopToggle = within(header).getByRole('button', { name: 'Dili İngilizce yap' });
+    expect(desktopToggle.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('tr.png'),
+    );
+    await user.click(desktopToggle);
+
+    expect(screen.getByRole('navigation', { name: 'Page sections' })).toHaveTextContent('Features');
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
+    const mobileToggle = within(header).getByRole('button', { name: 'Open menu' });
+    await user.click(mobileToggle);
+    const mobileMenu = screen.getByRole('dialog');
+    const mobileLanguageToggle = within(mobileMenu).getByRole('button', {
+      name: 'Switch language to Turkish',
+    });
+    expect(mobileLanguageToggle.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('us.png'),
+    );
+    await user.click(mobileLanguageToggle);
+    expect(document.documentElement.lang).toBe('tr');
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('tr');
   });
 
   it('scrolls to a section without adding a hash to the landing URL', async () => {
@@ -222,5 +266,34 @@ describe('LandingPage', () => {
     );
     expect(document.querySelector('a[href="/privacy"]')).not.toBeInTheDocument();
     expect(document.querySelector('a[href="/terms"]')).not.toBeInTheDocument();
+  });
+
+  it('renders the public landing copy in English when English is selected', async () => {
+    try {
+      await act(() => i18n.changeLanguage('en'));
+      renderLanding();
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Everyone can see where work stands.' }),
+      ).toBeVisible();
+      expect(screen.getByRole('navigation', { name: 'Page sections' })).toHaveTextContent(
+        'FeaturesWorkflow',
+      );
+      expect(screen.getAllByRole('link', { name: 'Get started free' })).toHaveLength(2);
+      expect(
+        screen.getByRole('heading', {
+          name: 'Work moves forward. Context stays close.',
+        }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole('region', {
+          name: 'A task begins. Everyone knows what comes next.',
+        }),
+      ).toBeVisible();
+      expect(screen.getAllByText('Create a mobile app promo video')).toHaveLength(2);
+      expect(screen.getByText('Make it clear what the team should do next.')).toBeVisible();
+    } finally {
+      await act(() => i18n.changeLanguage('tr'));
+    }
   });
 });

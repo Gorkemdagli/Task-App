@@ -1,6 +1,6 @@
 import { getPasswordStrength } from '../../lib/passwordStrength';
+import { useTranslation } from 'react-i18next';
 
-const LABEL = { weak: 'Zayıf', medium: 'Orta', strong: 'Güçlü' } as const;
 const FILLED = { weak: 1, medium: 2, strong: 3 } as const;
 const COLOR = {
   weak: 'bg-priority-high',
@@ -9,6 +9,7 @@ const COLOR = {
 } as const;
 
 export function PasswordStrength({ password }: { password: string }) {
+  const { t } = useTranslation();
   const s = getPasswordStrength(password);
   if (!s) return null;
   const filled = FILLED[s];
@@ -19,7 +20,7 @@ export function PasswordStrength({ password }: { password: string }) {
           <div key={i} className={`h-1 w-8 rounded-sm ${i <= filled ? COLOR[s] : 'bg-border'}`} />
         ))}
       </div>
-      <span className="text-xs text-secondary-foreground">{LABEL[s]}</span>
+      <span className="text-xs text-secondary-foreground">{t(`auth.password.strength.${s}`)}</span>
     </div>
   );
 }

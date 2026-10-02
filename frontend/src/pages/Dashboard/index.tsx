@@ -30,12 +30,14 @@ import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarD
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { CommentInput } from '@/components/comments/CommentInput';
 import { CommentList } from '@/components/comments/CommentList';
+import { AssigneeAvatarStack } from '@/components/tasks/AssigneeAvatarStack';
 import { PendingStatusBadge } from '@/components/tasks/PendingStatusBadge';
 import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog';
 import { ProposeConfirmDialog } from '@/components/tasks/ProposeConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'todo', label: 'Yapılacak', color: 'border-status-todo' },
@@ -111,13 +113,14 @@ function WorkflowStrip({
   onSelect: (filter: WorkflowFilter) => void;
   currentUserId?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="workflow-strip"
       className="mb-6 grid rounded-md border border-border bg-muted/40 md:flex md:overflow-hidden lg:shrink-0"
     >
       <div className="flex min-w-0 flex-col justify-center border-b border-border px-4 py-3 md:min-w-[8rem] md:border-b-0 md:border-r">
-        <span className="text-sm font-semibold text-foreground">İş Akışı</span>
+        <span className="text-sm font-semibold text-foreground">{t('İş Akışı')}</span>
       </div>
       {WORKFLOW_ITEMS.map((item) => {
         const count = tasks.filter((task) =>
@@ -138,7 +141,7 @@ function WorkflowStrip({
           >
             <span className="flex min-w-0 items-center gap-2">
               <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${item.dotClass}`} />
-              <span className="truncate text-sm font-medium">{item.label}</span>
+              <span className="truncate text-sm font-medium">{t(item.label)}</span>
             </span>
             <span
               data-testid={`workflow-count-${item.id}`}
@@ -172,6 +175,7 @@ function StatusColumn({
   onSelectTask?: (taskId: string) => void;
   draggable?: boolean;
 }) {
+  const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
   const taskListRef = useRef<HTMLDivElement>(null);
   const hasDesktopTaskOverflow = tasks.length > 3;
@@ -197,7 +201,7 @@ function StatusColumn({
       }`}
     >
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-foreground">{column.label}</h2>
+        <h2 className="text-sm font-medium text-foreground">{t(column.label)}</h2>
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
       <div
@@ -206,12 +210,12 @@ function StatusColumn({
         }`}
       >
         {isLoading ? (
-          <div className="space-y-3" aria-label="Görevler yükleniyor">
+          <div className="space-y-3" aria-label={t('Görevler yükleniyor')}>
             <Skeleton className="h-24 w-full rounded-md" />
             <Skeleton className="h-24 w-full rounded-md" />
           </div>
         ) : tasks.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Boş</p>
+          <p className="text-xs text-muted-foreground">{t('Boş')}</p>
         ) : (
           <div
             className={
@@ -245,7 +249,7 @@ function StatusColumn({
               <div className="mt-3 flex items-center justify-between md:hidden">
                 <button
                   type="button"
-                  aria-label={`${column.label} önceki görev`}
+                  aria-label={t('{{label}} önceki görev', { label: t(column.label) })}
                   onClick={() => scrollTasks(-1)}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card/90 text-secondary-foreground shadow-card transition-colors hover:bg-secondary"
                 >
@@ -253,7 +257,7 @@ function StatusColumn({
                 </button>
                 <button
                   type="button"
-                  aria-label={`${column.label} sonraki görev`}
+                  aria-label={t('{{label}} sonraki görev', { label: t(column.label) })}
                   onClick={() => scrollTasks(1)}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card/90 text-secondary-foreground shadow-card transition-colors hover:bg-secondary"
                 >
@@ -281,6 +285,7 @@ function MemberTaskDetailPanel({
   onClose: () => void;
   user: AuthUser | null;
 }) {
+  const { t, i18n } = useTranslation();
   const ackStatus = useAckTaskStatus();
   const hasPending = task.pendingStatus !== null;
   const youAreAssignee = task.assignees.some((assignee) => assignee.userId === user?.id);
@@ -296,24 +301,24 @@ function MemberTaskDetailPanel({
       <aside
         data-testid="member-task-detail-panel"
         role="dialog"
-        aria-label="Görev ayrıntısı"
+        aria-label={t('Görev ayrıntısı')}
         className="hidden overflow-hidden border-l border-border bg-card text-card-foreground shadow-modal lg:fixed lg:bottom-0 lg:right-0 lg:top-14 lg:flex lg:w-[min(38vw,32rem)] lg:flex-col lg:shadow-none"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold">Görev ayrıntısı</span>
+            <span className="text-sm font-semibold">{t('Görev ayrıntısı')}</span>
             <Link
               to={`/tasks/${task.id}`}
               className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              Göreve git
+              {t('Göreve git')}
             </Link>
           </div>
           <button
             type="button"
             autoFocus
             onClick={onClose}
-            aria-label="Görev ayrıntısını kapat"
+            aria-label={t('Görev ayrıntısını kapat')}
             className="inline-flex h-9 w-9 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
           >
             <X className="h-4 w-4" />
@@ -326,18 +331,18 @@ function MemberTaskDetailPanel({
               <span
                 className={`rounded-sm border px-2 py-1 text-xs font-medium ${STATUS_BADGE_CLASS[task.status]}`}
               >
-                {STATUS_LABEL[task.status]}
+                {t(STATUS_LABEL[task.status])}
               </span>
               <span
                 className={`rounded-sm border px-2 py-1 text-xs font-medium ${PRIORITY_BADGE_CLASS[task.priority]}`}
               >
-                {PRIORITY_LABEL[task.priority]}
+                {t(PRIORITY_LABEL[task.priority])}
               </span>
               {task.isBlocked && (
                 <span
                   data-testid="member-task-blocked-badge"
                   title={blockedReason ?? undefined}
-                  aria-label={blockedReason ? `Engellendi: ${blockedReason}` : 'Engellendi'}
+                  aria-label={blockedReason ? t('Engellendi: {{reason}}', { reason: blockedReason }) : t('Engellendi')}
                   tabIndex={blockedReason ? 0 : undefined}
                   className="rounded-sm border border-priority-high/40 bg-priority-high/10 px-2 py-1 text-xs font-medium text-priority-high focus:outline-none focus:ring-2 focus:ring-primary"
                 >
@@ -356,7 +361,7 @@ function MemberTaskDetailPanel({
                   disabled={ackStatus.isPending}
                   className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
                 >
-                  {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
+                  {ackStatus.isPending ? t('Onaylanıyor...') : t('Onayla')}
                 </button>
               )}
             </div>
@@ -369,15 +374,21 @@ function MemberTaskDetailPanel({
 
             <dl className="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2">
               <div>
-                <dt className="mb-1 text-xs text-muted-foreground">Son tarih</dt>
+                <dt className="mb-1 text-xs text-muted-foreground">{t('tasks.deadline.label')}</dt>
                 <dd className="flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                  {formatCalendarDateDisplay(task.deadline)}
+                  {formatCalendarDateDisplay(task.deadline, i18n.language)}
                 </dd>
               </div>
               <div>
-                <dt className="mb-1 text-xs text-muted-foreground">Sorumlu</dt>
-                <dd>{task.assignees.map((assignee) => assignee.user.fullName).join(', ') || '—'}</dd>
+                <dt className="mb-1 text-xs text-muted-foreground">{t('tasks.detail.assignee')}</dt>
+                <dd>
+                  {task.assignees.length > 2 ? (
+                    <AssigneeAvatarStack assignees={task.assignees} max={3} size="md" />
+                  ) : (
+                    task.assignees.map((assignee) => assignee.user.fullName).join(', ') || '—'
+                  )}
+                </dd>
               </div>
             </dl>
           </div>
@@ -389,10 +400,10 @@ function MemberTaskDetailPanel({
             >
               <section aria-labelledby="member-task-description-heading">
                 <h3 id="member-task-description-heading" className="mb-2 text-sm font-semibold">
-                  Açıklama
+                  {t('Açıklama')}
                 </h3>
                 <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {task.description || 'Açıklama eklenmemiş.'}
+                  {task.description || t('Açıklama eklenmemiş.')}
                 </p>
               </section>
 
@@ -418,7 +429,7 @@ function MemberTaskDetailPanel({
               {task.expectedOutput && (
                 <section aria-labelledby="member-task-output-heading" className="mt-6">
                   <h3 id="member-task-output-heading" className="mb-2 text-sm font-semibold">
-                    Beklenen çıktı
+                    {t('Beklenen çıktı')}
                   </h3>
                   <p className="whitespace-pre-wrap text-sm text-foreground/90">
                     {task.expectedOutput}
@@ -433,10 +444,10 @@ function MemberTaskDetailPanel({
               className="flex min-h-0 flex-col overflow-hidden border-t border-border pt-4"
             >
               <h3 id="member-task-comments-heading" className="mb-3 shrink-0 text-sm font-semibold">
-                Yorumlar ({comments.length})
+                {t('tasks.detail.comments')} ({comments.length})
               </h3>
               {commentsLoading ? (
-                <p className="shrink-0 text-sm text-muted-foreground">Yükleniyor…</p>
+                <p className="shrink-0 text-sm text-muted-foreground">{t('Yükleniyor…')}</p>
               ) : (
                 <div
                   data-testid="member-task-comments-scroll"
@@ -459,6 +470,7 @@ function MemberTaskDetailPanel({
 }
 
 export function DashboardPage() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const { data: teams } = useTeams();
@@ -599,7 +611,7 @@ export function DashboardPage() {
     (sortedTeams.length === 1
       ? sortedTeams[0].name
       : sortedTeams.length > 1
-        ? 'Tüm Takımlar'
+        ? t('Tüm Takımlar')
         : 'Kanban');
 
   return (
@@ -610,7 +622,7 @@ export function DashboardPage() {
       <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
         <div>
           <h1 className="text-2xl font-semibold">{heading}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{visibleTasks.length} görev</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('{{count}} görev', { count: visibleTasks.length })}</p>
         </div>
         {canCreate && teamId && (
           <button
@@ -619,13 +631,13 @@ export function DashboardPage() {
             data-testid="add-task-button"
             className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover"
           >
-            + Görev Ekle
+            {t('+ Görev Ekle')}
           </button>
         )}
       </div>
 
       {allSortedTeams.length > MAX_RENDERED_RECORDS && (
-        <p className="mb-2 text-xs text-muted-foreground lg:shrink-0">{RECORD_CAP_MESSAGE}</p>
+        <p className="mb-2 text-xs text-muted-foreground lg:shrink-0">{t(RECORD_CAP_MESSAGE)}</p>
       )}
       {!isMemberSurface && (
         <WorkflowStrip
@@ -650,7 +662,7 @@ export function DashboardPage() {
                   : 'border-border bg-secondary text-secondary-foreground hover:border-primary/50'
               }`}
             >
-              Tüm Takımlar
+              {t('Tüm Takımlar')}
             </button>
           )}
           {sortedTeams.map((t) => (

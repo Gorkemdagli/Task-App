@@ -44,6 +44,7 @@ describe('GET /api/v1/users/me', () => {
       role: 'companyAdmin',
       tenantId: registerResponse.body.user.tenantId,
       tenantName: 'Acme Me',
+      tenantLogoUrl: null,
       avatarUrl: null,
       notifyTaskAssigned: true,
       notifyTaskCommented: true,
@@ -84,6 +85,7 @@ describe('GET /api/v1/users/me', () => {
     expect(response.body.fullName).toBe('After');
     expect(response.body.tenantId).toBeNull();
     expect(response.body.tenantName).toBeNull();
+    expect(response.body.tenantLogoUrl).toBeNull();
   });
 
   it('rejects a request without an access token', async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useTeams } from '@/hooks/queries/useTeams';
 import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
 import type { CompanyDashboardRange, DashboardComparison } from '@/services/companyDashboard';
@@ -20,16 +21,22 @@ function KpiCard({
   comparison?: DashboardComparison;
   tooltip?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <article aria-label={ariaLabel} className="border-l border-border px-3 first:border-l-0">
       <p className="text-xs text-secondary-foreground">
         {label}
-        {tooltip ? <InfoTooltip label={`${label} açıklaması`} description={tooltip} /> : null}
+        {tooltip ? (
+          <InfoTooltip
+            label={`${label} ${t('company.dashboard.descriptionSuffix')}`}
+            description={tooltip}
+          />
+        ) : null}
       </p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
       {comparison ? (
         <p className="mt-0.5 text-[0.65rem] text-secondary-foreground">
-          Önceki {comparison.previous} · Δ {comparison.delta} ({comparison.deltaPercentage}%)
+          {t('company.dashboard.previous', comparison)}
         </p>
       ) : null}
     </article>
@@ -85,11 +92,8 @@ function RiskCard({
   );
 }
 
-function formatDuration(value: number | null): string {
-  return value === null ? 'Ölçüm yok' : `${value} gün`;
-}
-
 export function CompanyDashboard() {
+  const { t } = useTranslation();
   const { data: teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [range, setRange] = useState<CompanyDashboardRange>('30d');
@@ -131,13 +135,13 @@ export function CompanyDashboard() {
   if (dashboard.isError || !dashboard.data) {
     return (
       <div role="alert" className="rounded-lg border border-border bg-card p-5">
-        <p className="text-sm text-priority-high">Şirket dashboard verisi yüklenemedi.</p>
+        <p className="text-sm text-priority-high">{t('company.dashboard.error')}</p>
         <button
           type="button"
           onClick={() => dashboard.refetch()}
           className="mt-3 rounded-md bg-primary px-3 py-2 text-sm font-medium text-black hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Tekrar dene
+          {t('company.dashboard.retry')}
         </button>
       </div>
     );
@@ -151,9 +155,9 @@ export function CompanyDashboard() {
     <div data-testid="company-dashboard" className="space-y-4 md:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Şirket Dashboardu</h1>
+          <h1 className="text-2xl font-semibold">{t('company.dashboard.title')}</h1>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Şirket operasyonlarının güncel özeti
+            {t('company.dashboard.subtitle')}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -162,18 +166,18 @@ export function CompanyDashboard() {
               htmlFor="company-range-filter"
               className="block text-xs font-medium text-secondary-foreground"
             >
-              Dönem aralığı
+              {t('company.dashboard.period')}
             </label>
             <select
               id="company-range-filter"
-              aria-label="Dönem aralığı"
+              aria-label={t('company.dashboard.period')}
               value={range}
               onChange={(event) => setRange(event.target.value as CompanyDashboardRange)}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
             >
-              <option value="7d">Son 7 gün</option>
-              <option value="30d">Son 30 gün</option>
-              <option value="90d">Son 90 gün</option>
+              <option value="7d">{t('company.dashboard.last7Days')}</option>
+              <option value="30d">{t('company.dashboard.last30Days')}</option>
+              <option value="90d">{t('company.dashboard.last90Days')}</option>
             </select>
           </div>
           <div className="space-y-2">
@@ -181,18 +185,18 @@ export function CompanyDashboard() {
               htmlFor="company-team-filter"
               className="block text-xs font-medium text-secondary-foreground"
             >
-              Takım filtresi
+              {t('company.dashboard.teamFilter')}
             </label>
             <select
               id="company-team-filter"
-              aria-label="Takım filtresi"
+              aria-label={t('company.dashboard.teamFilter')}
               value={activeTeamId ?? 'all'}
               onChange={(event) =>
                 setSelectedTeamId(event.target.value === 'all' ? null : event.target.value)
               }
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:min-w-44"
             >
-              <option value="all">Tümü</option>
+              <option value="all">{t('company.dashboard.allTeams')}</option>
               {sortedTeams.map((team) => (
                 <option key={team.id} value={team.id}>
                   {team.name}
@@ -205,70 +209,74 @@ export function CompanyDashboard() {
 
       {dashboard.isFetching && (
         <p role="status" aria-busy="true" className="text-sm text-secondary-foreground">
-          Veriler güncelleniyor…
+          {t('company.dashboard.updating')}
         </p>
       )}
 
       <DashboardHealth health={data.health} />
 
-      <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-y-4 rounded-lg border border-border bg-card py-4 sm:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Toplam kullanıcı"
+          label={t('company.dashboard.totalUsers')}
           value={data.summary.totalUserCount}
-          ariaLabel="Toplam kullanıcı KPI"
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.totalUsers') })}
         />
         <KpiCard
-          label="Toplam görev"
+          label={t('company.dashboard.totalTasks')}
           value={data.summary.totalTaskCount}
-          ariaLabel="Toplam görev KPI"
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.totalTasks') })}
         />
-        <KpiCard label="Açık görev" value={data.summary.openTaskCount} ariaLabel="Açık görev KPI" />
         <KpiCard
-          label="Tamamlanan görev"
+          label={t('company.dashboard.openTasks')}
+          value={data.summary.openTaskCount}
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.openTasks') })}
+        />
+        <KpiCard
+          label={t('company.dashboard.completedTasks')}
           value={data.summary.completedTaskCount}
-          ariaLabel="Tamamlanan görev KPI"
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.completedTasks') })}
         />
         <KpiCard
-          label="Süresi dolan"
+          label={t('company.dashboard.expired')}
           value={data.summary.expiredTaskCount}
-          ariaLabel="Süresi dolan KPI"
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.expired') })}
         />
         <KpiCard
-          label="Tamamlanma oranı"
-          value={`%${data.summary.completionRate}`}
-          ariaLabel="Tamamlanma oranı KPI"
+          label={t('company.dashboard.completionRate')}
+          value={t('company.dashboard.percent', { value: data.summary.completionRate })}
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.completionRate') })}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-y-4 rounded-lg border border-border bg-card py-4 sm:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Tamamlanan (dönem)"
+          label={t('company.dashboard.completedPeriod')}
           value={data.completedInPeriod.current}
-          ariaLabel="Dönem tamamlanan görev KPI"
+          ariaLabel={t('company.dashboard.completedPeriodKpi')}
           comparison={data.completedInPeriod}
         />
         <KpiCard
-          label="Oluşturulan (dönem)"
+          label={t('company.dashboard.createdPeriod')}
           value={data.createdInPeriod.current}
-          ariaLabel="Dönem oluşturulan görev KPI"
+          ariaLabel={t('company.dashboard.createdPeriodKpi')}
           comparison={data.createdInPeriod}
         />
         <KpiCard
-          label="Gecikme oranı"
-          value={`%${data.overdueRate.current}`}
-          ariaLabel="Gecikme oranı KPI"
+          label={t('company.dashboard.delayRate')}
+          value={t('company.dashboard.percent', { value: data.overdueRate.current })}
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.delayRate') })}
           comparison={data.overdueRate}
         />
         <KpiCard
-          label="Zamanında teslim"
-          value={`%${data.onTimeDeliveryRate.current}`}
-          ariaLabel="Zamanında teslim KPI"
+          label={t('company.dashboard.onTimeDelivery')}
+          value={t('company.dashboard.percent', { value: data.onTimeDeliveryRate.current })}
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.onTimeDelivery') })}
           comparison={data.onTimeDeliveryRate}
         />
         <KpiCard
-          label="Backlog değişimi"
+          label={t('company.dashboard.backlogChange')}
           value={data.backlogChange}
-          ariaLabel="Backlog değişimi KPI"
+          ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.backlogChange') })}
         />
       </div>
 
@@ -279,29 +287,33 @@ export function CompanyDashboard() {
       >
         <div className="border-b border-border px-4 py-4 md:px-5">
           <h2 id="company-flow-heading" className="text-lg font-semibold">
-            Akış metrikleri
+            {t('company.dashboard.flowMetrics')}
           </h2>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Seçili dönemde tamamlanan görevlerin çevrim süresi
+            {t('company.dashboard.cycleTimeDescription')}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 sm:grid-cols-3">
           <KpiCard
-            label="Median çevrim süresi"
-            value={formatDuration(data.cycleTime.median)}
-            ariaLabel="Median çevrim süresi KPI"
-            tooltip="Tamamlanan görevlerin yarısının bu süreden kısa, yarısının uzun sürdüğünü gösterir."
+            label={t('company.dashboard.medianCycleTime')}
+            value={data.cycleTime.median === null
+              ? t('company.dashboard.noMeasurement')
+              : t('company.dashboard.days', { count: data.cycleTime.median })}
+            ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.medianCycleTime') })}
+            tooltip={t('company.dashboard.medianCycleTimeTooltip')}
           />
           <KpiCard
-            label="P85 çevrim süresi"
-            value={formatDuration(data.cycleTime.p85)}
-            ariaLabel="P85 çevrim süresi KPI"
-            tooltip="Tamamlanan görevlerin %85’inin bu sürede veya daha kısa sürede tamamlandığını gösterir."
+            label={t('company.dashboard.p85CycleTime')}
+            value={data.cycleTime.p85 === null
+              ? t('company.dashboard.noMeasurement')
+              : t('company.dashboard.days', { count: data.cycleTime.p85 })}
+            ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.p85CycleTime') })}
+            tooltip={t('company.dashboard.p85CycleTimeTooltip')}
           />
           <KpiCard
-            label="Ölçüm örneği"
+            label={t('company.dashboard.sampleSize')}
             value={`n=${data.cycleTime.sampleSize}`}
-            ariaLabel="Çevrim süresi örnek sayısı KPI"
+            ariaLabel={t('company.dashboard.kpi', { label: t('company.dashboard.cycleSamples') })}
           />
         </div>
       </section>
@@ -319,45 +331,47 @@ export function CompanyDashboard() {
         <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 lg:flex lg:min-w-[680px] lg:items-center">
           <div className="col-span-2 min-w-0 lg:col-span-1 lg:w-[28%] lg:shrink-0 lg:pr-4">
             <h2 id="company-risk-heading" className="text-lg font-semibold">
-              Risk özeti
+              {t('company.dashboard.riskSummary')}
             </h2>
-            <p className="mt-1 text-sm text-secondary-foreground">Tüm takımların görev durumu</p>
+            <p className="mt-1 text-sm text-secondary-foreground">
+              {t('company.dashboard.allTeamsStatus')}
+            </p>
           </div>
           <div className="col-span-2 grid min-w-0 grid-cols-2 gap-y-4 sm:grid-cols-4 lg:flex-1 lg:gap-y-0">
             <RiskCard
-              label="Geciken görev"
+              label={t('company.dashboard.overdue')}
               value={data.risk.overdueTaskCount}
-              ariaLabel="Geciken görev riski"
+              ariaLabel={t('company.dashboard.overdueRisk')}
             />
             <RiskCard
-              label="Yedi gün içinde"
+              label={t('company.dashboard.dueWithinSevenDays')}
               value={data.risk.dueNextSevenDaysTaskCount}
-              ariaLabel="Yedi gün içinde riski"
+              ariaLabel={t('company.dashboard.dueSevenDaysRisk')}
             />
             <RiskCard
-              label="Onay bekleyen"
+              label={t('company.dashboard.pendingApproval')}
               value={data.risk.pendingApprovalTaskCount}
-              ariaLabel="Onay bekleyen risk"
+              ariaLabel={t('company.dashboard.pendingApprovalRisk')}
             />
             <RiskCard
-              label="Süresi dolan"
+              label={t('company.dashboard.expired')}
               value={data.risk.expiredTaskCount}
-              ariaLabel="Süresi dolan risk"
+              ariaLabel={t('company.dashboard.expiredRisk')}
             />
             <RiskCard
-              label="Engellenen görev"
+              label={t('company.dashboard.blocked')}
               value={data.risk.blockedTaskCount ?? 0}
-              ariaLabel="Engellenen görev riski"
+              ariaLabel={t('company.dashboard.blockedRisk')}
             />
             <RiskCard
-              label="3 günden uzun engel"
+              label={t('company.dashboard.blockedOverThreeDays')}
               value={data.risk.blockedOverThreeDaysTaskCount ?? 0}
-              ariaLabel="3 günden uzun engel riski"
+              ariaLabel={t('company.dashboard.blockedLongRisk')}
             />
             <RiskCard
-              label="Engel oranı"
-              value={`%${data.risk.blockedRate ?? 0}`}
-              ariaLabel="Engel oranı"
+              label={t('company.dashboard.blockedRate')}
+              value={t('company.dashboard.percent', { value: data.risk.blockedRate ?? 0 })}
+              ariaLabel={t('company.dashboard.blockedRate')}
             />
           </div>
         </div>
@@ -368,7 +382,7 @@ export function CompanyDashboard() {
           data-testid="company-dashboard-empty"
           className="rounded-lg border border-dashed border-border bg-card/40 p-8 text-center text-sm text-secondary-foreground"
         >
-          Bu kapsamda veri yok.
+          {t('company.dashboard.noData')}
         </div>
       )}
 

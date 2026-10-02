@@ -32,6 +32,20 @@ export function useUpdateTeam() {
   });
 }
 
+export function useUploadTeamPhoto(teamId: string) {
+  const qc = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  return useMutation({
+    mutationFn: (file: File) => teamsService.uploadTeamPhoto(teamId, file),
+    onSuccess: () => {
+      if (tenantId) {
+        qc.invalidateQueries({ queryKey: queryKeys.teams.list(tenantId) });
+        qc.invalidateQueries({ queryKey: queryKeys.team.detail(tenantId, teamId) });
+      }
+    },
+  });
+}
+
 /**
  * POST /teams/:id/members. Başarıda takım detayını invalidate et.
  */

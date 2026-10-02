@@ -3,7 +3,11 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { validateBody } from '../middleware/validate';
-import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
+import { authenticatedReadLimiter, uploadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
+import { uploadTeamPhoto } from '../middleware/imageUpload';
+import { transformAvatar } from '../lib/media';
+import { createMediaStorage, deleteOwnedTeamPhoto } from '../lib/mediaStorage';
+import { AppError } from '../lib/appError';
 import { parseQuery } from '../http/parseQuery';
 import {
   createTeamSchema,
@@ -102,6 +106,43 @@ teamsRouter.patch(
       );
       res.json(team);
     } catch (error) {
+      next(error);
+    }
+  },
+);
+
+teamsRouter.post(
+  '/:id/photo',
+  writeLimiter,
+  uploadLimiter,
+  uploadTeamPhoto,
+  async (req, res, next) => {
+    let uploaded: { path: string; url: string } | undefined;
+    let storage: ReturnType<typeof createMediaStorage> | undefined;
+    const teamId = (req.params as { id: string }).id;
+    try {
+      const tenantId = await runTenantRequest(req, (db, actor) =>
+        teamsService.authorizeTeamManagement(db, teamId, actor),
+      );
+      if (!req.file?.buffer || !req.file.mimetype) {
+        throw new AppError(400, 'Invalid image', 'INVALID_IMAGE');
+      }
+      storage = createMediaStorage();
+      const transformed = await transformAvatar(req.file.buffer, req.file.mimetype);
+      uploaded = await storage.uploadTeamPhoto(tenantId, teamId, transformed);
+      const replacement = await runTenantRequest(req, (db, actor) =>
+        teamsService.replaceTeamPhoto(db, teamId, uploaded!.url, actor),
+      );
+      await deleteOwnedTeamPhoto(storage, replacement.previousPhotoUrl, tenantId, teamId);
+      res.json(replacement.team);
+    } catch (error) {
+      if (uploaded) {
+        try {
+          await storage?.deletePath(uploaded.path);
+        } catch {
+          // New object cleanup is best effort after a database failure.
+        }
+      }
       next(error);
     }
   },

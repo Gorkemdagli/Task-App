@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTeams, useTeam } from '@/hooks/queries/useTeams';
 import { useTasks } from '@/hooks/tasks';
 import { useTaskFilters } from '@/hooks/useTaskFilters';
@@ -32,6 +33,7 @@ function buildDeadlineRange(filters: ReturnType<typeof useTaskFilters>['filters'
 }
 
 export function TasksPage() {
+  const { t } = useTranslation();
   const { data: teams } = useTeams();
   const { user } = useAuth();
   const { filters, setPage } = useTaskFilters();
@@ -76,7 +78,7 @@ export function TasksPage() {
       className="mx-auto w-full max-w-6xl space-y-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden"
     >
       <header>
-        <h1 className="text-2xl font-semibold text-foreground">Görevlerim</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{t('tasks.page.title')}</h1>
       </header>
 
       <div className="flex min-h-0 flex-col items-stretch gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-start lg:gap-6">
@@ -84,11 +86,11 @@ export function TasksPage() {
 
         <section
           className="min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto"
-          aria-label="Görev sonuçları"
+          aria-label={t('tasks.page.results')}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-secondary-foreground">
-              {isLoading ? 'Yükleniyor…' : `${data?.total ?? 0} görev bulundu`}
+              {isLoading ? t('tasks.page.loading') : t('tasks.page.found', { count: data?.total ?? 0 })}
             </p>
             <ActiveFilterChips teams={teams ?? []} assignees={assignees} currentUserId={user?.id} />
           </div>
@@ -101,7 +103,7 @@ export function TasksPage() {
             </div>
           ) : !data || data.total === 0 ? (
             <p className="rounded-md border border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
-              Filtrelere uyan görev yok.
+              {t('tasks.page.empty')}
             </p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-border bg-card">

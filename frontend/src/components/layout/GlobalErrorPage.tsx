@@ -8,6 +8,7 @@ import {
   retryGlobalError,
   type GlobalErrorKind,
 } from '@/lib/globalError';
+import { useTranslation } from '@/i18n';
 
 type RecoveryStep = { title: string; description: string };
 type ErrorContent = {
@@ -95,6 +96,7 @@ const content: Record<GlobalErrorKind, ErrorContent> = {
 };
 
 export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
+  const { t } = useTranslation();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const error = content[kind];
 
@@ -115,7 +117,7 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
             className="absolute left-6 top-1/2 bottom-[16.666%] w-px bg-primary"
           />
           <ol
-            aria-label="Kurtarma adımları"
+            aria-label={t('Kurtarma adımları')}
             className="relative grid min-h-[24rem] grid-rows-3 md:min-h-[30rem]"
           >
             {error.steps.map((step, index) => (
@@ -137,9 +139,9 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
                   {index === 1 ? '!' : index + 1}
                 </span>
                 <span className="relative z-10 bg-background py-1">
-                  <span className="block font-semibold">{step.title}</span>
+                  <span className="block font-semibold">{t(step.title)}</span>
                   <span className="mt-2 block max-w-64 text-sm leading-6 text-muted-foreground">
-                    {step.description}
+                    {t(step.description)}
                   </span>
                 </span>
               </li>
@@ -151,7 +153,7 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
 
         <section role="alert" aria-labelledby="global-error-title" className="max-w-2xl">
           <p className="mb-6 text-sm font-semibold tracking-[0.24em] text-primary">
-            {error.eyebrow}
+            {t(error.eyebrow)}
           </p>
           <h1
             ref={headingRef}
@@ -159,10 +161,10 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
             tabIndex={-1}
             className="text-5xl font-bold leading-[1.06] tracking-[-0.045em] md:text-6xl"
           >
-            {error.title}
+            {t(error.title)}
           </h1>
           <p className="mt-6 max-w-prose text-lg leading-7 text-muted-foreground md:text-xl md:leading-8">
-            {error.description}
+            {t(error.description)}
           </p>
           <div className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4">
             {kind === 'network' || kind === 'generic' ? (
@@ -174,7 +176,7 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
                   else window.location.reload();
                 }}
               >
-                {error.action}
+                {t(error.action)}
               </Button>
             ) : (
               <Link
@@ -182,7 +184,7 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
                 onClick={clearGlobalError}
                 className={buttonVariants({ variant: 'primary', size: 'md' })}
               >
-                {error.action}
+                {t(error.action)}
               </Link>
             )}
             <button
@@ -193,7 +195,7 @@ export function GlobalErrorPage({ kind }: { kind: GlobalErrorKind }) {
               }}
               className="inline-flex min-h-11 items-center gap-3 rounded-md px-1 text-base text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Geri dön
+              {t('Geri dön')}
               <ArrowRight aria-hidden="true" className="h-5 w-5" />
             </button>
           </div>

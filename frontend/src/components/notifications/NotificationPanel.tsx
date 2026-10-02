@@ -5,6 +5,7 @@ import type { CompanyInvitationDTO } from '@/services/companyInvitations';
 import { CompanyInvitationCard } from '@/components/company/CompanyInvitationCard';
 import { EmptyNotifications } from './EmptyNotifications';
 import { NotificationItem } from './NotificationItem';
+import { useTranslation } from '@/i18n';
 
 interface NotificationPanelProps {
   items: NotificationItemType[];
@@ -33,13 +34,14 @@ export function NotificationPanel({
   isRejectingInvitation = false,
   invitationError,
 }: NotificationPanelProps) {
+  const { t } = useTranslation();
   const hasItems = items.length > 0;
   const hasInvitations = invitations.length > 0;
 
   return (
     <div className="flex w-80 flex-col">
       <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">Bildirimler</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('Bildirimler')}</h3>
         {unreadCount > 0 && (
           <button
             type="button"
@@ -47,7 +49,7 @@ export function NotificationPanel({
             className="text-xs font-medium text-primary hover:underline"
             data-testid="mark-all-read"
           >
-            Tümünü okundu işaretle
+            {t('Tümünü okundu işaretle')}
           </button>
         )}
       </div>
@@ -56,7 +58,7 @@ export function NotificationPanel({
       {hasInvitations && (
         <section data-testid="company-invitation-list" className="border-b border-border">
           <h4 className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Şirket davetleri
+            {t('Şirket davetleri')}
           </h4>
           <div className="flex flex-col gap-2 px-2 pb-2">
             {invitations.map((invitation) => (
@@ -100,7 +102,7 @@ export function NotificationPanel({
           to="/notifications"
           className="w-full text-center text-xs font-medium text-primary hover:underline"
         >
-          Tüm bildirimleri gör
+          {t('Tüm bildirimleri gör')}
         </Link>
       </div>
     </div>

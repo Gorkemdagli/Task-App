@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import sharp from 'sharp';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
@@ -12,10 +13,24 @@ import {
   removeMember as removeMemberService,
   updateTeam as updateTeamService,
 } from '../services/teams.service';
-import { register } from '../services/auth.service';
+import { login, register } from '../services/auth.service';
 import { AppError } from '../lib/appError';
 import { withTenantContext } from '../db/withTenant';
 import { updateTeamSchema } from '../schemas/teams.schema';
+
+const teamPhotoMedia = vi.hoisted(() => ({
+  uploadTeamPhoto: vi.fn(),
+  deletePath: vi.fn(),
+  deleteOwnedTeamPhoto: vi.fn(),
+}));
+
+vi.mock('../lib/mediaStorage', () => ({
+  createMediaStorage: () => ({
+    uploadTeamPhoto: teamPhotoMedia.uploadTeamPhoto,
+    deletePath: teamPhotoMedia.deletePath,
+  }),
+  deleteOwnedTeamPhoto: teamPhotoMedia.deleteOwnedTeamPhoto,
+}));
 
 async function cleanDb() {
   await prisma.teamMember.deleteMany();
@@ -489,6 +504,107 @@ describe('updateTeam', () => {
     await expect(
       updateTeam(team.id, { name: 'Blocked', description: null }, outsider),
     ).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
+  });
+});
+
+describe('team photo upload', () => {
+  beforeEach(async () => {
+    await cleanDb();
+    teamPhotoMedia.uploadTeamPhoto.mockReset();
+    teamPhotoMedia.deleteOwnedTeamPhoto.mockReset().mockResolvedValue(undefined);
+    teamPhotoMedia.deletePath.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('lets a company admin upload a team photo into team-scoped storage', async () => {
+    const admin = await register({
+      fullName: 'Photo Admin',
+      email: 'photo-admin@teams.test',
+      password: 'hunter22',
+      companyName: 'Photo Co',
+    });
+    const team = await createTeam({ name: 'Design' }, admin.user as Actor);
+    const image = await sharp({ create: { width: 40, height: 40, channels: 3, background: 'blue' } })
+      .png()
+      .toBuffer();
+    teamPhotoMedia.uploadTeamPhoto.mockResolvedValue({
+      path: `teams/${admin.user.tenantId}/${team.id}/photo.webp`,
+      url: `https://storage.test/storage/v1/object/public/taskflow-media/teams/${admin.user.tenantId}/${team.id}/photo.webp`,
+    });
+    const photoUrl = `https://storage.test/storage/v1/object/public/taskflow-media/teams/${admin.user.tenantId}/${team.id}/photo.webp`;
+
+    const response = await request(createApp())
+      .post(`/api/v1/teams/${team.id}/photo`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .attach('photo', image, { filename: 'team.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.photoUrl).toBe(photoUrl);
+    expect(teamPhotoMedia.uploadTeamPhoto).toHaveBeenCalledWith(
+      admin.user.tenantId,
+      team.id,
+      expect.any(Buffer),
+    );
+    await expect(prisma.team.findUnique({ where: { id: team.id } })).resolves.toMatchObject({
+      photoUrl: response.body.photoUrl,
+    });
+  });
+
+  it('denies a regular team member before creating a storage object', async () => {
+    const admin = await makeAdmin('photo-owner@teams.test', 'Photo Co');
+    const memberRegistration = await register({
+      fullName: 'Photo Member',
+      email: 'photo-member@teams.test',
+      password: 'hunter22',
+    });
+    await prisma.user.update({
+      where: { id: memberRegistration.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
+    const team = await createTeam({ name: 'Design' }, admin);
+    await prisma.teamMember.create({
+      data: { teamId: team.id, userId: memberRegistration.user.id, role: 'member' },
+    });
+    const memberSession = await login({ email: 'photo-member@teams.test', password: 'hunter22' });
+    const image = await sharp({ create: { width: 40, height: 40, channels: 3, background: 'blue' } })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post(`/api/v1/teams/${team.id}/photo`)
+      .set('Authorization', `Bearer ${memberSession.accessToken}`)
+      .attach('photo', image, { filename: 'team.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(403);
+    expect(teamPhotoMedia.uploadTeamPhoto).not.toHaveBeenCalled();
+  });
+
+  it('removes the new object when the team update fails after upload', async () => {
+    const admin = await register({
+      fullName: 'Photo Rollback Admin',
+      email: 'photo-rollback@teams.test',
+      password: 'hunter22',
+      companyName: 'Photo Rollback Co',
+    });
+    const team = await createTeam({ name: 'Design' }, admin.user as Actor);
+    const path = `teams/${admin.user.tenantId}/${team.id}/orphan.webp`;
+    teamPhotoMedia.uploadTeamPhoto.mockImplementation(async () => {
+      await prisma.team.delete({ where: { id: team.id } });
+      return {
+        path,
+        url: `https://storage.test/storage/v1/object/public/taskflow-media/${path}`,
+      };
+    });
+    const image = await sharp({ create: { width: 40, height: 40, channels: 3, background: 'blue' } })
+      .png()
+      .toBuffer();
+
+    const response = await request(createApp())
+      .post(`/api/v1/teams/${team.id}/photo`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .attach('photo', image, { filename: 'team.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(404);
+    expect(teamPhotoMedia.deletePath).toHaveBeenCalledWith(path);
   });
 });
 

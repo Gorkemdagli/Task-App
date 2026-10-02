@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/hooks/tasks';
@@ -10,12 +11,6 @@ const PRIORITY_BORDER: Record<Task['priority'], string> = {
   high: 'border-l-priority-high',
   medium: 'border-l-priority-medium',
   low: 'border-l-priority-low',
-};
-
-const PRIORITY_LABEL: Record<Task['priority'], string> = {
-  high: 'Yüksek',
-  medium: 'Orta',
-  low: 'Düşük',
 };
 
 const PRIORITY_BG: Record<Task['priority'], string> = {
@@ -30,17 +25,6 @@ function calendarDayDistance(from: string, to: string): number {
   return Math.round(
     (Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86400000,
   );
-}
-
-function formatDeadline(value: string | null): string {
-  if (!value) return '—';
-  const days = calendarDayDistance(utcTodayCalendarDate(), value);
-  if (days === 0) return 'Bugün';
-  if (days === 1) return 'Yarın';
-  if (days === -1) return 'Dün';
-  if (days < -1) return `${Math.abs(days)}g geçti`;
-  if (days < 7) return `${days}g`;
-  return formatCalendarDateDisplay(value);
 }
 
 interface TaskCardProps {
@@ -63,6 +47,7 @@ export function TaskCard({
   selected = false,
   onSelect,
 }: TaskCardProps) {
+  const { t, i18n } = useTranslation();
   const isPending = task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
 
   // Pending varken sürükleme kilitli (admin override yoksa)
@@ -75,6 +60,16 @@ export function TaskCard({
 
   const overdue =
     task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
+  const formatDeadline = (value: string | null) => {
+    if (!value) return '—';
+    const days = calendarDayDistance(utcTodayCalendarDate(), value);
+    if (days === 0) return t('tasks.card.today');
+    if (days === 1) return t('tasks.card.tomorrow');
+    if (days === -1) return t('tasks.card.yesterday');
+    if (days < -1) return t('tasks.card.overdue', { count: Math.abs(days) });
+    if (days < 7) return t('tasks.card.days', { count: days });
+    return formatCalendarDateDisplay(value, i18n.language);
+  };
 
   const handleRef = (node: HTMLElement | null) => {
     setNodeRef(node);
@@ -116,14 +111,14 @@ export function TaskCard({
                 PRIORITY_BG[task.priority],
               )}
             >
-              {PRIORITY_LABEL[task.priority]}
+              {t(`tasks.priority.${task.priority}`)}
             </span>
             {task.isBlocked && (
               <span
                 data-testid={`task-card-blocked-badge-${task.id}`}
                 className="inline-flex items-center rounded-sm border border-priority-high/40 bg-priority-high/10 px-1.5 py-0.5 text-xs font-medium text-priority-high"
               >
-                Engellendi
+                {t('tasks.card.blocked')}
               </span>
             )}
           </span>

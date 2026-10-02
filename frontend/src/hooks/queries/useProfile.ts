@@ -12,6 +12,7 @@ function toAuthUser(profile: profileService.CurrentUserProfile): AuthUser {
     role: profile.role,
     tenantId: profile.tenantId,
     tenantName: profile.tenantName,
+    tenantLogoUrl: profile.tenantLogoUrl,
     avatarUrl: profile.avatarUrl,
   };
 }

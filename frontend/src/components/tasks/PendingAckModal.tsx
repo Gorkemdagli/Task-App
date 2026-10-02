@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -8,14 +9,8 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import type { Task, TaskStatus } from '../../hooks/tasks';
+import type { Task } from '../../hooks/tasks';
 import { TaskAssigneeIdentity } from './TaskAssigneeIdentity';
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  todo: 'Yapılacak',
-  in_progress: 'Yapılıyor',
-  done: 'Yapıldı',
-};
 
 export function PendingAckModal({
   task,
@@ -38,6 +33,7 @@ export function PendingAckModal({
   isAcking: boolean;
   isCanceling: boolean;
 }) {
+  const { t } = useTranslation();
   const pendingStatus = task.pendingStatus;
   if (!pendingStatus) return null;
 
@@ -48,16 +44,16 @@ export function PendingAckModal({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Status teklifi: {STATUS_LABEL[pendingStatus]}</DialogTitle>
+          <DialogTitle>{t('tasks.pending.proposalTitle', { status: t(`tasks.status.${pendingStatus}`) })}</DialogTitle>
           <DialogDescription>
             {proposer
-              ? `${proposer.fullName} bu görevi "${STATUS_LABEL[pendingStatus]}" olarak değiştirmek istiyor.`
-              : 'Status değişikliği teklif edildi.'}
+              ? t('tasks.pending.proposalBy', { name: proposer.fullName, status: t(`tasks.status.${pendingStatus}`) })
+              : t('tasks.pending.proposalGeneric')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">
-          <div className="text-sm font-medium">Atananlar</div>
+          <div className="text-sm font-medium">{t('tasks.pending.assignees')}</div>
           <ul className="space-y-1.5">
             {task.assignees.map((a) => {
               const acked = ackedUserIds.has(a.userId);
@@ -70,18 +66,18 @@ export function PendingAckModal({
                   <TaskAssigneeIdentity
                     assignee={a}
                     suffix={
-                      isProposer && <span className="text-xs text-muted-foreground">(öneren)</span>
+                      isProposer && <span className="text-xs text-muted-foreground">{t('tasks.pending.proposer')}</span>
                     }
                   />
                   {acked ? (
                     <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                       <Check className="h-3 w-3" />
-                      Onayladı
+                      {t('tasks.pending.approved')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400">
                       <X className="h-3 w-3" />
-                      Bekliyor
+                      {t('tasks.pending.waiting')}
                     </span>
                   )}
                 </li>
@@ -93,12 +89,12 @@ export function PendingAckModal({
         <DialogFooter className="gap-2">
           {canCancel && (
             <Button variant="secondary" onClick={onCancel} disabled={isAcking || isCanceling}>
-              {isCanceling ? 'İptal ediliyor...' : 'İptal'}
+              {isCanceling ? t('tasks.pending.canceling') : t('tasks.pending.cancel')}
             </Button>
           )}
           {canAck && !yourAcked && (
             <Button onClick={onAck} disabled={isAcking || isCanceling}>
-              {isAcking ? 'Onaylanıyor...' : 'Onayla'}
+              {isAcking ? t('tasks.pending.approving') : t('tasks.pending.approve')}
             </Button>
           )}
         </DialogFooter>

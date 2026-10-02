@@ -12,6 +12,7 @@ export interface TeamSummary {
   id: string;
   name: string;
   description: string | null;
+  photoUrl: string | null;
   tenantId: string;
   memberCount: number;
   createdAt: Date;
@@ -43,6 +44,7 @@ function toSummary(team: {
   id: string;
   name: string;
   description: string | null;
+  photoUrl: string | null;
   tenantId: string;
   createdAt: Date;
   _count: { members: number };
@@ -51,6 +53,7 @@ function toSummary(team: {
     id: team.id,
     name: team.name,
     description: team.description,
+    photoUrl: team.photoUrl,
     tenantId: team.tenantId,
     memberCount: team._count.members,
     createdAt: team.createdAt,
@@ -107,6 +110,41 @@ export async function updateTeam(
   });
   if (!updated) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
   return toSummary(updated);
+}
+
+export async function authorizeTeamManagement(
+  db: TenantDb,
+  teamId: string,
+  actor: Actor,
+): Promise<string> {
+  await assertCanManageTeam(db, actor, teamId);
+  return requireTenant(actor);
+}
+
+export async function replaceTeamPhoto(
+  db: TenantDb,
+  teamId: string,
+  photoUrl: string,
+  actor: Actor,
+): Promise<{ team: TeamSummary; previousPhotoUrl: string | null }> {
+  await assertCanManageTeam(db, actor, teamId);
+  const tenantId = requireTenant(actor);
+  const previous = await db.team.findFirst({
+    where: { id: teamId, tenantId },
+    include: { _count: { select: { members: true } } },
+  });
+  if (!previous) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
+
+  const result = await db.team.updateMany({
+    where: { id: teamId, tenantId },
+    data: { photoUrl },
+  });
+  if (result.count === 0) throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
+
+  return {
+    team: toSummary({ ...previous, photoUrl }),
+    previousPhotoUrl: previous.photoUrl,
+  };
 }
 
 export async function getTeam(db: TenantDb, teamId: string, actor: Actor): Promise<TeamDetail> {

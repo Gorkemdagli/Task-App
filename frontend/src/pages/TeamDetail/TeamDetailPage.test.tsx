@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import i18n from '@/i18n';
 import type { TeamDetail } from '@/services/teams';
 import type { Task } from '@/hooks/tasks';
 import type { TeamDashboard as TeamDashboardData } from '@/services/companyDashboard';
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   useCreateTask: vi.fn(),
   useAuth: vi.fn(),
   updateTeam: vi.fn(),
+  uploadTeamPhoto: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/useTeams', () => ({ useTeam: mocks.useTeam }));
@@ -28,6 +30,7 @@ vi.mock('@/hooks/queries/useTeamDashboard', () => ({
 vi.mock('@/hooks/useAuth', () => ({ useAuth: mocks.useAuth }));
 vi.mock('@/hooks/queries/useTeamMutations', () => ({
   useUpdateTeam: () => ({ mutateAsync: mocks.updateTeam, isPending: false }),
+  useUploadTeamPhoto: () => ({ mutateAsync: mocks.uploadTeamPhoto, isPending: false }),
 }));
 vi.mock('./MemberList', () => ({ MemberList: () => <div data-testid="team-members" /> }));
 vi.mock('./AddMemberModal', () => ({ AddMemberModal: () => <button>Üye Ekle</button> }));
@@ -36,6 +39,7 @@ const team: TeamDetail = {
   id: 'team-1',
   name: 'Ürün Tasarım Ekibi',
   description: 'TaskFlow ürün deneyimini planlayan ve geliştiren ekip.',
+  photoUrl: null,
   tenantId: 'tenant-1',
   memberCount: 2,
   createdAt: '2025-01-01T00:00:00.000Z',
@@ -180,7 +184,12 @@ function renderPage() {
 }
 
 describe('TeamDetailPage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('tr');
+    mocks.updateTeam.mockReset();
+    mocks.updateTeam.mockResolvedValue({ ...team, name: 'Yeni Takım' });
+    mocks.uploadTeamPhoto.mockReset();
+    mocks.uploadTeamPhoto.mockResolvedValue({ ...team, photoUrl: 'https://cdn.test/team.webp' });
     mocks.useTeam.mockReturnValue({ data: team, isLoading: false, isError: false });
     mocks.useTasks.mockReturnValue({
       data: { tasks: [task('1', 'todo'), task('2', 'done')], total: 2 },
@@ -220,12 +229,35 @@ describe('TeamDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Takım Dashboardu' })).toBeInTheDocument();
     expect(screen.getByText('Toplam üye')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent('Yetersiz veri');
-    expect(screen.getByText(/en az 5 tamamlanan görev gerekir/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent(
+      'Örneklem yetersiz: 1/5 tamamlanan görev.',
+    );
     expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
     expect(screen.getByText('Lead time')).toBeInTheDocument();
     expect(screen.getByText(/Ölçülemeyen/)).toBeInTheDocument();
     expect(screen.getByText(/Yapılacak:/)).toBeInTheDocument();
     expect(screen.getByText(/Yapıldı:/)).toBeInTheDocument();
+  });
+
+  it('renders English team detail copy and switches back to Turkish', async () => {
+    try {
+      await act(() => i18n.changeLanguage('en'));
+      renderPage();
+
+      expect(screen.getByRole('heading', { name: 'Ürün Tasarım Ekibi' })).toBeVisible();
+      expect(screen.getByRole('tab', { name: 'Team details' })).toBeVisible();
+      expect(screen.getByRole('heading', { name: 'Members (2)' })).toBeVisible();
+      expect(screen.getByRole('heading', { name: 'Tasks (2)' })).toBeVisible();
+      await userEvent.setup().click(screen.getByRole('tab', { name: 'Dashboard' }));
+      expect(screen.getByRole('heading', { name: 'Team dashboard' })).toBeVisible();
+      expect(screen.getByText('Total members')).toBeVisible();
+
+      await act(() => i18n.changeLanguage('tr'));
+      expect(screen.getByRole('heading', { name: 'Takım Dashboardu' })).toBeVisible();
+      expect(screen.getByText('Toplam üye')).toBeVisible();
+    } finally {
+      await act(() => i18n.changeLanguage('tr'));
+    }
   });
 
   it('replaces dashboard charts with an empty state for a team without tasks', async () => {
@@ -283,7 +315,7 @@ describe('TeamDetailPage', () => {
     expect(screen.queryByRole('button', { name: /Takım Bilgilerini Düzenle/i })).not.toBeInTheDocument();
   });
 
-  it('validates and saves team name and description in the edit modal', async () => {
+  it('validates and saves team name and description inline', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -299,5 +331,17 @@ describe('TeamDetailPage', () => {
       name: 'Yeni Takım',
       description: team.description,
     });
+  });
+
+  it('shows team initials when there is no photo and uploads a selected photo', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.getByRole('img', { name: team.name })).toHaveTextContent('ÜT');
+    await user.click(screen.getByRole('button', { name: /Takım Bilgilerini Düzenle/i }));
+    const file = new File(['image'], 'team.png', { type: 'image/png' });
+    await user.upload(document.querySelector('#team-photo-upload') as HTMLInputElement, file);
+
+    expect(mocks.uploadTeamPhoto).toHaveBeenCalledWith(file);
   });
 });

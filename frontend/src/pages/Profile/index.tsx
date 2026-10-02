@@ -20,6 +20,7 @@ import { queryClient } from '@/lib/react-query';
 import type { CurrentUserProfile, UpdateProfileInput } from '@/services/profile';
 import { useAuthStore } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
+import { useTranslation } from '@/i18n';
 
 const MAX_AVATAR_BYTES = 25 * 1024 * 1024;
 
@@ -80,16 +81,18 @@ function initials(fullName: string): string {
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <section className="space-y-6 border-t border-border py-8">
-      <h2 className="text-xl font-semibold leading-7 text-foreground">{title}</h2>
+      <h2 className="text-xl font-semibold leading-7 text-foreground">{t(title)}</h2>
       {children}
     </section>
   );
 }
 
 function FieldError({ message }: { message?: string }) {
-  return message ? <p className="text-xs text-priority-high">{message}</p> : null;
+  const { i18n, t } = useTranslation();
+  return message ? <p className="text-xs text-priority-high">{i18n.exists(message, { lng: 'en' }) ? t(message) : message}</p> : null;
 }
 
 function ProfileLoading() {
@@ -103,6 +106,7 @@ function ProfileLoading() {
 }
 
 export function ProfilePage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const profileQuery = useProfile();
   const updateMutation = useUpdateProfile();
@@ -251,7 +255,7 @@ export function ProfilePage() {
   return (
     <div className="mx-auto max-w-[760px] pb-8 pt-4 md:pt-5">
       <header className="mb-6">
-        <h1 className="text-3xl font-bold leading-10 text-foreground">Profil</h1>
+          <h1 className="text-3xl font-bold leading-10 text-foreground">{t('Profil')}</h1>
       </header>
 
       {profileQuery.isLoading ? <ProfileLoading /> : null}
@@ -259,16 +263,16 @@ export function ProfilePage() {
       {profileQuery.isError || !profile ? (
         !profileQuery.isLoading && (
           <section className="rounded-lg border border-border bg-card p-6">
-            <p className="text-sm text-priority-high">Profil yüklenemedi.</p>
+          <p className="text-sm text-priority-high">{t('Profil yüklenemedi.')}</p>
           </section>
         )
       ) : (
         <>
-          <section aria-label="Hesap kimliği" className="flex flex-wrap items-center gap-x-6 gap-y-4 pb-6">
+          <section aria-label={t('Hesap kimliği')} className="flex flex-wrap items-center gap-x-6 gap-y-4 pb-6">
             <div className="flex shrink-0 flex-col items-center gap-2">
               <button
                 type="button"
-                aria-label="Profil fotoğrafını görüntüle"
+                  aria-label={t('Profil fotoğrafını görüntüle')}
                 onClick={() => setIsAvatarPreviewOpen(true)}
                 className="rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
@@ -289,11 +293,11 @@ export function ProfilePage() {
               <Dialog open={isAvatarPreviewOpen} onOpenChange={setIsAvatarPreviewOpen}>
                 <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-xl border-border bg-card p-4 sm:p-5">
                   <DialogHeader className="items-center text-center sm:text-center">
-                    <DialogTitle className="text-base">Profil fotoğrafı</DialogTitle>
+                    <DialogTitle className="text-base">{t('Profil fotoğrafı')}</DialogTitle>
                     <DialogDescription>{profile.fullName}</DialogDescription>
                   </DialogHeader>
                   <Avatar className="mx-auto h-[min(16rem,55dvh)] w-[min(16rem,55dvh)] max-w-full">
-                    <AvatarImage src={profile.avatarUrl ?? undefined} alt={`${profile.fullName} profil fotoğrafı`} />
+                    <AvatarImage src={profile.avatarUrl ?? undefined} alt={t('{{name}} profil fotoğrafı', { name: profile.fullName })} />
                     <AvatarFallback className="text-4xl">{initials(profile.fullName)}</AvatarFallback>
                   </Avatar>
                 </DialogContent>
@@ -306,7 +310,7 @@ export function ProfilePage() {
             <Button type="button" variant="secondary" onClick={copyDisplayId} className="w-full bg-transparent sm:w-auto">
               <span>{profile.displayId}</span>
               {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
-              <span className="sr-only">{copied ? 'Kopyalandı' : 'Görünen ID kopyala'}</span>
+                  <span className="sr-only">{t(copied ? 'Kopyalandı' : 'Görünen ID kopyala')}</span>
             </Button>
           </section>
 
@@ -314,7 +318,7 @@ export function ProfilePage() {
             <form className="space-y-6" onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
               <div className="space-y-4">
                 <label className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center sm:gap-6">
-                  <span>Ad Soyad</span>
+                      <span>{t('Ad Soyad')}</span>
                   <div className="space-y-2">
                     <Input
                       className="h-11 text-foreground"
@@ -329,7 +333,7 @@ export function ProfilePage() {
                   </div>
                 </label>
                 <label className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center sm:gap-6">
-                  <span>E-posta</span>
+                      <span>{t('E-posta')}</span>
                   <div className="space-y-2">
                     <Input
                       type="email"
@@ -345,12 +349,12 @@ export function ProfilePage() {
                 </label>
                 <Button type="button" variant="secondary" onClick={openAvatarPicker} loading={uploadMutation.isPending} className="h-11 w-full sm:w-auto">
                   <User className="h-4 w-4" />
-                  Profil Fotoğrafı Değiştir
+                  {t('Profil Fotoğrafı Değiştir')}
                 </Button>
                 <FieldError message={avatarError ?? undefined} />
               </div>
               <Button type="submit" className="h-11 w-full" loading={updateMutation.isPending}>
-                Değişiklikleri Kaydet
+                {t('Değişiklikleri Kaydet')}
               </Button>
               <FieldError message={profileError ?? undefined} />
             </form>
@@ -365,7 +369,7 @@ export function ProfilePage() {
                   ['notifyMessageReceived', 'Mesaj geldiğinde'],
                 ] as const).map(([name, label]) => (
                   <label key={name} className="flex min-h-14 cursor-pointer items-center justify-between gap-4 py-3 text-sm text-foreground">
-                    <span>{label}</span>
+                      <span>{t(label)}</span>
                     <input
                       type="checkbox"
                       role="switch"
@@ -396,13 +400,13 @@ export function ProfilePage() {
               aria-controls="profile-password-form"
               onClick={() => setIsPasswordExpanded((expanded) => !expanded)}
             >
-              Şifreyi Değiştir
+                  {t('Şifreyi Değiştir')}
             </Button>
             {isPasswordExpanded ? (
               <form id="profile-password-form" className="space-y-6" onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
                 <div className="space-y-4">
                   <label className="block space-y-2 text-sm font-medium text-foreground">
-                    <span>Eski şifre</span>
+                    <span>{t('Eski şifre')}</span>
                     <Input
                       type="password"
                       autoComplete="current-password"
@@ -413,7 +417,7 @@ export function ProfilePage() {
                     <FieldError message={passwordForm.formState.errors.currentPassword?.message} />
                   </label>
                   <label className="block space-y-2 text-sm font-medium text-foreground">
-                    <span>Yeni şifre</span>
+                    <span>{t('Yeni şifre')}</span>
                     <Input
                       type="password"
                       autoComplete="new-password"
@@ -426,7 +430,7 @@ export function ProfilePage() {
                     <FieldError message={passwordForm.formState.errors.newPassword?.message} />
                   </label>
                   <label className="block space-y-2 text-sm font-medium text-foreground">
-                    <span>Yeni şifre onayı</span>
+                  <span>{t('Yeni şifre onayı')}</span>
                     <Input
                       type="password"
                       autoComplete="new-password"
@@ -441,7 +445,7 @@ export function ProfilePage() {
                 <FieldError message={passwordError ?? undefined} />
                 <Button type="submit" className="h-11 w-full" loading={updateMutation.isPending} disabled={isLoggingOut}>
                   <KeyRound size={16} aria-hidden="true" />
-                  Şifreyi güncelle
+                  {t('Şifreyi güncelle')}
                 </Button>
               </form>
             ) : null}
@@ -454,7 +458,7 @@ export function ProfilePage() {
               disabled={updateMutation.isPending}
             >
               <LogOut size={16} aria-hidden="true" />
-              Çıkış Yap
+              {t('Çıkış Yap')}
             </Button>
           </Section>
         </>

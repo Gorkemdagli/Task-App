@@ -21,6 +21,7 @@ function createParser(field: string) {
 
 const avatarParser = createParser('avatar');
 const logoParser = createParser('logo');
+const teamPhotoParser = createParser('photo');
 
 function handleUpload(
   parser: ReturnType<typeof createParser>,
@@ -51,4 +52,8 @@ export function uploadAvatar(req: Request, res: Response, next: NextFunction): v
 
 export function uploadCompanyLogo(req: Request, res: Response, next: NextFunction): void {
   handleUpload(logoParser, req, res, next);
+}
+
+export function uploadTeamPhoto(req: Request, res: Response, next: NextFunction): void {
+  handleUpload(teamPhotoParser, req, res, next);
 }

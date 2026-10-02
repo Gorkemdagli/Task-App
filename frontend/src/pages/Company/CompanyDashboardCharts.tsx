@@ -4,6 +4,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { CompanyDashboard } from '@/services/companyDashboard';
 import { buildPriorityTasksUrl, buildStatusTasksUrl } from './companyDashboardNavigation';
@@ -15,20 +16,20 @@ type ThroughputPoint = CompanyDashboard['throughput'][number];
 type CumulativeFlowPoint = NonNullable<CompanyDashboard['cumulativeFlow']>['samples'][number];
 
 const STATUS_SEGMENTS = [
-  { key: 'todo', label: 'Yapılacak', color: 'text-status-todo', marker: 'bg-status-todo' },
+  { key: 'todo', label: 'company.charts.todo', color: 'text-status-todo', marker: 'bg-status-todo' },
   {
     key: 'inProgress',
-    label: 'Yapılıyor',
+    label: 'company.charts.inProgress',
     color: 'text-status-inprogress',
     marker: 'bg-status-inprogress',
   },
-  { key: 'done', label: 'Yapıldı', color: 'text-status-done', marker: 'bg-status-done' },
+  { key: 'done', label: 'company.charts.done', color: 'text-status-done', marker: 'bg-status-done' },
 ] as const;
 
 const PRIORITY_SEGMENTS = [
-  { key: 'low', label: 'Düşük', color: 'bg-priority-low' },
-  { key: 'medium', label: 'Orta', color: 'bg-priority-medium' },
-  { key: 'high', label: 'Yüksek', color: 'bg-priority-high' },
+  { key: 'low', label: 'company.charts.low', color: 'bg-priority-low' },
+  { key: 'medium', label: 'company.charts.medium', color: 'bg-priority-medium' },
+  { key: 'high', label: 'company.charts.high', color: 'bg-priority-high' },
 ] as const;
 
 const CHART_BOTTOM = 46;
@@ -137,6 +138,7 @@ function ChartDataPoint({
 }
 
 function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
+  const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
@@ -189,7 +191,11 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
       </svg>
       {activePoint && activeIndex !== null && (
         <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {`${activePoint.period} · Oluşturulan: ${activePoint.created} · Tamamlanan: ${activePoint.completed}`}
+          {t('company.charts.createdTooltip', {
+            period: activePoint.period,
+            created: activePoint.created,
+            completed: activePoint.completed,
+          })}
         </ChartTooltip>
       )}
       <ChartInteractionSurface
@@ -203,7 +209,11 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
             key={point.period}
             x={chartX(index, points.length)}
             top={`${(chartY(Math.max(point.created, point.completed), max) / CHART_BOTTOM) * 100}%`}
-            label={`${point.period}: Oluşturulan: ${point.created}, Tamamlanan: ${point.completed}`}
+            label={t('company.charts.createdPoint', {
+              period: point.period,
+              created: point.created,
+              completed: point.completed,
+            })}
             onActivate={() => setActiveIndex(index)}
             onDeactivate={() => setActiveIndex(null)}
           />
@@ -214,6 +224,7 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
 }
 
 function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: number }) {
+  const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
@@ -250,7 +261,10 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
       </svg>
       {activePoint && activeIndex !== null && (
         <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {`${activePoint.period} · Tamamlanan görev: ${activePoint.count}`}
+          {t('company.charts.completedTooltip', {
+            period: activePoint.period,
+            count: activePoint.count,
+          })}
         </ChartTooltip>
       )}
       <ChartInteractionSurface
@@ -266,7 +280,10 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
               key={point.period}
               x={chartX(index, points.length)}
               top={`${((CHART_BOTTOM - height) / CHART_BOTTOM) * 100}%`}
-              label={`${point.period}: Tamamlanan görev: ${point.count}`}
+              label={t('company.charts.completedPoint', {
+                period: point.period,
+                count: point.count,
+              })}
               onActivate={() => setActiveIndex(index)}
               onDeactivate={() => setActiveIndex(null)}
             />
@@ -278,6 +295,7 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
 }
 
 function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; max: number }) {
+  const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
@@ -326,7 +344,12 @@ function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; m
       </svg>
       {activePoint && activeIndex !== null && (
         <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {`${activePoint.date} · Yapılacak: ${activePoint.todo} · Yapılıyor: ${activePoint.inProgress} · Yapıldı: ${activePoint.done}`}
+          {t('company.charts.cumulativeTooltip', {
+            date: activePoint.date,
+            todo: activePoint.todo,
+            inProgress: activePoint.inProgress,
+            done: activePoint.done,
+          })}
         </ChartTooltip>
       )}
       <ChartInteractionSurface
@@ -340,7 +363,12 @@ function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; m
             key={point.date}
             x={chartX(index, points.length)}
             top={`${(chartY(Math.max(point.todo, point.inProgress, point.done), max) / CHART_BOTTOM) * 100}%`}
-            label={`${point.date}: Yapılacak: ${point.todo}, Yapılıyor: ${point.inProgress}, Yapıldı: ${point.done}`}
+            label={t('company.charts.cumulativePoint', {
+              date: point.date,
+              todo: point.todo,
+              inProgress: point.inProgress,
+              done: point.done,
+            })}
             onActivate={() => setActiveIndex(index)}
             onDeactivate={() => setActiveIndex(null)}
           />
@@ -359,6 +387,7 @@ export function PeriodTrendCharts({
   throughput: ThroughputPoint[];
   cumulativeFlow?: CompanyDashboard['cumulativeFlow'];
 }) {
+  const { t } = useTranslation();
   const maxFlow = Math.max(
     1,
     ...createdVsCompleted.flatMap((point) => [point.created, point.completed]),
@@ -373,18 +402,18 @@ export function PeriodTrendCharts({
       >
         <div className="mb-2 shrink-0">
           <h2 id="company-created-completed-heading" className="text-lg font-semibold">
-            Oluşturulan ve tamamlanan
+            {t('company.charts.createdCompleted')}
           </h2>
-          <p className="text-sm text-secondary-foreground">Seçili dönemin akışı</p>
+          <p className="text-sm text-secondary-foreground">{t('company.charts.selectedPeriodFlow')}</p>
         </div>
         <div
           className="flex min-h-0 flex-1 flex-col"
           role="group"
-          aria-label="Oluşturulan ve tamamlanan trendi"
+          aria-label={t('company.charts.createdCompletedTrend')}
         >
           {createdVsCompleted.length === 0 && (
             <p className="py-6 text-center text-sm text-secondary-foreground">
-              Bu dönemde veri yok.
+              {t('company.charts.noPeriodData')}
             </p>
           )}
           {createdVsCompleted.length > 0 && (
@@ -401,14 +430,14 @@ export function PeriodTrendCharts({
               className="mr-1.5 inline-block h-2 w-2 rounded-full bg-primary"
               aria-hidden="true"
             />
-            Oluşturulan
+            {t('company.charts.created')}
           </span>
           <span>
             <span
               className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done"
               aria-hidden="true"
             />
-            Tamamlanan
+            {t('company.charts.completed')}
           </span>
         </div>
       </section>
@@ -419,14 +448,14 @@ export function PeriodTrendCharts({
       >
         <div className="mb-2 shrink-0">
           <h2 id="company-throughput-heading" className="text-lg font-semibold">
-            Throughput
+            {t('company.charts.throughput')}
           </h2>
-          <p className="text-sm text-secondary-foreground">Dönem başına tamamlanan görev</p>
+          <p className="text-sm text-secondary-foreground">{t('company.charts.completedPerPeriod')}</p>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col" role="group" aria-label="Throughput trendi">
+        <div className="flex min-h-0 flex-1 flex-col" role="group" aria-label={t('company.charts.throughputTrend')}>
           {throughput.length === 0 && (
             <p className="py-6 text-center text-sm text-secondary-foreground">
-              Bu dönemde veri yok.
+              {t('company.charts.noPeriodData')}
             </p>
           )}
           {throughput.length > 0 && (
@@ -446,13 +475,13 @@ export function PeriodTrendCharts({
         >
           <div className="mb-2 shrink-0">
             <h2 id="company-cumulative-flow-heading" className="text-lg font-semibold">
-              Kümülatif akış
+              {t('company.charts.cumulativeFlow')}
             </h2>
-            <p className="text-sm text-secondary-foreground">Gün sonu görev durumları</p>
+            <p className="text-sm text-secondary-foreground">{t('company.charts.endOfDayStatuses')}</p>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col" role="group" aria-label="Kümülatif akış trendi">
+          <div className="flex min-h-0 flex-1 flex-col" role="group" aria-label={t('company.charts.cumulativeFlowTrend')}>
             {cumulativeFlow.samples.length === 0 && (
-              <p className="py-6 text-center text-sm text-secondary-foreground">Bu dönemde veri yok.</p>
+              <p className="py-6 text-center text-sm text-secondary-foreground">{t('company.charts.noPeriodData')}</p>
             )}
             {cumulativeFlow.samples.length > 0 && (
               <CumulativeFlowChart
@@ -466,9 +495,9 @@ export function PeriodTrendCharts({
             )}
           </div>
           <div className="mt-2 flex shrink-0 gap-4 text-xs text-secondary-foreground">
-            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-todo" aria-hidden="true" />Yapılacak</span>
-            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-inprogress" aria-hidden="true" />Yapılıyor</span>
-            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done" aria-hidden="true" />Yapıldı</span>
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-todo" aria-hidden="true" />{t('company.charts.todo')}</span>
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-inprogress" aria-hidden="true" />{t('company.charts.inProgress')}</span>
+            <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done" aria-hidden="true" />{t('company.charts.done')}</span>
           </div>
         </section>
       )}
@@ -483,6 +512,7 @@ export function StatusDonut({
   breakdown: StatusBreakdown;
   teamId: string | null;
 }) {
+  const { t } = useTranslation();
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
   const circles = STATUS_SEGMENTS.map((segment, index) => {
@@ -509,18 +539,20 @@ export function StatusDonut({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 id="company-status-heading" className="text-lg font-semibold">
-            Görev durumu
+            {t('company.charts.taskStatus')}
           </h2>
-          <p className="text-sm text-secondary-foreground">Aktif görevlerin dağılımı</p>
+          <p className="text-sm text-secondary-foreground">{t('company.charts.activeTaskDistribution')}</p>
         </div>
-        <span className="text-sm text-secondary-foreground">{breakdown.total} görev</span>
+        <span className="text-sm text-secondary-foreground">
+          {t('company.charts.tasks', { count: breakdown.total })}
+        </span>
       </div>
       <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
         <div className="relative h-36 w-36 shrink-0">
           <svg
             viewBox="0 0 100 100"
             role="img"
-            aria-label={`Görev durumu: ${breakdown.total} görev`}
+            aria-label={t('company.charts.taskStatusLabel', { count: breakdown.total })}
             className="h-full w-full -rotate-90"
           >
             <circle
@@ -549,7 +581,7 @@ export function StatusDonut({
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-semibold tabular-nums">{breakdown.total}</span>
-            <span className="text-xs text-secondary-foreground">toplam görev</span>
+            <span className="text-xs text-secondary-foreground">{t('company.charts.totalTasks')}</span>
           </div>
         </div>
         <div className="grid w-full gap-1.5">
@@ -561,11 +593,19 @@ export function StatusDonut({
                 teamId,
               )}
               className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-xs hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              aria-label={`${segment.label}: ${segment.value.count} görev, %${segment.value.percentage}; görevleri aç`}
+              aria-label={t('company.charts.statusTasksLink', {
+                label: t(segment.label),
+                count: segment.value.count,
+                percentage: segment.value.percentage,
+              })}
             >
               <span className={`h-2.5 w-2.5 rounded-sm ${segment.marker}`} aria-hidden="true" />
               <span className="col-span-3">
-                {segment.label}: {segment.value.count} görev, %{segment.value.percentage}
+                {t('company.charts.statusLegend', {
+                  label: t(segment.label),
+                  count: segment.value.count,
+                  percentage: segment.value.percentage,
+                })}
               </span>
             </Link>
           ))}
@@ -582,6 +622,7 @@ export function PriorityDistribution({
   breakdown: PriorityBreakdown;
   teamId: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <section
       aria-labelledby="company-priority-heading"
@@ -590,15 +631,17 @@ export function PriorityDistribution({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 id="company-priority-heading" className="text-lg font-semibold">
-            Açık görev önceliği
+            {t('company.charts.openTaskPriority')}
           </h2>
-          <p className="text-sm text-secondary-foreground">Açık görevler içinde öncelik dağılımı</p>
+          <p className="text-sm text-secondary-foreground">{t('company.charts.openTaskPriorityDistribution')}</p>
         </div>
-        <span className="text-sm text-secondary-foreground">{breakdown.total} görev</span>
+        <span className="text-sm text-secondary-foreground">
+          {t('company.charts.tasks', { count: breakdown.total })}
+        </span>
       </div>
       <div
         className="flex h-3 w-full overflow-hidden rounded-sm bg-secondary"
-        aria-label="Öncelik dağılımı"
+        aria-label={t('company.charts.priorityDistribution')}
       >
         {PRIORITY_SEGMENTS.map((segment) => {
           const value = breakdown[segment.key];
@@ -607,7 +650,11 @@ export function PriorityDistribution({
             <Link
               key={segment.key}
               to={buildPriorityTasksUrl(segment.key, teamId)}
-              aria-label={`${segment.label}: ${value.count} görev, %${value.percentage}; görevleri aç`}
+              aria-label={t('company.charts.priorityTasksLink', {
+                label: t(segment.label),
+                count: value.count,
+                percentage: value.percentage,
+              })}
               className={`${segment.color} block h-full min-w-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset`}
               style={{ width: `${value.percentage}%` }}
             />
@@ -621,7 +668,11 @@ export function PriorityDistribution({
             <>
               <span className={`h-2.5 w-2.5 rounded-full ${segment.color}`} aria-hidden="true" />
               <span>
-                {segment.label}: {value.count} görev, %{value.percentage}
+                {t('company.charts.statusLegend', {
+                  label: t(segment.label),
+                  count: value.count,
+                  percentage: value.percentage,
+                })}
               </span>
             </>
           );

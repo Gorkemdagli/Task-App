@@ -3,6 +3,7 @@ import type { AuthUser } from '@/stores/authStore';
 
 export type CurrentUserProfile = AuthUser & {
   avatarUrl: string | null;
+  tenantLogoUrl: string | null;
   notifyTaskAssigned: boolean;
   notifyTaskCommented: boolean;
   notifyMessageReceived: boolean;

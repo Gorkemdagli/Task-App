@@ -3,6 +3,7 @@ import { act, render, screen, waitForElementToBeRemoved, within } from '@testing
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import i18n from '@/i18n';
 import { useAuthStore } from '@/stores/authStore';
 import type { CompanyUser } from '@/services/companyUsers';
 import { PermissionsPage } from './index';
@@ -79,7 +80,8 @@ function renderPage() {
 }
 
 describe('PermissionsPage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('tr');
     state.users = [currentUser, makeUser()];
     state.teams = [
       { id: 'team-a', name: 'Alpha' },
@@ -361,5 +363,26 @@ describe('PermissionsPage', () => {
     );
     expect(screen.getByRole('alert')).toHaveTextContent('Kullanıcılar yüklenemedi.');
     expect(screen.getByRole('button', { name: 'Tekrar dene' })).toBeInTheDocument();
+  });
+
+  it('switches permission copy between English and Turkish without changing role values', async () => {
+    const u = userEvent.setup();
+
+    try {
+      await act(() => i18n.changeLanguage('en'));
+      renderPage();
+
+      expect(screen.getByRole('heading', { name: 'Permissions' })).toBeVisible();
+      await u.click(screen.getByRole('option', { name: /User B/ }));
+      expect(screen.getByRole('combobox', { name: 'Company role' })).toHaveValue('member');
+      expect(screen.getByRole('heading', { name: 'Team roles' })).toBeVisible();
+
+      await act(() => i18n.changeLanguage('tr'));
+      expect(screen.getByRole('heading', { name: 'Yetkiler' })).toBeVisible();
+      expect(screen.getByRole('combobox', { name: 'Şirket rolü' })).toHaveValue('member');
+      expect(screen.getByRole('heading', { name: 'Takım rolleri' })).toBeVisible();
+    } finally {
+      await act(() => i18n.changeLanguage('tr'));
+    }
   });
 });

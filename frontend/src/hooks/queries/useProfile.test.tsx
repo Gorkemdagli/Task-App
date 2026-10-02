@@ -15,6 +15,7 @@ const profile: profileService.CurrentUserProfile = {
   role: 'member',
   tenantId: null,
   tenantName: null,
+  tenantLogoUrl: null,
   avatarUrl: 'https://cdn.test/avatar.webp',
   notifyTaskAssigned: true,
   notifyTaskCommented: true,

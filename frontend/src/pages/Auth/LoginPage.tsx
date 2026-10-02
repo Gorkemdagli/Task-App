@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { Button, buttonVariants } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
@@ -36,7 +38,7 @@ export function LoginPage() {
       queryClient.clear();
       navigate('/dashboard');
     } catch (err: unknown) {
-      setFormError(getApiErrorMessage(err, 'Beklenmeyen bir hata oluştu'));
+      setFormError(getApiErrorMessage(err, t('auth.error.unexpected')));
     }
   };
 
@@ -44,38 +46,38 @@ export function LoginPage() {
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          Tekrar hoş geldiniz
+          {t('auth.login.welcome')}
         </p>
-        <h2 className="mt-3 text-3xl font-semibold leading-tight text-foreground">Giriş Yap</h2>
+        <h2 className="mt-3 text-3xl font-semibold leading-tight text-foreground">{t('auth.login.title')}</h2>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-          Hesabınıza giriş yaparak kaldığınız yerden devam edin.
+          {t('auth.login.description')}
         </p>
       </div>
       <FormError message={formError} />
       <div>
         <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="email">
-          E-posta
+          {t('auth.login.email')}
         </label>
-        <Input id="email" type="email" autoComplete="email" placeholder="E-posta" {...register('email')} />
+        <Input id="email" type="email" autoComplete="email" placeholder={t('auth.login.email')} {...register('email')} />
         {errors.email && <p className="mt-1 text-xs text-priority-high">{errors.email.message}</p>}
       </div>
       <div>
         <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="password">
-          Şifre
+          {t('auth.login.password')}
         </label>
         <div className="relative">
           <Input
             id="password"
             type={showPassword ? 'text' : 'password'}
             autoComplete="current-password"
-            placeholder="Şifre"
+            placeholder={t('auth.login.password')}
             className="pr-11"
             {...register('password')}
           />
           <button
             type="button"
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+            aria-label={showPassword ? t('auth.password.hide') : t('auth.password.show')}
             aria-pressed={showPassword}
             aria-controls="password"
             onClick={() => setShowPassword((visible) => !visible)}
@@ -88,15 +90,15 @@ export function LoginPage() {
         )}
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+        {isSubmitting ? t('auth.login.submitting') : t('auth.login.submit')}
       </Button>
       <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
         <span className="h-px flex-1 bg-border" aria-hidden="true" />
-        <span>Hesabınız yok mu?</span>
+        <span>{t('auth.login.noAccount')}</span>
         <span className="h-px flex-1 bg-border" aria-hidden="true" />
       </div>
       <Link to="/register" className={`${buttonVariants({ variant: 'secondary', size: 'md' })} -mt-2 w-full`}>
-        Hesap Oluştur
+        {t('auth.login.createAccount')}
       </Link>
     </form>
   );

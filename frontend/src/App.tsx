@@ -7,6 +7,7 @@ import { GlobalErrorPage } from './components/layout/GlobalErrorPage';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
+import { useTranslation } from './i18n';
 import {
   classifyGlobalError,
   clearGlobalError,
@@ -59,6 +60,7 @@ const CompanyManagementPage = lazy(() =>
 );
 
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -101,7 +103,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
   if (!bootstrapped) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-secondary-foreground">
-        Yükleniyor...
+      {t('Yükleniyor...')}
       </div>
     );
   }

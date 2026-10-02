@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { UserPlus, X } from 'lucide-react';
 import {
   Dialog,
@@ -20,6 +21,7 @@ interface AddMemberModalProps {
 }
 
 export function AddMemberModal({ teamId }: AddMemberModalProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<TeamMemberCandidate | null>(null);
@@ -47,7 +49,7 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
     event.preventDefault();
     setError(null);
     if (!selected) {
-      setError('Şirket kullanıcısı seçin.');
+      setError('teams.addMember.selectUser');
       return;
     }
 
@@ -56,7 +58,9 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
       reset();
       setOpen(false);
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, 'Üye eklenemedi.'));
+      const fallback = t('teams.addMember.error');
+      const message = getApiErrorMessage(err, fallback);
+      setError(message === fallback ? 'teams.addMember.error' : message);
     }
   }
 
@@ -70,20 +74,20 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
     >
       <Button size="sm" onClick={() => setOpen(true)}>
         <UserPlus className="h-4 w-4" />
-        Üye Ekle
+        {t('teams.addMember.button')}
       </Button>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Üye Ekle</DialogTitle>
+            <DialogTitle>{t('teams.addMember.title')}</DialogTitle>
             <DialogDescription>
-              Şirketindeki kullanıcıyı isim, e-posta veya kullanıcı ID ile ara.
+              {t('teams.addMember.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
             <label htmlFor="team-member-search" className="text-sm font-medium text-foreground">
-              Şirket kullanıcısı <span className="text-secondary-foreground">*</span>
+              {t('teams.addMember.companyUser')} <span className="text-secondary-foreground">*</span>
             </label>
             <input
               id="team-member-search"
@@ -93,12 +97,12 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
               onChange={(event) => handleSearchChange(event.target.value)}
               autoFocus
               autoComplete="off"
-              aria-label="Takım üyesi ara"
+              aria-label={t('teams.addMember.searchLabel')}
               aria-controls="team-member-candidates"
               aria-expanded={showCandidates}
               aria-autocomplete="list"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              placeholder="İsim, e-posta veya ID"
+              placeholder={t('teams.addMember.searchPlaceholder')}
             />
 
             {selected && (
@@ -118,7 +122,7 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
                     setSelected(null);
                     setSearch('');
                   }}
-                  aria-label="Seçili kullanıcıyı kaldır"
+                  aria-label={t('teams.addMember.removeSelected')}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -129,14 +133,16 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
               <div
                 id="team-member-candidates"
                 role="listbox"
-                aria-label="Şirket kullanıcı eşleşmeleri"
+                aria-label={t('teams.addMember.matches')}
                 className="max-h-60 overflow-y-auto rounded-md border border-border bg-card p-1"
               >
                 {candidatesQuery.isFetching ? (
-                  <p className="px-3 py-2 text-sm text-secondary-foreground">Aranıyor…</p>
+                  <p className="px-3 py-2 text-sm text-secondary-foreground">
+                    {t('teams.addMember.searching')}
+                  </p>
                 ) : candidatesQuery.isError ? (
                   <p role="alert" className="px-3 py-2 text-sm text-destructive">
-                    Kullanıcılar aranamadı.
+                    {t('teams.addMember.searchError')}
                   </p>
                 ) : candidatesQuery.data?.length ? (
                   candidatesQuery.data.map((candidate) => (
@@ -165,31 +171,31 @@ export function AddMemberModal({ teamId }: AddMemberModalProps) {
                   ))
                 ) : (
                   <p className="px-3 py-2 text-sm text-secondary-foreground">
-                    Eşleşen şirket kullanıcısı yok.
+                    {t('teams.addMember.noMatches')}
                   </p>
                 )}
               </div>
             )}
 
             {!canSearch && !selected && (
-              <p className="text-xs text-secondary-foreground">En az 2 karakter yaz.</p>
+              <p className="text-xs text-secondary-foreground">{t('teams.addMember.minSearch')}</p>
             )}
           </div>
 
           {error && (
             <p role="alert" className="text-sm text-destructive">
-              {error}
+              {error.startsWith('teams.addMember.') ? t(error) : error}
             </p>
           )}
 
           <DialogFooter className="gap-2">
             <DialogClose asChild>
               <Button type="button" variant="ghost" size="md">
-                İptal
+                {t('teams.addMember.cancel')}
               </Button>
             </DialogClose>
             <Button type="submit" variant="primary" size="md" loading={addMember.isPending}>
-              Ekle
+              {t('teams.addMember.add')}
             </Button>
           </DialogFooter>
         </form>

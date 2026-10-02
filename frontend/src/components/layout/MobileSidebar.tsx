@@ -9,6 +9,7 @@ import { useTeams, useTeam } from '@/hooks/queries/useTeams';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 import { TeamSidebarSection } from './TeamSidebarSection';
+import { useTranslation } from '@/i18n';
 
 /**
  * Mobile sidebar — drawer for <768px viewports. Mirrors desktop sidebar.
@@ -16,6 +17,7 @@ import { TeamSidebarSection } from './TeamSidebarSection';
  * kullanılıyor (FRONTEND.md §4.3).
  */
 export function MobileSidebar() {
+  const { t } = useTranslation();
   const open = useUiStore((s) => s.mobileSheetOpen);
   const setOpen = useUiStore((s) => s.setMobileSheetOpen);
   const { user } = useAuth();
@@ -32,7 +34,7 @@ export function MobileSidebar() {
     }
   }, [activeTeamId, teams, setActiveTeamId]);
   const activeTeamName =
-    activeTeam?.name ?? teams?.find((t) => t.id === activeTeamId)?.name ?? 'Takım seç';
+    activeTeam?.name ?? teams?.find((t) => t.id === activeTeamId)?.name ?? t('Takım seç');
 
   const visibleNav = PRIMARY_NAV.filter((item) => canSeeNavItem(item, user?.role));
 
@@ -64,14 +66,14 @@ export function MobileSidebar() {
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <span className="text-lg font-bold text-primary">TaskFlow</span>
               <DialogPrimitive.Close
-                aria-label="Menüyü kapat"
+                aria-label={t('Menüyü kapat')}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
               >
                 <X className="h-5 w-5" />
               </DialogPrimitive.Close>
             </div>
 
-            <nav aria-label="Birincil gezinme" className="border-b border-border p-2">
+            <nav aria-label={t('Birincil gezinme')} className="border-b border-border p-2">
               {visibleNav.map((item) => (
                 <NavLink
                   key={item.path}
@@ -86,7 +88,7 @@ export function MobileSidebar() {
                   }
                 >
                   <item.Icon className="h-4 w-4" />
-                  {item.label}
+                  {t(item.label)}
                 </NavLink>
               ))}
             </nav>

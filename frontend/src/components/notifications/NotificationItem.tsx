@@ -1,24 +1,33 @@
 import { cn } from '@/lib/utils';
 import { notificationActorInitials, notificationCopy } from '@/lib/notificationCopy';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
+import { useTranslation } from '@/i18n';
 
 interface NotificationItemProps {
   item: NotificationItemType;
   onSelect: (item: NotificationItemType) => void;
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, language: string): string {
   const now = Date.now();
   const then = new Date(iso).getTime();
   const diffSec = Math.round((then - now) / 1000);
   const abs = Math.abs(diffSec);
-  if (abs < 60) return 'az önce';
-  if (abs < 3600) return `${Math.round(abs / 60)} dakika önce`;
-  if (abs < 86400) return `${Math.round(abs / 3600)} saat önce`;
-  return `${Math.round(abs / 86400)} gün önce`;
+  if (language !== 'en') {
+    if (abs < 60) return 'az önce';
+    if (abs < 3600) return `${Math.round(abs / 60)} dakika önce`;
+    if (abs < 86400) return `${Math.round(abs / 3600)} saat önce`;
+    return `${Math.round(abs / 86400)} gün önce`;
+  }
+  const relativeTime = new Intl.RelativeTimeFormat('en-US', { numeric: 'auto' });
+  if (abs < 60) return 'just now';
+  if (abs < 3600) return relativeTime.format(-Math.round(abs / 60), 'minute');
+  if (abs < 86400) return relativeTime.format(-Math.round(abs / 3600), 'hour');
+  return relativeTime.format(-Math.round(abs / 86400), 'day');
 }
 
 export function NotificationItem({ item, onSelect }: NotificationItemProps) {
+  const { i18n } = useTranslation();
   const isUnread = item.readAt === null;
   const initials = notificationActorInitials(item.payload.actorName ?? null);
   const text = notificationCopy(item);
@@ -40,7 +49,7 @@ export function NotificationItem({ item, onSelect }: NotificationItemProps) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="line-clamp-2 text-sm text-foreground">{text}</span>
-        <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
+        <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt, i18n.language)}</span>
       </span>
     </>
   );

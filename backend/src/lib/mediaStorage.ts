@@ -19,6 +19,7 @@ export type MediaStorageAdapter = {
 export type MediaStorage = {
   uploadAvatar(userId: string, data: Buffer): Promise<{ path: string; url: string }>;
   uploadLogo(tenantId: string, data: Buffer): Promise<{ path: string; url: string }>;
+  uploadTeamPhoto(tenantId: string, teamId: string, data: Buffer): Promise<{ path: string; url: string }>;
   deletePath(path: string): Promise<void>;
 };
 
@@ -68,6 +69,9 @@ export function createMediaStorage(
     async uploadLogo(tenantId, data) {
       return uploadWebp(`logos/${tenantId}/${randomUUID()}.webp`, data);
     },
+    async uploadTeamPhoto(tenantId, teamId, data) {
+      return uploadWebp(`teams/${tenantId}/${teamId}/${randomUUID()}.webp`, data);
+    },
     deletePath(path) {
       return adapter.remove(path);
     },
@@ -106,6 +110,26 @@ export function parseOwnedLogoPath(url: string | null, tenantId: string): string
   return path;
 }
 
+export function parseOwnedTeamPhotoPath(
+  url: string | null,
+  tenantId: string,
+  teamId: string,
+): string | null {
+  if (!url) return null;
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    return null;
+  }
+  const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
+  if (!pathname.startsWith(marker)) return null;
+  const path = pathname.slice(marker.length);
+  if (!path.startsWith(`teams/${tenantId}/${teamId}/`) || !path.endsWith('.webp')) return null;
+  if (path.split('/').length !== 4) return null;
+  return path;
+}
+
 export async function deleteOwnedAvatar(
   storage: MediaStorage,
   url: string | null,
@@ -136,6 +160,24 @@ export async function deleteOwnedLogo(
     logger.warn(
       { error: error instanceof Error ? error.message : 'unknown' },
       'logo cleanup failed',
+    );
+  }
+}
+
+export async function deleteOwnedTeamPhoto(
+  storage: MediaStorage,
+  url: string | null,
+  tenantId: string,
+  teamId: string,
+): Promise<void> {
+  const path = parseOwnedTeamPhotoPath(url, tenantId, teamId);
+  if (!path) return;
+  try {
+    await storage.deletePath(path);
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : 'unknown' },
+      'team photo cleanup failed',
     );
   }
 }

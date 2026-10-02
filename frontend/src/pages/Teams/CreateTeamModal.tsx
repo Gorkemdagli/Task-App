@@ -12,8 +12,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { getApiErrorMessage } from '@/lib/apiError';
 import { useCreateTeam } from '@/hooks/queries/useTeamMutations';
+import { useTranslation } from '@/i18n';
 
 export function CreateTeamModal() {
+  const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -55,21 +57,20 @@ export function CreateTeamModal() {
     >
       <Button onClick={() => setOpen(true)} size="md">
         <Plus className="h-4 w-4" />
-        Yeni Takım
+        {t('Yeni Takım')}
       </Button>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Yeni Takım</DialogTitle>
+            <DialogTitle>{t('Yeni Takım')}</DialogTitle>
             <DialogDescription>
-              Şirketin içinde yeni bir takım oluştur. Adı 2-60 karakter, açıklama en fazla 300
-              karakter.
+              {t('Şirketin içinde yeni bir takım oluştur. Adı 2-60 karakter, açıklama en fazla 300 karakter.')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
             <label htmlFor="team-name" className="text-sm font-medium text-foreground">
-              Takım adı <span className="text-secondary-foreground">*</span>
+              {t('Takım adı')} <span className="text-secondary-foreground">*</span>
             </label>
             <input
               id="team-name"
@@ -80,13 +81,13 @@ export function CreateTeamModal() {
               required
               autoFocus
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              placeholder="Örn: Tasarım Ekibi"
+              placeholder={t('Örn: Tasarım Ekibi')}
             />
           </div>
 
           <div className="space-y-2">
             <label htmlFor="team-desc" className="text-sm font-medium text-foreground">
-              Açıklama
+              {t('Açıklama')}
             </label>
             <textarea
               id="team-desc"
@@ -95,24 +96,24 @@ export function CreateTeamModal() {
               maxLength={300}
               rows={3}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              placeholder="Kısa bir açıklama (opsiyonel)"
+              placeholder={t('Kısa bir açıklama (opsiyonel)')}
             />
           </div>
 
           {error && (
             <p role="alert" className="text-sm text-destructive">
-              {error}
+              {i18n.exists(error, { lng: 'en' }) ? t(error) : error}
             </p>
           )}
 
           <DialogFooter className="gap-2">
             <DialogClose asChild>
               <Button type="button" variant="ghost" size="md">
-                İptal
+                {t('İptal')}
               </Button>
             </DialogClose>
             <Button type="submit" variant="primary" size="md" loading={createTeam.isPending}>
-              Oluştur
+              {t('Oluştur')}
             </Button>
           </DialogFooter>
         </form>

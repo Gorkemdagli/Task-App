@@ -853,6 +853,23 @@
   --landing-border: #474136;
 }
 
+.auth-theme {
+  --color-background: var(--landing-bg);
+  --color-foreground: var(--landing-text);
+  --color-card: var(--landing-card);
+  --color-card-foreground: var(--landing-text);
+  --color-secondary: var(--landing-bg-alt);
+  --color-secondary-foreground: var(--landing-text);
+  --color-muted: var(--landing-bg-alt);
+  --color-muted-foreground: var(--landing-text-muted);
+  --color-accent: var(--landing-primary-soft);
+  --color-accent-foreground: var(--landing-primary-text);
+  --color-popover: var(--landing-card);
+  --color-popover-foreground: var(--landing-text);
+  --color-border: var(--landing-border);
+  --color-input: var(--landing-border);
+}
+
 .theme-landing h1,
 .theme-landing h2,
 .theme-landing h3 {

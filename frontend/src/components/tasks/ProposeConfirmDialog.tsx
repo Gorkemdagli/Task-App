@@ -1,4 +1,5 @@
 import { Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -10,12 +11,6 @@ import {
 import { Button } from '../ui/button';
 import type { Task, TaskStatus } from '../../hooks/tasks';
 import { TaskAssigneeIdentity } from './TaskAssigneeIdentity';
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  todo: 'Yapılacak',
-  in_progress: 'Yapılıyor',
-  done: 'Yapıldı',
-};
 
 export function ProposeConfirmDialog({
   open,
@@ -32,6 +27,7 @@ export function ProposeConfirmDialog({
   onCancel: () => void;
   isProposing: boolean;
 }) {
+  const { t } = useTranslation();
   const proposer = task.pendingProposer;
   // Propose henüz server'a gitmedi → pendingProposer set olmayabilir (actor kendisi).
   // Actor = drag eden kişi, modal onu öneren olarak gösterir.
@@ -41,16 +37,16 @@ export function ProposeConfirmDialog({
     <Dialog open={open} onOpenChange={(o) => !o && !isProposing && onCancel()}>
       <DialogContent data-testid="propose-confirm-dialog">
         <DialogHeader>
-          <DialogTitle>Status değişikliği teklif et</DialogTitle>
+          <DialogTitle>{t('tasks.proposal.title')}</DialogTitle>
           <DialogDescription>
-            {`"${task.title}" görevini "${STATUS_LABEL[newStatus]}" olarak değiştirmek istiyorsun. Diğer atananların onayı gerekli.`}
+            {t('tasks.proposal.message', { title: task.title, status: t(`tasks.status.${newStatus}`) })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">
-          <div className="text-sm font-medium">Onaylaması gerekenler</div>
+          <div className="text-sm font-medium">{t('tasks.proposal.approvers')}</div>
           {otherAssignees.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Başka atanan yok.</p>
+            <p className="text-xs text-muted-foreground">{t('tasks.proposal.noOtherAssignees')}</p>
           ) : (
             <ul className="space-y-1.5">
               {otherAssignees.map((a) => (
@@ -69,11 +65,11 @@ export function ProposeConfirmDialog({
             disabled={isProposing}
             data-testid="propose-cancel"
           >
-            İptal
+            {t('tasks.proposal.cancel')}
           </Button>
           <Button onClick={onConfirm} disabled={isProposing} data-testid="propose-confirm">
             <Send className="mr-1 h-3 w-3" />
-            {isProposing ? 'Gönderiliyor…' : 'Gönder'}
+            {isProposing ? t('tasks.proposal.sending') : t('tasks.proposal.send')}
           </Button>
         </DialogFooter>
       </DialogContent>
