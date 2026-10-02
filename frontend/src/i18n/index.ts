@@ -23,32 +23,37 @@ function readLanguage(): 'tr' | 'en' {
   return localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'en' ? 'en' : 'tr';
 }
 
+function getTranslations(language: 'tr' | 'en') {
+  if (language === 'en') {
+    return {
+      ...commonEnglish,
+      ...flattenTranslations(authTranslations.en),
+      ...flattenTranslations(company.en),
+      ...flattenTranslations(landing.en),
+      ...flattenTranslations(teams.en),
+      ...flattenTranslations(tasks.en),
+      ...flattenTranslations(permissions.en),
+    };
+  }
+
+  return {
+    ...commonTurkish,
+    ...flattenTranslations(authTranslations.tr),
+    ...flattenTranslations(company.tr),
+    ...flattenTranslations(landing.tr),
+    ...flattenTranslations(teams.tr),
+    ...flattenTranslations(tasks.tr),
+    ...flattenTranslations(permissions.tr),
+  };
+}
+
+const initialLanguage = readLanguage();
+
 i18n.use(initReactI18next).init({
   resources: {
-    tr: {
-      translation: {
-        ...commonTurkish,
-        ...flattenTranslations(authTranslations.tr),
-        ...flattenTranslations(company.tr),
-        ...flattenTranslations(landing.tr),
-        ...flattenTranslations(teams.tr),
-        ...flattenTranslations(tasks.tr),
-        ...flattenTranslations(permissions.tr),
-      },
-    },
-    en: {
-      translation: {
-        ...commonEnglish,
-        ...flattenTranslations(authTranslations.en),
-        ...flattenTranslations(company.en),
-        ...flattenTranslations(landing.en),
-        ...flattenTranslations(teams.en),
-        ...flattenTranslations(tasks.en),
-        ...flattenTranslations(permissions.en),
-      },
-    },
+    [initialLanguage]: { translation: getTranslations(initialLanguage) },
   },
-  lng: readLanguage(),
+  lng: initialLanguage,
   fallbackLng: 'tr',
   supportedLngs: ['tr', 'en'],
   keySeparator: false,
@@ -61,7 +66,13 @@ function persistLanguage(language: string) {
   document.documentElement.lang = supportedLanguage;
 }
 
-i18n.on('languageChanged', persistLanguage);
+i18n.on('languageChanged', (language) => {
+  const supportedLanguage = language === 'en' ? 'en' : 'tr';
+  if (!i18n.hasResourceBundle(supportedLanguage, 'translation')) {
+    i18n.addResourceBundle(supportedLanguage, 'translation', getTranslations(supportedLanguage));
+  }
+  persistLanguage(supportedLanguage);
+});
 document.documentElement.lang = i18n.language === 'en' ? 'en' : 'tr';
 
 export { useTranslation };
