@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '@/components/ui/input';
@@ -22,20 +23,18 @@ import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 10;
 const EMPTY_USERS: CompanyUser[] = [];
-const DISCARD_MESSAGE =
-  'Kaydedilmemiş değişiklikler var. Bu değişiklikleri iptal edip devam etmek ister misiniz?';
 
 type DraftPermissions = Pick<UpdateCompanyPermissionsInput, 'role' | 'teamRoles'>;
 type RoleFilter = '' | CompanyUser['role'];
 
 const ROLE_LABEL: Record<CompanyUser['role'], string> = {
-  member: 'Üye',
-  companyAdmin: 'Şirket Admini',
+  member: 'permissions.roles.member',
+  companyAdmin: 'permissions.roles.companyAdmin',
 };
 
 const TEAM_ROLE_LABEL: Record<'member' | 'teamAdmin', string> = {
-  member: 'Üye',
-  teamAdmin: 'Takım Admini',
+  member: 'permissions.roles.member',
+  teamAdmin: 'permissions.roles.teamAdmin',
 };
 
 function snapshot(user: CompanyUser): DraftPermissions {
@@ -64,18 +63,24 @@ function initials(fullName: string): string {
     .toUpperCase();
 }
 
-function teamSummary(user: CompanyUser): string {
+function teamSummary(
+  user: CompanyUser,
+  formatSummary: (count: number, adminCount: number) => string,
+): string {
   const teamRoles = user.teamRoles ?? [];
   const adminCount = teamRoles.filter((teamRole) => teamRole.role === 'teamAdmin').length;
-  return `${teamRoles.length} takım · ${adminCount} admin`;
+  return formatSummary(teamRoles.length, adminCount);
 }
 
 function roleForTeam(draft: DraftPermissions, teamId: string): 'none' | 'member' | 'teamAdmin' {
   return draft.teamRoles.find((teamRole) => teamRole.teamId === teamId)?.role ?? 'none';
 }
 
-function roleLabel(role: 'none' | 'member' | 'teamAdmin'): string {
-  return role === 'none' ? 'Yok' : TEAM_ROLE_LABEL[role];
+function roleLabel(
+  role: 'none' | 'member' | 'teamAdmin',
+  labels: Record<'none' | 'member' | 'teamAdmin', string>,
+): string {
+  return labels[role];
 }
 
 function filterUsersByCriteria(
@@ -101,10 +106,12 @@ function getDiffs(
   draft: DraftPermissions,
   teams: Array<{ id: string; name: string }>,
   user: CompanyUser,
+  roleLabels: Record<CompanyUser['role'], string>,
+  teamRoleLabels: Record<'none' | 'member' | 'teamAdmin', string>,
 ): string[] {
   const diffs: string[] = [];
   if (baseline.role !== draft.role) {
-    diffs.push(`${ROLE_LABEL[baseline.role]} → ${ROLE_LABEL[draft.role]}`);
+    diffs.push(`${roleLabels[baseline.role]} → ${roleLabels[draft.role]}`);
   }
 
   const knownTeamNames = new Map(teams.map((team) => [team.id, team.name]));
@@ -123,7 +130,7 @@ function getDiffs(
       const newRole = draft.teamRoles.find((teamRole) => teamRole.teamId === teamId)?.role;
       if (oldRole === newRole) return;
       diffs.push(
-        `${knownTeamNames.get(teamId) ?? teamId}: ${roleLabel(oldRole ?? 'none')} → ${roleLabel(newRole ?? 'none')}`,
+        `${knownTeamNames.get(teamId) ?? teamId}: ${roleLabel(oldRole ?? 'none', teamRoleLabels)} → ${roleLabel(newRole ?? 'none', teamRoleLabels)}`,
       );
     });
 
@@ -131,6 +138,7 @@ function getDiffs(
 }
 
 export function PermissionsPage() {
+  const { t } = useTranslation();
   const { isCompanyAdmin, user } = useAuth();
   const usersQuery = useCompanyUsers(isCompanyAdmin);
   const teamsQuery = useTeams();
@@ -144,12 +152,24 @@ export function PermissionsPage() {
   const [draft, setDraft] = useState<DraftPermissions | null>(null);
   const [pendingDiscardAction, setPendingDiscardAction] = useState<(() => void) | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<{
+    message: string;
+    isTranslationKey: boolean;
+  } | null>(null);
   const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const inspectorRef = useRef<HTMLElement>(null);
 
   const allUsers = usersQuery.data ?? EMPTY_USERS;
   const teams = teamsQuery.data ?? [];
+  const translatedRoleLabels = {
+    member: t(ROLE_LABEL.member),
+    companyAdmin: t(ROLE_LABEL.companyAdmin),
+  };
+  const translatedTeamRoleLabels = {
+    none: t('permissions.roles.none'),
+    member: t(TEAM_ROLE_LABEL.member),
+    teamAdmin: t(TEAM_ROLE_LABEL.teamAdmin),
+  };
   const selectedUser = allUsers.find((candidate) => candidate.id === selectedUserId);
   const selectedDraft = selectedUser ? (draft ?? baseline ?? snapshot(selectedUser)) : null;
   const selectedBaseline = selectedUser ? (baseline ?? snapshot(selectedUser)) : null;
@@ -274,7 +294,12 @@ export function PermissionsPage() {
       discardDraft();
       setConfirming(false);
     } catch (error) {
-      setSaveError(getApiErrorMessage(error, 'Yetkiler güncellenemedi.'));
+      const fallback = t('permissions.inspector.saveError');
+      const message = getApiErrorMessage(error, fallback);
+      setSaveError({
+        message: message === fallback ? 'permissions.inspector.saveError' : message,
+        isTranslationKey: message === fallback,
+      });
       setConfirming(false);
     }
   }
@@ -302,14 +327,14 @@ export function PermissionsPage() {
     <section className="mx-auto w-full max-w-6xl space-y-6" data-testid="permissions-page">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Yetkiler</h1>
+          <h1 className="text-2xl font-semibold text-foreground">{t('permissions.page.title')}</h1>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Şirket kullanıcılarının global ve takım rollerini yönet.
+            {t('permissions.page.subtitle')}
           </p>
         </div>
         <div className="w-full md:max-w-sm">
           <label htmlFor="permissions-search" className="sr-only">
-            Kullanıcı ara
+            {t('permissions.page.search')}
           </label>
           <Input
             id="permissions-search"
@@ -319,35 +344,37 @@ export function PermissionsPage() {
                 event.currentTarget.value = search;
               }
             }}
-            placeholder="İsim, e-posta veya kullanıcı ID ara"
-            aria-label="Kullanıcı ara"
+            placeholder={t('permissions.page.searchPlaceholder')}
+            aria-label={t('permissions.page.search')}
           />
         </div>
       </header>
 
       {usersQuery.isFetching && usersQuery.data && (
         <p role="status" aria-live="polite" className="text-xs text-secondary-foreground">
-          Liste güncelleniyor; son veriler gösteriliyor.
+          {t('permissions.page.updating')}
         </p>
       )}
 
       {allUsers.length > 0 && !usersLoading && (
-        <section aria-label="Yetki denetim özeti" className="border-y border-border py-4">
+        <section aria-label={t('permissions.page.auditSummary')} className="border-y border-border py-4">
           <div className="grid grid-cols-2 gap-y-4 sm:grid-cols-4">
             <div className="border-l-0 px-3 sm:border-l sm:border-border">
-              <p className="text-xs text-secondary-foreground">Toplam</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{allUsers.length} kullanıcı</p>
+              <p className="text-xs text-secondary-foreground">{t('permissions.page.total')}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {t('permissions.page.users', { count: allUsers.length })}
+              </p>
             </div>
             <div className="border-l border-border px-3">
-              <p className="text-xs text-secondary-foreground">Şirket Admini</p>
+              <p className="text-xs text-secondary-foreground">{t(ROLE_LABEL.companyAdmin)}</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">{stats.companyAdminCount}</p>
             </div>
             <div className="border-l-0 px-3 sm:border-l sm:border-border">
-              <p className="text-xs text-secondary-foreground">Takım Admini</p>
+              <p className="text-xs text-secondary-foreground">{t(TEAM_ROLE_LABEL.teamAdmin)}</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">{stats.teamAdminUserCount}</p>
             </div>
             <div className="border-l border-border px-3">
-              <p className="text-xs text-secondary-foreground">Takımsız</p>
+              <p className="text-xs text-secondary-foreground">{t('permissions.page.teamless')}</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">{stats.teamlessCount}</p>
             </div>
           </div>
@@ -357,34 +384,34 @@ export function PermissionsPage() {
       {allUsers.length > 0 && !usersLoading && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-secondary-foreground">
-            Şirket rolü
+            {t('permissions.page.roleFilter')}
             <select
               value={roleFilter}
               onChange={(event) => {
                 const nextRole = event.target.value as RoleFilter;
                 if (!changeFilters(search, nextRole, teamFilter)) event.currentTarget.value = roleFilter;
               }}
-              aria-label="Şirket rolü filtresi"
+              aria-label={t('permissions.page.roleFilterAria')}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm font-normal text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="">Tüm roller</option>
-              <option value="member">Üye</option>
-              <option value="companyAdmin">Şirket Admini</option>
+              <option value="">{t('permissions.page.allRoles')}</option>
+              <option value="member">{t(ROLE_LABEL.member)}</option>
+              <option value="companyAdmin">{t(ROLE_LABEL.companyAdmin)}</option>
             </select>
           </label>
           <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-secondary-foreground">
-            Takım
+            {t('permissions.page.teamFilter')}
             <select
               value={teamFilter}
               onChange={(event) => {
                 const nextTeam = event.target.value;
                 if (!changeFilters(search, roleFilter, nextTeam)) event.currentTarget.value = teamFilter;
               }}
-              aria-label="Takım filtresi"
+              aria-label={t('permissions.page.teamFilterAria')}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm font-normal text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={teams.length === 0}
             >
-              <option value="">Tüm takımlar</option>
+              <option value="">{t('permissions.page.allTeams')}</option>
               {teams.map((team) => (
                 <option key={team.id} value={team.id}>
                   {team.name}
@@ -419,18 +446,18 @@ export function PermissionsPage() {
 
       {!usersLoading && usersQuery.isError && allUsers.length === 0 && (
         <div role="alert" className="rounded-lg border border-destructive bg-card p-5">
-          <p className="text-sm text-destructive">Kullanıcılar yüklenemedi.</p>
+          <p className="text-sm text-destructive">{t('permissions.users.error')}</p>
           <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={retryUsers}>
-            Tekrar dene
+            {t('permissions.users.retry')}
           </Button>
         </div>
       )}
 
       {!usersLoading && !usersQuery.isError && allUsers.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm font-medium text-foreground">Henüz şirket kullanıcısı yok.</p>
+          <p className="text-sm font-medium text-foreground">{t('permissions.users.empty')}</p>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Şirketinize kullanıcı eklendiğinde rol denetimi burada görünecek.
+            {t('permissions.users.emptyDescription')}
           </p>
         </div>
       )}
@@ -443,34 +470,37 @@ export function PermissionsPage() {
           >
             <div className="border-b border-border px-4 py-4">
               <h2 id="permissions-ledger-heading" className="text-lg font-semibold">
-                Kullanıcı defteri
+                {t('permissions.users.ledger')}
               </h2>
               <p className="mt-1 text-sm text-secondary-foreground">
-                {filteredUsers.length} kullanıcı · sayfa başına {PAGE_SIZE}
+                {t('permissions.users.ledgerSummary', {
+                  count: filteredUsers.length,
+                  pageSize: PAGE_SIZE,
+                })}
               </p>
             </div>
             {usersQuery.isError && (
               <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-destructive/50 px-4 py-3 text-sm text-destructive">
-                <span>Kullanıcılar yenilenemedi; son veriler gösteriliyor.</span>
+                <span>{t('permissions.users.refreshError')}</span>
                 <Button type="button" variant="secondary" size="sm" onClick={retryUsers}>
-                  Tekrar dene
+                  {t('permissions.users.retry')}
                 </Button>
               </div>
             )}
 
             {filteredUsers.length === 0 ? (
               <div className="p-8 text-center">
-                <p className="text-sm font-medium text-foreground">Sonuç bulunamadı.</p>
+                <p className="text-sm font-medium text-foreground">{t('permissions.users.noResults')}</p>
                 <p className="mt-1 text-sm text-secondary-foreground">
-                  Arama veya filtreleri değiştirerek tekrar deneyin.
+                  {t('permissions.users.noResultsDescription')}
                 </p>
                 <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={() => changeFilters('', '', '')}>
-                  Filtreleri temizle
+                  {t('permissions.users.clearFilters')}
                 </Button>
               </div>
             ) : (
               <>
-                <div role="listbox" aria-label="Kullanıcı defteri">
+                <div role="listbox" aria-label={t('permissions.users.list')}>
                   {visibleUsers.map((candidate) => {
                     const selected = candidate.id === selectedUserId;
                     const ownRow = candidate.id === user?.id;
@@ -483,7 +513,18 @@ export function PermissionsPage() {
                         type="button"
                         role="option"
                         aria-selected={selected}
-                        aria-label={`${candidate.fullName}, ${ROLE_LABEL[candidate.role]}, ${teamSummary(candidate)}`}
+                        aria-label={t('permissions.users.optionLabel', {
+                          name: candidate.fullName,
+                          role: translatedRoleLabels[candidate.role],
+                          summary: teamSummary(candidate, (count, adminCount) =>
+                            t('permissions.users.teamSummary', {
+                              count,
+                              adminCount: t('permissions.users.adminCount', {
+                                count: adminCount,
+                              }),
+                            }),
+                          ),
+                        })}
                         onClick={() => selectUser(candidate)}
                         className={cn(
                           'relative grid w-full gap-2 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:grid-cols-[minmax(0,1.2fr)_minmax(7rem,0.7fr)_minmax(8rem,0.8fr)] sm:items-center',
@@ -505,13 +546,26 @@ export function PermissionsPage() {
                           </span>
                         </span>
                         <span className="flex items-center justify-between gap-2 sm:block">
-                          <span className="text-xs text-secondary-foreground sm:hidden">Şirket rolü</span>
-                          <span className="text-sm text-foreground">{ROLE_LABEL[candidate.role]}</span>
+                          <span className="text-xs text-secondary-foreground sm:hidden">
+                            {t('permissions.users.role')}
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {translatedRoleLabels[candidate.role]}
+                          </span>
                         </span>
                         <span className="flex items-center justify-between gap-2 sm:block">
-                          <span className="text-xs text-secondary-foreground sm:hidden">Takım kapsamı</span>
+                          <span className="text-xs text-secondary-foreground sm:hidden">
+                            {t('permissions.users.scope')}
+                          </span>
                           <span className="text-sm text-secondary-foreground">
-                            {teamSummary(candidate)}{ownRow ? ' · Siz' : ''}
+                            {teamSummary(candidate, (count, adminCount) =>
+                              t('permissions.users.teamSummary', {
+                                count,
+                                adminCount: t('permissions.users.adminCount', {
+                                  count: adminCount,
+                                }),
+                              }),
+                            )}{ownRow ? ` ${t('permissions.users.you')}` : ''}
                           </span>
                         </span>
                       </button>
@@ -519,14 +573,14 @@ export function PermissionsPage() {
                   })}
                 </div>
                 {filteredUsers.length > PAGE_SIZE && (
-                  <nav aria-label="Kullanıcı sayfalama" className="flex items-center justify-between border-t border-border px-4 py-2">
-                    <span className="text-xs text-secondary-foreground" aria-live="polite">
-                      Sayfa {visiblePage} / {totalPages}
+                <nav aria-label={t('permissions.users.pagination')} className="flex items-center justify-between border-t border-border px-4 py-2">
+                  <span className="text-xs text-secondary-foreground" aria-live="polite">
+                    {t('permissions.users.page', { page: visiblePage, total: totalPages })}
                     </span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        aria-label="Önceki sayfa"
+                      aria-label={t('permissions.users.previousPage')}
                         onClick={() => changePage(Math.max(1, visiblePage - 1))}
                         disabled={visiblePage === 1 || isSaving}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
@@ -535,7 +589,7 @@ export function PermissionsPage() {
                       </button>
                       <button
                         type="button"
-                        aria-label="Sonraki sayfa"
+                      aria-label={t('permissions.users.nextPage')}
                         onClick={() => changePage(Math.min(totalPages, visiblePage + 1))}
                         disabled={visiblePage === totalPages || isSaving}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
@@ -558,29 +612,29 @@ export function PermissionsPage() {
             <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
               <div>
                 <h2 id="permissions-inspector-heading" className="text-lg font-semibold">
-                  Kullanıcı inceleyici
+                {t('permissions.inspector.title')}
                 </h2>
                 <p className="mt-1 text-sm text-secondary-foreground">
-                  Tek kullanıcı için rol taslağı
+                {t('permissions.inspector.subtitle')}
                 </p>
               </div>
               {selectedUser && (
                 <Button type="button" variant="ghost" size="sm" className="md:hidden" onClick={closeMobileInspector}>
                   <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                  Listeye dön
+                {t('permissions.inspector.back')}
                 </Button>
               )}
             </div>
 
             {pendingDiscardAction && (
               <div role="alert" className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-                <p className="text-sm text-foreground">{DISCARD_MESSAGE}</p>
+                <p className="text-sm text-foreground">{t('permissions.inspector.discardWarning')}</p>
                 <div className="mt-3 flex flex-wrap justify-end gap-2">
                   <Button type="button" variant="secondary" onClick={() => setPendingDiscardAction(null)}>
-                    Düzenlemeye Devam Et
+                  {t('permissions.inspector.continueEditing')}
                   </Button>
                   <Button type="button" variant="destructive" onClick={discardAndContinue}>
-                    Değişiklikleri İptal Et ve Devam Et
+                  {t('permissions.inspector.discardAndContinue')}
                   </Button>
                 </div>
               </div>
@@ -588,7 +642,7 @@ export function PermissionsPage() {
 
             {!selectedUser || !selectedDraft || !selectedBaseline ? (
               <p className="py-10 text-center text-sm text-secondary-foreground">
-                Kullanıcı yetkilerini incelemek için bir kullanıcı seçin.
+                {t('permissions.inspector.empty')}
               </p>
             ) : (
               <div className="space-y-5 pt-5">
@@ -607,7 +661,7 @@ export function PermissionsPage() {
 
                 <div className="space-y-2">
                   <label htmlFor="permissions-company-role" className="text-xs font-medium text-secondary-foreground">
-                    Şirket rolü
+                {t('permissions.inspector.companyRole')}
                   </label>
                   <select
                     id="permissions-company-role"
@@ -618,20 +672,20 @@ export function PermissionsPage() {
                         role: event.target.value as CompanyUser['role'],
                       }))
                     }
-                    aria-label="Şirket rolü"
+                aria-label={t('permissions.inspector.companyRole')}
                     disabled={selectedUser.id === user?.id || teamsEditingBlocked || isSaving}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="member">Üye</option>
-                    <option value="companyAdmin">Şirket Admini</option>
+                <option value="member">{t(ROLE_LABEL.member)}</option>
+                <option value="companyAdmin">{t(ROLE_LABEL.companyAdmin)}</option>
                   </select>
                 </div>
 
                 <div className="space-y-3 border-t border-border pt-4">
                   <div>
-                    <h3 className="text-sm font-semibold">Takım rolleri</h3>
+                    <h3 className="text-sm font-semibold">{t('permissions.inspector.teamRoles')}</h3>
                     <p className="mt-1 text-xs text-secondary-foreground">
-                      Her takım için ayrı kapsam
+                      {t('permissions.inspector.teamScope')}
                     </p>
                   </div>
                   {teams.map((team) => (
@@ -647,46 +701,50 @@ export function PermissionsPage() {
                               : (event.target.value as 'member' | 'teamAdmin'),
                           )
                         }
-                        aria-label={`${team.name} rolü`}
+                        aria-label={`${team.name} ${t('permissions.users.role')}`}
                         disabled={selectedUser.id === user?.id || teamsEditingBlocked || isSaving}
                         className="h-10 min-w-32 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <option value="none">Yok</option>
-                        <option value="member">Üye</option>
-                        <option value="teamAdmin">Takım Admini</option>
+                        <option value="none">{t('permissions.roles.none')}</option>
+                        <option value="member">{t(TEAM_ROLE_LABEL.member)}</option>
+                        <option value="teamAdmin">{t(TEAM_ROLE_LABEL.teamAdmin)}</option>
                       </select>
                     </label>
                   ))}
                   {teams.length === 0 && (
-                    <p className="text-sm text-secondary-foreground">Henüz takım bulunmuyor.</p>
+                    <p className="text-sm text-secondary-foreground">
+                      {t('permissions.inspector.noTeams')}
+                    </p>
                   )}
                   {teamsEditingBlocked && (
                     <p className="text-xs text-secondary-foreground">
-                      Takım verisi doğrulanamadığı için düzenleme devre dışı; mevcut roller korunuyor.
+                      {t('permissions.inspector.teamDataBlocked')}
                     </p>
                   )}
                   {selectedUser.id === user?.id && (
-                    <p className="text-xs text-secondary-foreground">Kendi rolünüzü değiştiremezsiniz.</p>
+                    <p className="text-xs text-secondary-foreground">
+                      {t('permissions.inspector.cannotChangeOwnRole')}
+                    </p>
                   )}
                 </div>
 
                 {saveError && (
                   <p role="alert" className="text-sm text-destructive">
-                    {saveError}
+                    {saveError.isTranslationKey ? t(saveError.message) : saveError.message}
                   </p>
                 )}
 
                 {draftChanged && (
                   <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
                     <Button type="button" variant="secondary" onClick={discardDraft} disabled={isSaving}>
-                      Değişiklikleri İptal Et
+                      {t('permissions.inspector.cancelChanges')}
                     </Button>
                     <Button
                       type="button"
                       onClick={() => setConfirming(true)}
                       disabled={teamsEditingBlocked || isSaving}
                     >
-                      Değişiklikleri İncele
+                      {t('permissions.inspector.reviewChanges')}
                     </Button>
                   </div>
                 )}
@@ -699,14 +757,21 @@ export function PermissionsPage() {
       <Dialog open={confirming} onOpenChange={(open) => !open && !isSaving && setConfirming(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Değişiklikleri incele</DialogTitle>
+            <DialogTitle>{t('permissions.inspector.confirmTitle')}</DialogTitle>
             <DialogDescription>
-              {selectedUser?.fullName} için aşağıdaki değişiklikler tek atomic istekte kaydedilecek.
+              {t('permissions.inspector.confirmDescription', { name: selectedUser?.fullName })}
             </DialogDescription>
           </DialogHeader>
-          <ul className="space-y-2 rounded-md border border-border bg-muted p-3 text-sm" aria-label="Yetki değişiklik özeti">
+          <ul className="space-y-2 rounded-md border border-border bg-muted p-3 text-sm" aria-label={t('permissions.inspector.changeSummary')}>
             {selectedUser && selectedDraft && selectedBaseline &&
-              getDiffs(selectedBaseline, selectedDraft, teams, selectedUser).map((diff) => (
+              getDiffs(
+                selectedBaseline,
+                selectedDraft,
+                teams,
+                selectedUser,
+                translatedRoleLabels,
+                translatedTeamRoleLabels,
+              ).map((diff) => (
                 <li key={diff} className="flex items-start gap-2">
                   <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
                   <span>{diff}</span>
@@ -715,10 +780,10 @@ export function PermissionsPage() {
           </ul>
           <DialogFooter>
             <Button type="button" variant="secondary" autoFocus onClick={() => setConfirming(false)} disabled={isSaving}>
-              İptal
+              {t('permissions.inspector.cancel')}
             </Button>
             <Button type="button" onClick={confirmDraft} disabled={teamsEditingBlocked || isSaving}>
-              {isSaving ? 'Kaydediliyor…' : 'Değişiklikleri Kaydet'}
+              {isSaving ? t('permissions.inspector.saving') : t('permissions.inspector.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

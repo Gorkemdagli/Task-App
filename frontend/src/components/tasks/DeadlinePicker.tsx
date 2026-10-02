@@ -1,4 +1,5 @@
 import { utcTodayCalendarDate } from '@/lib/calendarDate';
+import { useTranslation } from 'react-i18next';
 
 interface DeadlinePickerProps {
   value: string | null;
@@ -15,13 +16,14 @@ export function DeadlinePicker({
   required,
   invalid,
 }: DeadlinePickerProps) {
+  const { t } = useTranslation();
   return (
     <div>
       <label className="mb-1 block text-xs text-muted-foreground">
-        Son Tarih{required ? ' *' : ''}
+        {t('tasks.deadline.label')}{required ? ' *' : ''}
       </label>
       <input
-        aria-label="Son Tarih"
+        aria-label={t('tasks.deadline.aria')}
         type="date"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}

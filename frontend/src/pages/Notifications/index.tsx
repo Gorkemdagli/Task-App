@@ -18,12 +18,13 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Bell } from 'lucide-react';
 import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
+import { useTranslation } from '@/i18n';
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-function labelForDay(d: Date, now: Date): string {
+function labelForDay(d: Date, now: Date, language: string): string {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const that = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diffDays = Math.round((today.getTime() - that.getTime()) / 86_400_000);
@@ -31,7 +32,12 @@ function labelForDay(d: Date, now: Date): string {
   if (diffDays === 1) return 'Dün';
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  return `${day}.${month}.${d.getFullYear()}`;
+  if (language !== 'en') return `${day}.${month}.${d.getFullYear()}`;
+  return new Intl.DateTimeFormat('en-US', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
 }
 
 interface DayGroup {
@@ -40,19 +46,20 @@ interface DayGroup {
   items: NotificationItemType[];
 }
 
-function groupByDay(items: NotificationItemType[], now: Date): DayGroup[] {
+function groupByDay(items: NotificationItemType[], now: Date, language: string): DayGroup[] {
   const groups: DayGroup[] = [];
   for (const item of items) {
     const d = new Date(item.createdAt);
     const key = dayKey(d);
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.items.push(item);
-    else groups.push({ key, label: labelForDay(d, now), items: [item] });
+    else groups.push({ key, label: labelForDay(d, now, language), items: [item] });
   }
   return groups;
 }
 
 export function NotificationsPage() {
+  const { i18n, t } = useTranslation();
   const navigate = useNavigate();
   const notifications = useNotifications();
   const companyInvitations = useCompanyInvitations();
@@ -70,7 +77,7 @@ export function NotificationsPage() {
     [notifications.data],
   );
   const unreadCount = notifications.data?.pages[0]?.unreadCount ?? 0;
-  const groups = useMemo(() => groupByDay(items, new Date()), [items]);
+  const groups = useMemo(() => groupByDay(items, new Date(), i18n.language), [i18n.language, items]);
   const isNotificationLoading = notifications.isPending && notifications.fetchStatus !== 'idle';
 
   function handleSelect(item: NotificationItemType) {
@@ -94,7 +101,7 @@ export function NotificationsPage() {
 
   const invitationError =
     acceptInvitation.isError || rejectInvitation.isError
-      ? 'Davet işlemi başarısız oldu.'
+      ? t('Davet işlemi başarısız oldu.')
       : undefined;
 
   return (
@@ -102,7 +109,7 @@ export function NotificationsPage() {
       <header className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <Bell className="h-5 w-5 text-primary" aria-hidden />
-          Bildirimler
+          {t('Bildirimler')}
         </h1>
         {unreadCount > 0 && (
           <button
@@ -111,7 +118,7 @@ export function NotificationsPage() {
             data-testid="page-mark-all-read"
             className="text-sm font-medium text-primary hover:underline"
           >
-            Tümünü okundu işaretle
+            {t('Tümünü okundu işaretle')}
           </button>
         )}
       </header>
@@ -121,7 +128,7 @@ export function NotificationsPage() {
           role="alert"
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          Bildirimler yüklenemedi.
+          {t('Bildirimler yüklenemedi.')}
         </div>
       )}
 
@@ -130,7 +137,7 @@ export function NotificationsPage() {
           role="alert"
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          Davetler yüklenemedi.
+          {t('Davetler yüklenemedi.')}
         </div>
       )}
 
@@ -144,7 +151,7 @@ export function NotificationsPage() {
       {invitations.length > 0 && (
         <section data-testid="company-invitations-section" className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Şirket davetleri
+            {t('Şirket davetleri')}
           </h2>
           <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-2">
             {invitations.map((invitation) => (
@@ -174,7 +181,7 @@ export function NotificationsPage() {
             {groups.map((group) => (
               <li key={group.key} className="flex flex-col">
                 <h2 className="px-1 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.label}
+                  {group.label === 'Bugün' || group.label === 'Dün' ? t(group.label) : group.label}
                 </h2>
                 <ul
                   className={cn(
@@ -193,7 +200,7 @@ export function NotificationsPage() {
           </ul>
           {(notifications.data?.pages.flatMap((page) => page.items).length ?? 0) >
             MAX_RENDERED_RECORDS && (
-            <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+            <p className="text-xs text-muted-foreground">{t(RECORD_CAP_MESSAGE)}</p>
           )}
 
           {notifications.hasNextPage && items.length < MAX_RENDERED_RECORDS && (

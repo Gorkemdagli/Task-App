@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
@@ -18,10 +19,19 @@ import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
  */
 export function AppShell() {
   useQueryScopeCleanup();
+
+  useEffect(() => {
+    const bodyClasses = ['auth-theme', 'theme-landing'];
+    const addedClasses = bodyClasses.filter((className) => !document.body.classList.contains(className));
+
+    document.body.classList.add(...bodyClasses);
+    return () => document.body.classList.remove(...addedClasses);
+  }, []);
+
   return (
     <div
       data-testid="app-shell"
-      className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
+      className="auth-theme theme-landing flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
     >
       <div className="shrink-0">
         <Topbar />

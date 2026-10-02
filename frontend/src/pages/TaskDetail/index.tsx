@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -49,15 +50,14 @@ import { TaskFilesPanel } from '@/components/tasks/TaskFilesPanel';
 import { TaskHistoryTimeline } from '@/components/tasks/TaskHistoryTimeline';
 import { AssigneeAvatarStack } from '@/components/tasks/AssigneeAvatarStack';
 import { AssigneePicker } from '@/components/tasks/AssigneePicker';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { utcTodayCalendarDate } from '@/lib/calendarDate';
 
 interface TaskEditDraft {
   title: string;
   description: string;
   scopeItems: string;
-  targetAudience: string;
   expectedOutput: string;
-  tags: string;
   assigneeIds: string[];
 }
 
@@ -66,14 +66,13 @@ function createTaskEditDraft(task: Task): TaskEditDraft {
     title: task.title,
     description: task.description ?? '',
     scopeItems: (task.scopeItems ?? []).join('\n'),
-    targetAudience: task.targetAudience ?? '',
     expectedOutput: task.expectedOutput ?? '',
-    tags: (task.tags ?? []).join(', '),
     assigneeIds: task.assignees.map((assignee) => assignee.userId),
   };
 }
 
 export function TaskDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const { data: task, isLoading } = useTask(id);
@@ -122,7 +121,7 @@ export function TaskDetailPage() {
   if (isLoading) {
     return (
       <div className="p-8">
-        <p className="text-sm text-muted-foreground">Yükleniyor…</p>
+        <p className="text-sm text-muted-foreground">{t('tasks.detail.loading')}</p>
       </div>
     );
   }
@@ -131,9 +130,9 @@ export function TaskDetailPage() {
     return (
       <div className="p-8">
         <Link to="/tasks" className="text-sm text-primary hover:underline">
-          ← Görevlerim
+          {t('tasks.detail.back')}
         </Link>
-        <p className="mt-4 text-sm text-muted-foreground">Görev bulunamadı.</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t('tasks.detail.notFound')}</p>
       </div>
     );
   }
@@ -226,12 +225,7 @@ export function TaskDetailPage() {
         .split('\n')
         .map((item) => item.trim())
         .filter(Boolean),
-      targetAudience: editDraft.targetAudience.trim() || null,
       expectedOutput: editDraft.expectedOutput.trim() || null,
-      tags: editDraft.tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean),
       assigneeIds: editDraft.assigneeIds,
     }, {
       onSuccess: () => {
@@ -240,7 +234,7 @@ export function TaskDetailPage() {
         setEditError(null);
       },
       onError: (error) => {
-        setEditError(getApiErrorMessage(error, 'Değişiklikler kaydedilemedi. Tekrar deneyin.'));
+        setEditError(getApiErrorMessage(error, t('tasks.detail.editError')));
       },
     });
   };
@@ -259,11 +253,11 @@ export function TaskDetailPage() {
       <header className="mb-4 flex flex-wrap items-center gap-3 border-b border-border pb-4 lg:shrink-0 lg:flex-nowrap">
         <Link
           to="/tasks"
-          aria-label="Görevlerim'e dön"
+          aria-label={t('tasks.detail.backAria')}
           className="inline-flex h-10 shrink-0 items-center gap-2 border-r border-border pr-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-          Görevlere dön
+          {t('tasks.detail.returnToTasks')}
         </Link>
         <div className="min-w-0 flex-1 lg:flex lg:items-center lg:gap-3">
           <h1 className="truncate text-xl font-semibold tracking-tight md:text-2xl">
@@ -284,7 +278,7 @@ export function TaskDetailPage() {
               ) : (
                 <Pencil aria-hidden="true" className="h-4 w-4" />
               )}
-              {isEditing ? 'Vazgeç' : 'Düzenle'}
+              {isEditing ? t('tasks.common.discard') : t('tasks.detail.edit')}
             </button>
           )}
         </div>
@@ -292,7 +286,7 @@ export function TaskDetailPage() {
 
       <div className="task-detail-workbench grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.85fr)_minmax(280px,1.1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
         <aside
-          aria-label="Görev bilgileri ve geçmiş"
+          aria-label={t('tasks.detail.infoAria')}
           className="order-1 flex min-h-0 max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:col-start-1 lg:row-start-1 lg:max-h-none lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border lg:bg-card lg:p-4"
         >
           <section
@@ -300,13 +294,13 @@ export function TaskDetailPage() {
             className="order-1 lg:order-none lg:shrink-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0"
           >
             <h2 id="task-information-heading" className="mb-4 text-lg font-semibold">
-              Görev bilgileri
+              {t('tasks.detail.info')}
             </h2>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <Flag aria-hidden="true" className="mt-1 h-5 w-5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-xs text-muted-foreground">Öncelik</p>
+                  <p className="mb-1 text-xs text-muted-foreground">{t('tasks.detail.priority')}</p>
                   <PriorityDropdown
                     value={task.priority}
                     onChange={(priority) => id && updatePriority.mutate({ taskId: id, priority })}
@@ -333,7 +327,7 @@ export function TaskDetailPage() {
               <div className="flex items-start gap-3">
                 <UserRound aria-hidden="true" className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Sorumlu</p>
+                  <p className="text-xs text-muted-foreground">{t('tasks.detail.assignee')}</p>
                   {isEditing && editDraft ? (
                     <div className="mt-1">
                       <AssigneePicker
@@ -344,25 +338,30 @@ export function TaskDetailPage() {
                         }))}
                         value={editDraft.assigneeIds}
                         onChange={(assigneeIds) => setEditDraft({ ...editDraft, assigneeIds })}
-                        label="Sorumlu Ekle"
+                        label={t('tasks.assignee.addToTask')}
                         minSelected={1}
                       />
                     </div>
                   ) : task.assignees.length === 0 ? (
-                    <p className="mt-1 text-sm italic text-muted-foreground">Atanmış kişi yok</p>
+                    <p className="mt-1 text-sm italic text-muted-foreground">{t('tasks.assignee.noneAssigned')}</p>
                   ) : task.assignees.length > 2 ? (
                     <div className="mt-1" data-testid="assignee-chip-list">
                       <span data-testid="assignee-avatar-stack">
-                        <AssigneeAvatarStack assignees={task.assignees} max={2} size="md" />
+                        <AssigneeAvatarStack assignees={task.assignees} max={3} size="md" />
                       </span>
                     </div>
                   ) : (
-                    <div className="mt-1 space-y-1" data-testid="assignee-chip-list">
+                    <div className="mt-1 flex flex-wrap items-center gap-3" data-testid="assignee-chip-list">
                       {task.assignees.map((assignee) => (
                         <div key={assignee.userId} className="flex items-center gap-2 text-sm">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-                            {assignee.user.fullName.charAt(0)}
-                          </span>
+                          <Avatar className="h-7 w-7 shrink-0">
+                            {assignee.user.avatarUrl && (
+                              <AvatarImage src={assignee.user.avatarUrl} alt={assignee.user.fullName} />
+                            )}
+                            <AvatarFallback className="bg-secondary text-xs font-semibold">
+                              {assignee.user.fullName.trim().charAt(0).toUpperCase() || '?'}
+                            </AvatarFallback>
+                          </Avatar>
                           <span className="min-w-0 truncate">{assignee.user.fullName}</span>
                         </div>
                       ))}
@@ -373,14 +372,14 @@ export function TaskDetailPage() {
               <div className="flex items-start gap-3">
                 <UsersRound aria-hidden="true" className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Takım</p>
+                  <p className="text-xs text-muted-foreground">{t('tasks.detail.team')}</p>
                   <p className="mt-1 text-sm">{task.team.name}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <UserRound aria-hidden="true" className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Görevi veren</p>
+                  <p className="text-xs text-muted-foreground">{t('tasks.detail.creator')}</p>
                   <p className="mt-1 text-sm">{task.assigner.fullName}</p>
                 </div>
               </div>
@@ -405,11 +404,11 @@ export function TaskDetailPage() {
                   className="mt-4 space-y-3 rounded-md border border-border bg-card p-3"
                 >
                   <p id="task-block-confirmation-title" className="text-sm font-medium">
-                    Bu görevi engellemek istiyor musunuz?
+                    {t('tasks.detail.blockQuestion')}
                   </p>
                   <div>
                     <label htmlFor="task-block-reason" className="mb-1 block text-xs text-muted-foreground">
-                      Engel nedeni (isteğe bağlı)
+                      {t('tasks.detail.blockReason')}
                     </label>
                     <input
                       id="task-block-reason"
@@ -428,7 +427,7 @@ export function TaskDetailPage() {
                       disabled={updateBlocked.isPending}
                       className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      İptal
+                      {t('tasks.common.cancel')}
                     </button>
                     <button
                       type="submit"
@@ -436,7 +435,7 @@ export function TaskDetailPage() {
                       disabled={updateBlocked.isPending}
                       className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {updateBlocked.isPending ? 'Engelleniyor…' : 'Engelle'}
+                      {updateBlocked.isPending ? t('tasks.detail.blocking') : t('tasks.detail.block')}
                     </button>
                   </div>
                 </form>
@@ -450,10 +449,10 @@ export function TaskDetailPage() {
                   className="mt-4 h-9 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {updateBlocked.isPending
-                    ? 'Güncelleniyor…'
+                    ? t('tasks.detail.updating')
                     : task.isBlocked
-                      ? 'Engeli kaldır'
-                      : 'Engelle'}
+                      ? t('tasks.detail.unblock')
+                      : t('tasks.detail.block')}
                 </button>
               )
             )}
@@ -462,7 +461,7 @@ export function TaskDetailPage() {
                 data-testid="task-blocked-banner"
                 className="mt-3 rounded-md border border-priority-high/40 bg-priority-high/10 p-3 text-sm"
               >
-                <strong>Engellendi</strong>
+                <strong>{t('tasks.detail.blocked')}</strong>
                 {task.blockedReason ? ` · ${task.blockedReason}` : null}
               </div>
             )}
@@ -483,11 +482,11 @@ export function TaskDetailPage() {
                 }
                 className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {restoreTask.isPending ? 'Aktifleştiriliyor…' : 'Görevi Aktifleştir'}
+                {restoreTask.isPending ? t('tasks.detail.restorePending') : t('tasks.detail.restore')}
               </button>
               {restoreTask.isError && (
                 <p role="alert" className="mt-2 text-sm text-destructive">
-                  {getApiErrorMessage(restoreTask.error, 'Görev aktifleştirilemedi.')}
+                  {getApiErrorMessage(restoreTask.error, t('tasks.detail.restoreError'))}
                 </p>
               )}
             </div>
@@ -500,7 +499,7 @@ export function TaskDetailPage() {
 
         <section
           role="region"
-          aria-label="Görev içeriği"
+          aria-label={t('tasks.detail.content')}
           className="order-3 min-w-0 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-lg border border-border bg-card p-4 lg:col-start-2 lg:row-start-1 lg:order-none lg:max-h-none lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain md:p-5"
         >
           {hasPending && task.pendingStatus && (
@@ -512,11 +511,11 @@ export function TaskDetailPage() {
               <div className="flex items-start gap-3">
                 <CircleAlert aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-primary">Onay bekliyor</div>
+                  <div className="text-sm font-semibold text-primary">{t('tasks.detail.pending')}</div>
                   <div className="mt-1 text-xs text-foreground/80">
                     {proposerIsAssignee
-                      ? `${task.pendingProposer?.fullName ?? 'Biri'} status değişikliği önerdi ve onayladı.`
-                      : `${task.pendingProposer?.fullName ?? 'Biri'} status değişikliği teklif etti.`}{' '}
+                      ? t('tasks.detail.pendingApproved', { name: task.pendingProposer?.fullName ?? t('tasks.detail.someone') })
+                      : t('tasks.detail.pendingProposed', { name: task.pendingProposer?.fullName ?? t('tasks.detail.someone') })}{' '}
                     Kalan ack: {task.assignees.length - task.statusAcks.length} / {task.assignees.length}
                   </div>
                 </div>
@@ -532,7 +531,7 @@ export function TaskDetailPage() {
                     disabled={ackStatus.isPending}
                     className="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
                   >
-                    {ackStatus.isPending ? 'Onaylanıyor...' : 'Onayla'}
+                    {ackStatus.isPending ? t('tasks.detail.approving') : t('tasks.detail.approve')}
                   </button>
                 )}
                 {canCancel && (
@@ -542,7 +541,7 @@ export function TaskDetailPage() {
                     disabled={cancelStatus.isPending}
                     className="h-8 rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-secondary disabled:opacity-50"
                   >
-                    {cancelStatus.isPending ? 'İptal ediliyor...' : 'İptal'}
+                    {cancelStatus.isPending ? t('tasks.detail.canceling') : t('tasks.common.cancel')}
                   </button>
                 )}
               </div>
@@ -565,7 +564,7 @@ export function TaskDetailPage() {
               )}
               <div>
                 <label htmlFor="task-edit-title" className="mb-1 block text-xs text-muted-foreground">
-                  Başlık
+                  {t('tasks.detail.title')}
                 </label>
                 <input
                   id="task-edit-title"
@@ -576,7 +575,7 @@ export function TaskDetailPage() {
               </div>
               <div>
                 <label htmlFor="task-edit-description" className="mb-1 block text-xs text-muted-foreground">
-                  Açıklama
+                  {t('tasks.detail.description')}
                 </label>
                 <textarea
                   id="task-edit-description"
@@ -588,7 +587,7 @@ export function TaskDetailPage() {
               </div>
               <div>
                 <label htmlFor="task-edit-scope" className="mb-1 block text-xs text-muted-foreground">
-                  Kapsam (her satır bir madde)
+                  {t('tasks.detail.scopeInput')}
                 </label>
                 <textarea
                   id="task-edit-scope"
@@ -598,21 +597,9 @@ export function TaskDetailPage() {
                   className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="task-edit-audience" className="mb-1 block text-xs text-muted-foreground">
-                    Hedef kitle
-                  </label>
-                  <input
-                    id="task-edit-audience"
-                    value={editDraft.targetAudience}
-                    onChange={(event) => setEditDraft({ ...editDraft, targetAudience: event.target.value })}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="task-edit-output" className="mb-1 block text-xs text-muted-foreground">
-                    Beklenen çıktı
+              <div>
+                <label htmlFor="task-edit-output" className="mb-1 block text-xs text-muted-foreground">
+                    {t('tasks.detail.expectedOutput')}
                   </label>
                   <input
                     id="task-edit-output"
@@ -620,19 +607,8 @@ export function TaskDetailPage() {
                     onChange={(event) => setEditDraft({ ...editDraft, expectedOutput: event.target.value })}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                </div>
               </div>
-              <div>
-                <label htmlFor="task-edit-tags" className="mb-1 block text-xs text-muted-foreground">
-                  Etiketler (virgülle ayır)
-                </label>
-                <input
-                  id="task-edit-tags"
-                  value={editDraft.tags}
-                  onChange={(event) => setEditDraft({ ...editDraft, tags: event.target.value })}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+
               <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
                 <button
                   type="button"
@@ -640,7 +616,7 @@ export function TaskDetailPage() {
                   disabled={updateFields.isPending}
                   className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Vazgeç
+                  {t('tasks.common.discard')}
                 </button>
                 <button
                   type="submit"
@@ -648,7 +624,7 @@ export function TaskDetailPage() {
                   className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save aria-hidden="true" className="h-4 w-4" />
-                  {updateFields.isPending ? 'Kaydediliyor…' : 'Değişiklikleri kaydet'}
+                  {updateFields.isPending ? t('tasks.detail.saving') : t('tasks.detail.saveChanges')}
                 </button>
               </div>
             </form>
@@ -660,7 +636,7 @@ export function TaskDetailPage() {
                 className="flex flex-wrap items-start justify-between gap-4"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-sm font-medium">Başlık</p>
+                  <p className="mb-1 text-sm font-medium">{t('tasks.detail.title')}</p>
                   <h2 id="title-heading" className="text-2xl font-semibold leading-tight tracking-tight">
                     {task.title}
                   </h2>
@@ -677,7 +653,7 @@ export function TaskDetailPage() {
                         className="inline-flex h-10 items-center gap-2 rounded-md border border-priority-high/40 bg-priority-high/10 px-3 text-sm font-medium text-priority-high transition-colors hover:bg-priority-high/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        Görevi sil
+                        {t('tasks.detail.delete')}
                       </button>
                     ) : (
                       <div
@@ -693,7 +669,7 @@ export function TaskDetailPage() {
                         className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-priority-high/40 bg-priority-high/10 p-2"
                       >
                         <p id="task-delete-confirmation" className="text-sm text-priority-high">
-                          “{task.title}” görevini silmek istediğinize emin misiniz?
+                          {t('tasks.detail.deleteConfirm', { title: task.title })}
                         </p>
                         <button
                           type="button"
@@ -703,7 +679,7 @@ export function TaskDetailPage() {
                           autoFocus
                           className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          İptal
+                          {t('tasks.common.cancel')}
                         </button>
                         <button
                           type="button"
@@ -712,7 +688,7 @@ export function TaskDetailPage() {
                           disabled={deleteTask.isPending}
                           className="h-9 rounded-md bg-priority-high px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {deleteTask.isPending ? 'Siliniyor…' : 'Evet, sil'}
+                          {deleteTask.isPending ? t('tasks.detail.deleting') : t('tasks.detail.confirmDelete')}
                         </button>
                       </div>
                     )}
@@ -722,18 +698,18 @@ export function TaskDetailPage() {
 
               <section aria-labelledby="description-heading">
                 <h2 id="description-heading" className="mb-2 text-sm font-medium">
-                  Açıklama
+                  {t('tasks.detail.description')}
                 </h2>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">
                   {task.description || (
-                    <span className="italic text-muted-foreground">Açıklama eklenmemiş.</span>
+                    <span className="italic text-muted-foreground">{t('tasks.detail.descriptionEmpty')}</span>
                   )}
                 </p>
               </section>
 
               <section aria-labelledby="scope-heading">
                 <h2 id="scope-heading" className="mb-2 text-sm font-medium">
-                  Kapsam
+                  {t('tasks.detail.scope')}
                 </h2>
                 {task.scopeItems && task.scopeItems.length > 0 ? (
                   <ul className="space-y-2 text-sm leading-6 text-foreground/90">
@@ -749,59 +725,30 @@ export function TaskDetailPage() {
                   </ul>
                 ) : (
                   <p className="text-sm italic text-muted-foreground">
-                    Kapsam belirtilmemiş.
+                    {t('tasks.detail.scopeEmpty')}
                   </p>
                 )}
               </section>
 
               <div className="grid gap-6 sm:grid-cols-2">
-                <section aria-labelledby="audience-heading">
-                  <h2 id="audience-heading" className="mb-2 text-sm font-medium">
-                    Hedef kitle
-                  </h2>
-                  <p className="rounded-lg border border-border bg-card p-5 text-sm">
-                    {task.targetAudience || (
-                      <span className="italic text-muted-foreground">Belirtilmemiş.</span>
-                    )}
-                  </p>
-                </section>
-                <section aria-labelledby="output-heading">
+              <section aria-labelledby="output-heading">
                   <h2 id="output-heading" className="mb-2 text-sm font-medium">
-                    Beklenen çıktı
+                  {t('tasks.detail.expectedOutput')}
                   </h2>
-                  <p className="rounded-lg border border-border bg-card p-5 text-sm">
+                  <p className="text-sm">
                     {task.expectedOutput || (
-                      <span className="italic text-muted-foreground">Belirtilmemiş.</span>
+                      <span className="italic text-muted-foreground">{t('tasks.detail.unspecified')}</span>
                     )}
                   </p>
                 </section>
               </div>
-              <section aria-labelledby="tags-heading">
-                <h2 id="tags-heading" className="mb-2 text-sm font-medium">
-                  Etiketler
-                </h2>
-                {task.tags && task.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {task.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-sm border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm italic text-muted-foreground">Etiket yok.</p>
-                )}
-              </section>
-            </div>
+</div>
           )}
 
         </section>
 
         <aside
-          aria-label="Dosyalar ve yorumlar"
+          aria-label={t('tasks.detail.filesAndComments')}
           className="contents lg:col-start-3 lg:row-start-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-4"
         >
           <section
@@ -818,7 +765,7 @@ export function TaskDetailPage() {
             className="order-5 flex min-h-0 max-h-[28rem] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:max-h-none lg:flex lg:min-h-0 lg:flex-[2_1_0%] lg:flex-col lg:overflow-hidden"
           >
             <h2 id="comments-heading" className="mb-3 shrink-0 text-lg font-semibold">
-              Yorumlar <span aria-hidden="true">({commentsData?.comments.length ?? 0})</span>
+              {t('tasks.detail.comments')} <span aria-hidden="true">({commentsData?.comments.length ?? 0})</span>
             </h2>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
               <CommentList comments={commentsData?.comments ?? []} />
@@ -838,8 +785,8 @@ export function TaskDetailPage() {
             (ackStatus.error as { response?: { data?: { error?: string } } })?.response?.data
               ?.error ?? '',
           )
-            ? 'Teklif değişti. Güncel durum yüklendi.'
-            : getApiErrorMessage(ackStatus.error, 'Teklif değişti. Güncel durum yüklendi.')}
+            ? t('tasks.detail.stalePending')
+            : getApiErrorMessage(ackStatus.error, t('tasks.detail.stalePending'))}
         </p>
       )}
 

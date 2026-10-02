@@ -10,11 +10,13 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function HeroIllustration() {
+  const { t } = useTranslation();
   return (
     <div className="landing-hero-illustration">
-      <div className="landing-hero-board" role="img" aria-label="TaskFlow çalışma alanı önizlemesi">
+      <div className="landing-hero-board" role="img" aria-label={t('landing.illustration.preview')}>
         <div className="landing-hero-app">
           <div className="landing-hero-app__chrome" aria-hidden>
             <span className="landing-hero-app__chrome-dot" />
@@ -25,40 +27,40 @@ export function HeroIllustration() {
             <strong className="landing-hero-app__brand">TaskFlow</strong>
             <nav>
               <span className="is-active">
-                <LayoutDashboard aria-hidden /> Panolar
+                <LayoutDashboard aria-hidden /> {t('landing.illustration.boards')}
               </span>
               <span>
-                <ListTodo aria-hidden /> Görevler
+                <ListTodo aria-hidden /> {t('landing.illustration.tasks')}
               </span>
               <span>
-                <CalendarDays aria-hidden /> Takvim
+                <CalendarDays aria-hidden /> {t('landing.illustration.calendar')}
               </span>
               <span>
-                <MessageCircle aria-hidden /> Mesajlar
+                <MessageCircle aria-hidden /> {t('landing.illustration.messages')}
               </span>
               <span>
-                <FileText aria-hidden /> Dosyalar
+                <FileText aria-hidden /> {t('landing.illustration.files')}
               </span>
               <span>
-                <Users aria-hidden /> Ekip
+                <Users aria-hidden /> {t('landing.illustration.team')}
               </span>
               <span>
-                <Settings aria-hidden /> Ayarlar
+                <Settings aria-hidden /> {t('landing.illustration.settings')}
               </span>
             </nav>
             <div className="landing-hero-app__workspace">
-              <small>ÇALIŞMA ALANI</small>
+              <small>{t('landing.illustration.workspace')}</small>
               <span>
-                <b>P</b> Pazarlama Ekibi
+                <b>P</b> {t('landing.illustration.marketingTeam')}
               </span>
             </div>
           </aside>
 
           <div className="landing-hero-app__main">
             <div className="landing-hero-board__topbar" aria-hidden>
-              <strong>Ürün Lansmanı</strong>
+              <strong>{t('landing.illustration.productLaunch')}</strong>
               <span className="landing-hero-board__search">
-                <Search aria-hidden /> Görev, kişi veya etiket ara...
+                <Search aria-hidden /> {t('landing.illustration.search')}
               </span>
               <span className="landing-hero-board__avatars">
                 <i />
@@ -66,16 +68,16 @@ export function HeroIllustration() {
                 <i />
                 <span>+</span>
               </span>
-              <b>+ Görev ekle</b>
+              <b>{t('landing.illustration.addTask')}</b>
             </div>
 
             <div className="landing-hero-board__toolbar" aria-hidden>
               <div className="landing-hero-board__toolbar-main">
-                <strong>Ürün Lansmanı</strong>
+                <strong>{t('landing.illustration.productLaunch')}</strong>
                 <div className="landing-hero-board__toolbar-nav">
-                  <span className="is-active">Pano</span>
-                  <span>Liste</span>
-                  <span>Takvim</span>
+                  <span className="is-active">{t('landing.illustration.board')}</span>
+                  <span>{t('landing.illustration.list')}</span>
+                  <span>{t('landing.illustration.calendar')}</span>
                 </div>
               </div>
               <span>•••</span>
@@ -89,49 +91,49 @@ export function HeroIllustration() {
                 >
                   <div className="landing-hero-board__column">
                     <header>
-                      <span>Yapılacak</span>
+                      <span>{t('landing.workflow.todo')}</span>
                       <span>2</span>
                     </header>
                     <div className="landing-hero-board__task landing-hero-board__task--quiet">
-                      <strong>WebSocket bağlantısını izle</strong>
+                      <strong>{t('landing.illustration.websocket')}</strong>
                       <span>SD</span>
                     </div>
                     <div className="landing-hero-board__task landing-hero-board__task--quiet">
-                      <strong>API sınırlarını doğrula</strong>
+                      <strong>{t('landing.illustration.api')}</strong>
                       <span>GK</span>
                     </div>
                   </div>
 
                   <div className="landing-hero-board__column">
                     <header>
-                      <span>Yapılıyor</span>
+                      <span>{t('landing.workflow.doing')}</span>
                       <span>1</span>
                     </header>
                     <div className="landing-hero-board__task landing-hero-board__task--selected">
-                      <strong>Mobil uygulama için tanıtım videosu</strong>
+                      <strong>{t('landing.illustration.taskDemoTitle')}</strong>
                       <span>DA</span>
                     </div>
                     <article className="landing-hero-board__task landing-hero-board__task--extra">
-                      <strong>Sosyal medya içerik planı</strong>
+                      <strong>{t('landing.illustration.campaignPlan')}</strong>
                       <span>DA</span>
                     </article>
                     <article className="landing-hero-board__task landing-hero-board__task--extra">
-                      <strong>E-posta kampanyası taslağı</strong>
+                      <strong>{t('landing.illustration.emailDraft')}</strong>
                       <span>DA</span>
                     </article>
                   </div>
 
                   <div className="landing-hero-board__column landing-hero-board__column--done">
                     <header>
-                      <span>Yapıldı</span>
+                      <span>{t('landing.workflow.done')}</span>
                       <span>1</span>
                     </header>
                     <div className="landing-hero-board__task landing-hero-board__task--quiet">
-                      <strong>Arşivlenmeye hazır</strong>
+                      <strong>{t('landing.illustration.videoReady')}</strong>
                       <span>DA</span>
                     </div>
                     <article className="landing-hero-board__task landing-hero-board__task--extra">
-                      <strong>Hedef kitle analizi</strong>
+                      <strong>{t('landing.illustration.launchAnalysis')}</strong>
                       <span>DA</span>
                     </article>
                   </div>
@@ -159,21 +161,21 @@ export function HeroIllustration() {
                           />
                         </svg>
                       </div>
-                      <span className="landing-hero-board__archive-label">Arşiv</span>
+                <span className="landing-hero-board__archive-label">{t('landing.illustration.archive')}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="landing-hero-board__proof" aria-hidden>
                   <div className="landing-hero-board__proof-pane">
-                    <span>Görev ayrıntısı</span>
-                    <strong>Bildirim akışını sadeleştir</strong>
-                    <small>Yapılıyor · Sorumlu: GK</small>
+                    <span>{t('landing.illustration.taskDetails')}</span>
+                    <strong>{t('landing.features.taskTitle')}</strong>
+                    <small>{t('landing.illustration.taskAssignee')}</small>
                   </div>
                   <div className="landing-hero-board__proof-pane landing-hero-board__proof-pane--conversation">
-                    <span>Konuşma</span>
-                    <p>Bağımlılık çözüldü.</p>
-                    <p>Termin netleşti.</p>
+                    <span>{t('landing.features.conversation')}</span>
+                    <p>{t('landing.illustration.dependencyResolved')}</p>
+                    <p>{t('landing.illustration.deadlineClear')}</p>
                   </div>
                 </div>
               </div>
@@ -181,91 +183,90 @@ export function HeroIllustration() {
               <aside className="landing-hero-board__inspector" aria-hidden>
                 <div className="landing-hero-board__inspector-close">×</div>
                 <div className="landing-hero-board__inspector-title">
-                  <h3>Mobil uygulama için tanıtım videosu</h3>
+                  <h3>{t('landing.illustration.taskDemoTitle')}</h3>
                   <span>•••</span>
                 </div>
                 <div className="landing-hero-board__inspector-status">
                   <span className="landing-hero-board__status-chip">
-                    <i /> Yapılıyor
+                    <i /> {t('landing.illustration.statusDoing')}
                   </span>
-                  <span className="landing-hero-board__meta-chip">Produksiyon</span>
-                  <time>◷ 10 Eki</time>
+                  <span className="landing-hero-board__meta-chip">{t('landing.illustration.production')}</span>
+                  <time>{t('landing.illustration.date')}</time>
                 </div>
                 <div className="landing-hero-board__inspector-section">
-                  <strong>Açıklama</strong>
+                  <strong>{t('landing.illustration.description')}</strong>
                   <p>
-                    Uygulamanın temel faydalarını anlatan 60 saniyelik bir tanıtım videosu
-                    hazırlayalım. Hedef kitle: KOBİ'ler.
+                    {t('landing.illustration.videoDescription')}
                   </p>
                 </div>
                 <div className="landing-hero-board__inspector-section">
-                  <strong>Sorumlu</strong>
+                  <strong>{t('landing.illustration.assignee')}</strong>
                   <div className="landing-hero-board__inspector-person">
                     <span className="landing-hero-board__avatar">DA</span>
-                    <b>Deniz Arslan</b>
+                    <b>{t('landing.illustration.assigneeName')}</b>
                   </div>
                 </div>
                 <div className="landing-hero-board__inspector-section">
-                  <strong>Etiketler</strong>
+                  <strong>{t('landing.illustration.tags')}</strong>
                   <div className="landing-hero-board__inspector-tags">
-                    <span>Produksiyon</span>
+                    <span>{t('landing.illustration.production')}</span>
                     <span>+</span>
                   </div>
                 </div>
                 <div className="landing-hero-board__attachment">
-                  <strong>Ek dosyalar</strong>
+                  <strong>{t('landing.illustration.attachments')}</strong>
                   <span>
                     <FileText aria-hidden />
-                    <b>video-senaryo-v1.pdf</b>
+                    <b>{t('landing.illustration.fileName')}</b>
                     <small>743 KB</small>
                     <i>•••</i>
                   </span>
-                  <small>＋ Dosya ekle</small>
+                  <small>{t('landing.illustration.addFile')}</small>
                 </div>
                 <div className="landing-hero-board__inspector-comments">
                   <strong>
-                    Yorumlar <span>4</span>
+                    {t('landing.illustration.comments')} <span>4</span>
                     <ChevronLeft aria-hidden />
                   </strong>
                   <p>
                     <span className="landing-hero-board__avatar">DA</span>
                     <span>
                       <b>
-                        Deniz Arslan <time>8 Eki 10:24</time>
+                        Deniz Arslan <time>{t('landing.illustration.firstCommentDate')}</time>
                       </b>
-                      Senaryo taslağını ekledim, fikirlerinizi bekliyorum.
+                      {t('landing.illustration.firstComment')}
                     </span>
                   </p>
                   <p>
                     <span className="landing-hero-board__avatar">MK</span>
                     <span>
                       <b>
-                        Mert Kaya <time>8 Eki 11:02</time>
+                        Mert Kaya <time>{t('landing.illustration.secondCommentDate')}</time>
                       </b>
-                      Harika, birkaç sahne için alternatifler hazırlayacağım.
+                      {t('landing.illustration.secondComment')}
                     </span>
                   </p>
                   <p>
                     <span className="landing-hero-board__avatar">İD</span>
                     <span>
                       <b>
-                        İrem Demir <time>8 Eki 14:37</time>
+                        İrem Demir <time>{t('landing.illustration.thirdCommentDate')}</time>
                       </b>
-                      Müzik ve seslendirme tarafını da planlayalım.
+                      {t('landing.illustration.thirdComment')}
                     </span>
                   </p>
                   <p>
                     <span className="landing-hero-board__avatar">SK</span>
                     <span>
                       <b>
-                        Selin Kılıç <time>8 Eki 15:10</time>
+                        Selin Kılıç <time>{t('landing.illustration.fourthCommentDate')}</time>
                       </b>
-                      Takvim bağlantısını da son kontrolden geçirelim.
+                      {t('landing.illustration.fourthComment')}
                     </span>
                   </p>
                   <span className="landing-hero-board__comment-input">
                     <span className="landing-hero-board__avatar">DA</span>
-                    <span>Yorum yaz...</span>
+                    <span>{t('landing.illustration.writeComment')}</span>
                     <Send aria-hidden />
                   </span>
                 </div>
@@ -275,7 +276,7 @@ export function HeroIllustration() {
         </div>
 
         <span className="landing-hero-board__link" aria-hidden>
-          Çalışma alanı önizlemesi
+          {t('landing.illustration.preview')}
         </span>
       </div>
     </div>

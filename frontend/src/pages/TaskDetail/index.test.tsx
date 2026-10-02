@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { TaskDetailPage } from './index';
+import i18n from '@/i18n';
 import type { Task, TaskStatus } from '@/hooks/tasks';
 import type { TeamMember } from '@/services/teams';
 
@@ -183,6 +184,23 @@ describe('TaskDetailPage — approved workbench', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
   });
 
+  it('renders translated task details in English and Turkish', async () => {
+    const previousLanguage = i18n.language;
+    try {
+      mockTask = makeTask({});
+      await i18n.changeLanguage('en');
+      renderTaskDetail();
+      expect(screen.getByRole('heading', { name: 'Task details' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'Task content' })).toBeInTheDocument();
+
+      await i18n.changeLanguage('tr');
+      expect(screen.getByRole('heading', { name: 'Görev bilgileri' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'Görev içeriği' })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage(previousLanguage);
+    }
+  });
+
   it('renders the semantic desktop regions and real task context with the task reference', () => {
     mockTask = makeTask({
       id: '2841',
@@ -211,10 +229,10 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(screen.getByRole('heading', { name: 'Geçmiş' })).toBeInTheDocument();
     expect(screen.getAllByText('Research')).toHaveLength(2);
     expect(screen.getByText('Approved brief')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Hedef kitle' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Etiketler' })).toBeInTheDocument();
-    expect(screen.getByText('Product team')).toBeInTheDocument();
-    expect(screen.getByText('launch')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Hedef kitle' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Etiketler' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Product team')).not.toBeInTheDocument();
+    expect(screen.queryByText('launch')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Düzenle' })).toBeInTheDocument();
 
     const filesRegion = screen.getByTestId('task-files-region');
@@ -251,15 +269,31 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(commentComposer?.parentElement).toHaveClass('shrink-0');
   });
 
-  it('uses the shared avatar stack when more than two assignees are present', () => {
+  it('shows up to two assignees inline and stacks three of six assignees', () => {
     mockTask = makeTask({
-      assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin'), makeAssignee('u3', 'Mert')],
+      assignees: [makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin')],
+    });
+    const view = renderTaskDetail();
+
+    const inlineAssignees = screen.getByTestId('assignee-chip-list');
+    expect(inlineAssignees).toHaveClass('flex', 'items-center');
+    expect(inlineAssignees.children).toHaveLength(2);
+    expect(inlineAssignees).toHaveTextContent('Ada');
+    expect(inlineAssignees).toHaveTextContent('Selin');
+
+    view.unmount();
+    mockTask = makeTask({
+      assignees: [
+        makeAssignee('u1', 'Ada'), makeAssignee('u2', 'Selin'), makeAssignee('u3', 'Mert'),
+        makeAssignee('u4', 'Dora'), makeAssignee('u5', 'Ece'), makeAssignee('u6', 'Can'),
+      ],
     });
     renderTaskDetail();
 
     expect(screen.getByTestId('assignee-avatar-stack')).toBeInTheDocument();
-    expect(screen.getByLabelText('+1 kişi daha')).toBeInTheDocument();
-    expect(screen.queryByText('Mert')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('+3 kişi daha')).toBeInTheDocument();
+    expect(screen.getByTitle('Mert')).toBeInTheDocument();
+    expect(screen.queryByTitle('Dora')).not.toBeInTheDocument();
   });
 
   it('keeps task context read-only for a member and hides the edit action', () => {
@@ -346,7 +380,7 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(screen.getByLabelText('Başlık')).toHaveValue('Test task');
   });
 
-  it('edits audience and tags and includes them in the edit payload', async () => {
+  it('omits audience and tags from edit UI and payload', async () => {
     updateFieldsMock.mockImplementation((_variables, options) => {
       options?.onSuccess?.();
     });
@@ -356,8 +390,8 @@ describe('TaskDetailPage — approved workbench', () => {
 
     await user.click(screen.getByRole('button', { name: 'Düzenle' }));
 
-    expect(screen.getByLabelText('Hedef kitle')).toHaveValue('Members');
-    expect(screen.getByLabelText('Etiketler (virgülle ayır)')).toHaveValue('initial');
+    expect(screen.queryByLabelText('Hedef kitle')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Etiketler (virgülle ayır)')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }));
 
@@ -367,9 +401,7 @@ describe('TaskDetailPage — approved workbench', () => {
       title: 'Test task',
       description: null,
       scopeItems: [],
-      targetAudience: 'Members',
       expectedOutput: null,
-      tags: ['initial'],
       assigneeIds: ['u1'],
     });
   });
@@ -722,7 +754,7 @@ describe('TaskDetailPage — status change intercept', () => {
     renderTaskDetail();
 
     const banner = screen.getByTestId('pending-banner');
-    expect(banner).toHaveTextContent('Sedat status değişikliği önerdi ve onayladı');
+    expect(banner).toHaveTextContent('Sedat durum değişikliği önerdi ve onayladı');
     expect(banner).toHaveTextContent('Kalan ack: 1 / 2');
   });
 
@@ -740,7 +772,7 @@ describe('TaskDetailPage — status change intercept', () => {
     renderTaskDetail();
 
     const banner = screen.getByTestId('pending-banner');
-    expect(banner).toHaveTextContent('Yönetici status değişikliği teklif etti');
+    expect(banner).toHaveTextContent('Yönetici durum değişikliği teklif etti');
     expect(banner).toHaveTextContent('Kalan ack: 2 / 2');
   });
 });

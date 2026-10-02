@@ -1,13 +1,15 @@
 import type { Comment } from '@/hooks/tasks';
+import { useTranslation } from '@/i18n';
 
 interface CommentListProps {
   comments: Comment[];
 }
 
 export function CommentList({ comments }: CommentListProps) {
+  const { i18n, t } = useTranslation();
   if (comments.length === 0) {
     return (
-      <p className="text-sm italic text-muted-foreground">Henüz yorum yok. İlk yorumu sen yaz.</p>
+      <p className="text-sm italic text-muted-foreground">{t('Henüz yorum yok. İlk yorumu sen yaz.')}</p>
     );
   }
 
@@ -31,7 +33,7 @@ export function CommentList({ comments }: CommentListProps) {
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="text-sm font-semibold">{c.author.fullName}</span>
                 <time className="text-xs text-muted-foreground">
-                  {new Date(c.createdAt).toLocaleString('tr-TR', {
+                {new Date(c.createdAt).toLocaleString(i18n.language === 'en' ? 'en-US' : 'tr-TR', {
                     day: 'numeric',
                     month: 'short',
                     hour: '2-digit',

@@ -7,6 +7,7 @@ export type Team = {
   id: string;
   name: string;
   description: string | null;
+  photoUrl: string | null;
   tenantId: string;
   memberCount: number;
   createdAt: string;
@@ -78,6 +79,13 @@ export async function createTeam(input: CreateTeamInput): Promise<Team> {
 
 export async function updateTeam(teamId: string, input: UpdateTeamInput): Promise<Team> {
   const r = await api.patch<Team>(`/teams/${teamId}`, input);
+  return r.data;
+}
+
+export async function uploadTeamPhoto(teamId: string, file: File): Promise<Team> {
+  const formData = new FormData();
+  formData.append('photo', file);
+  const r = await api.post<Team>(`/teams/${teamId}/photo`, formData);
   return r.data;
 }
 

@@ -7,9 +7,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { AvatarStack } from '@/components/tasks/AssigneeAvatarStack';
 import { CreateTeamModal } from './CreateTeamModal';
 import type { TeamDetail, TeamMember } from '@/services/teams';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 function initials(name: string): string {
   return name
@@ -20,11 +22,11 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-function formatCreatedAt(value: string): string {
+function formatCreatedAt(value: string, language: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value.slice(0, 10)
-    : date.toLocaleDateString('tr-TR', {
+    : date.toLocaleDateString(language === 'en' ? 'en-US' : 'tr-TR', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
@@ -34,7 +36,7 @@ function formatCreatedAt(value: string): string {
 
 function MemberAvatar({ member, className }: { member: TeamMember; className?: string }) {
   return (
-    <Avatar className={cn('h-9 w-9 border-2 border-card bg-secondary', className)}>
+    <Avatar title={member.fullName} className={cn('h-9 w-9 border-2 border-card bg-secondary', className)}>
       {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.fullName} />}
       <AvatarFallback className="bg-secondary text-xs font-semibold text-foreground">
         {initials(member.fullName)}
@@ -56,6 +58,7 @@ function TeamPreview({
   onViewDetails: () => void;
   className?: string;
 }) {
+  const { t, i18n } = useTranslation();
   if (isLoading) {
     return (
       <div
@@ -78,14 +81,12 @@ function TeamPreview({
           className,
         )}
       >
-        Takım detayları yüklenirken bir hata oluştu.
+        {t('Takım detayları yüklenirken bir hata oluştu.')}
       </div>
     );
   }
 
   const manager = team.members.find((member) => member.role === 'teamAdmin');
-  const visibleMembers = team.members.slice(0, 8);
-  const overflow = team.members.length - visibleMembers.length;
 
   return (
     <article
@@ -103,7 +104,7 @@ function TeamPreview({
 
       <h2 className="mt-5 text-xl font-semibold text-foreground">{team.name}</h2>
       <p className="mt-1 text-sm text-secondary-foreground">
-        {team.memberCount} {team.memberCount === 1 ? 'üye' : 'üye'}
+        {t('{{count}} üye', { count: team.memberCount })}
       </p>
 
       {team.description && (
@@ -113,31 +114,35 @@ function TeamPreview({
       )}
 
       <div className="mt-6 border-t border-border pt-4">
-        <h3 className="text-sm font-semibold text-foreground">Üyeler</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('Üyeler')}</h3>
         <div className="mt-3 flex items-center">
-          {visibleMembers.map((member) => (
-            <MemberAvatar key={member.userId} member={member} className="-ml-2 first:ml-0" />
-          ))}
-          {overflow > 0 && (
-            <span className="-ml-2 inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-card bg-secondary text-xs font-semibold text-foreground">
-              +{overflow}
-            </span>
-          )}
+          <AvatarStack
+            members={team.members.map(({ userId, fullName, avatarUrl }) => ({
+              id: userId,
+              fullName,
+              avatarUrl,
+            }))}
+            max={3}
+            size="md"
+          />
         </div>
       </div>
 
       <dl className="mt-6 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
         <div>
-          <dt className="text-xs text-secondary-foreground">Takım Yöneticisi</dt>
-          <dd className="mt-1 text-sm font-medium text-foreground">{manager?.fullName ?? '—'}</dd>
+          <dt className="text-xs text-secondary-foreground">{t('Takım Yöneticisi')}</dt>
+          <dd className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+            {manager && <MemberAvatar member={manager} className="h-7 w-7 border-0" />}
+            {manager?.fullName ?? '—'}
+          </dd>
         </div>
         <div>
           <dt className="flex items-center gap-1.5 text-xs text-secondary-foreground">
             <CalendarDays className="h-3.5 w-3.5" />
-            Oluşturulma Tarihi
+            {t('Oluşturulma Tarihi')}
           </dt>
           <dd className="mt-1 text-sm font-medium text-foreground">
-            {formatCreatedAt(team.createdAt)}
+              {formatCreatedAt(team.createdAt, i18n.language)}
           </dd>
         </div>
       </dl>
@@ -145,7 +150,7 @@ function TeamPreview({
       <Button type="button" className="mt-6 w-full justify-between" onClick={onViewDetails}>
         <span className="inline-flex items-center gap-2">
           <ExternalLink className="h-4 w-4" />
-          Takım detaylarını görüntüle
+          {t('Takım detaylarını görüntüle')}
         </span>
         <ArrowRight className="h-4 w-4" />
       </Button>
@@ -154,6 +159,7 @@ function TeamPreview({
 }
 
 export function TeamsPage() {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useTeams();
   const { isCompanyAdmin } = useAuth();
   const navigate = useNavigate();
@@ -174,9 +180,9 @@ export function TeamsPage() {
     <section className="mx-auto w-full max-w-6xl space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Takımlar</h1>
+          <h1 className="text-2xl font-semibold text-foreground">{t('Takımlar')}</h1>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Üyesi olduğun veya yönettiğin takımlar.
+            {t('Üyesi olduğun veya yönettiğin takımlar.')}
           </p>
         </div>
         {isCompanyAdmin && <CreateTeamModal />}
@@ -191,7 +197,7 @@ export function TeamsPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive bg-card p-6 text-sm text-destructive">
-          Takımlar yüklenirken bir hata oluştu.
+          {t('Takımlar yüklenirken bir hata oluştu.')}
         </div>
       )}
 
@@ -199,8 +205,8 @@ export function TeamsPage() {
         <div className="rounded-lg border border-border bg-card p-12 text-center">
           <p className="text-sm text-secondary-foreground">
             {isCompanyAdmin
-              ? 'Henüz bir takım yok. Yukarıdan yeni bir takım oluşturabilirsin.'
-              : 'Henüz hiçbir takımın yok. Şirket yöneticisi seni eklediğinde burada görünecek.'}
+              ? t('Henüz bir takım yok. Yukarıdan yeni bir takım oluşturabilirsin.')
+              : t('Henüz hiçbir takımın yok. Şirket yöneticisi seni eklediğinde burada görünecek.')}
           </p>
         </div>
       )}
@@ -212,9 +218,9 @@ export function TeamsPage() {
             data-testid="team-directory"
           >
             <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Takımlarım</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t('Takımlarım')}</h2>
             </div>
-            <div role="listbox" aria-label="Takım dizini">
+            <div role="listbox" aria-label={t('Takım dizini')}>
               {teams.map((team) => {
                 const selected = team.id === selectedId;
                 const mobileExpanded = team.id === mobileExpandedTeamId;
@@ -246,7 +252,7 @@ export function TeamsPage() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{team.name}</span>
                         <span className="mt-0.5 block text-xs text-secondary-foreground">
-                          {team.memberCount} {team.memberCount === 1 ? 'üye' : 'üye'}
+                          {t('{{count}} üye', { count: team.memberCount })}
                         </span>
                       </span>
                       <ChevronRight
@@ -291,11 +297,11 @@ export function TeamsPage() {
       )}
 
       {allTeams.length > MAX_RENDERED_RECORDS && (
-        <p className="text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+        <p className="text-xs text-muted-foreground">{t(RECORD_CAP_MESSAGE)}</p>
       )}
 
       <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
-        Panele dön
+        {t('Panele dön')}
       </Button>
     </section>
   );

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { DashboardHealth as DashboardHealthModel } from '@/services/companyDashboard';
 import { DashboardHealth as DashboardHealthPanel } from './DashboardHealth';
+import i18n from '@/i18n';
 
 const context = {
   period: { range: '30d' as const, start: '2026-07-22', end: '2026-08-21' },
@@ -56,5 +57,39 @@ describe('DashboardHealth', () => {
     expect(screen.getByRole('region', { name: 'Takım sağlığı' })).toHaveTextContent('Yetersiz veri');
     expect(screen.getByText('En az 5 tamamlanan görev gerekir.')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Sağlık sinyalleri' })).not.toBeInTheDocument();
+  });
+
+  it('localizes deterministic health summaries and insights in English', async () => {
+    await i18n.changeLanguage('en');
+    render(
+      <DashboardHealthPanel
+        health={{
+          ...context,
+          status: 'INSUFFICIENT_DATA',
+          sampleSize: 1,
+          minimumSampleSize: 5,
+          explanation:
+            'Sağlık durumu üretilemedi: Örneklem yetersiz: 1/5 tamamlanan görev.',
+          insights: [
+            {
+              ...context,
+              metric: 'completedTaskCount',
+              observedValue: 1,
+              threshold: 5,
+              comparison: 'below',
+              message: 'Örneklem yetersiz: 1/5 tamamlanan görev.',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Team health' })).toHaveTextContent(
+      'Insufficient data',
+    );
+    expect(screen.getByText('Health status could not be produced: Insufficient sample: 1/5 completed tasks.')).toBeInTheDocument();
+    expect(screen.getByText('Insufficient sample: 1/5 completed tasks.')).toBeInTheDocument();
+    expect(screen.getByText(/Metric: Completed tasks · Observed: 1 · Threshold: 5/)).toBeInTheDocument();
+    await i18n.changeLanguage('tr');
   });
 });

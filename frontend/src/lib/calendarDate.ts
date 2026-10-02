@@ -28,8 +28,16 @@ export function addCalendarMonths(value: string, months: number): string {
   return formatParts(target.getUTCFullYear(), target.getUTCMonth() + 1, Math.min(day, lastDay));
 }
 
-export function formatCalendarDateDisplay(value: string | null): string {
+export function formatCalendarDateDisplay(value: string | null, language = 'tr'): string {
   if (value === null) return '—';
   const [year, month, day] = parseCalendarParts(value);
+  if (language === 'en') {
+    return new Intl.DateTimeFormat('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  }
   return `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`;
 }

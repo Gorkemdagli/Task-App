@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
-import { BrandPanel } from '../../components/auth/BrandPanel';
+import { useTranslation } from 'react-i18next';
+import { AuthLanguageToggle, AuthThemeToggle, BrandPanel } from '../../components/auth/BrandPanel';
 
 /**
  * AuthLayout (FRONTEND.md §4.7, Faz 3 update):
@@ -13,12 +14,30 @@ import { BrandPanel } from '../../components/auth/BrandPanel';
  * rhythm (compact rows, small gaps) because the panel is small.
  */
 export function AuthLayout() {
+  const { t } = useTranslation();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6 lg:p-8">
+    <div className="auth-theme theme-landing flex min-h-screen items-center justify-center bg-background p-4 sm:p-6 lg:p-8">
       <div className="grid w-full max-w-6xl min-h-[600px] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card shadow-panel lg:grid-cols-2">
         <BrandPanel />
         <main className="flex items-center justify-center bg-card p-6 sm:p-8 md:p-12 lg:p-10 xl:p-12">
           <div className="w-full max-w-md">
+            <div
+              className="mb-8 flex items-start justify-between gap-4 lg:hidden"
+              data-testid="auth-mobile-brand"
+            >
+              <div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('auth.brand.footer')}
+                </p>
+                <p className="mt-1 text-xl font-bold leading-none tracking-tight text-foreground">
+                  TaskFlow
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <AuthLanguageToggle />
+                <AuthThemeToggle />
+              </div>
+            </div>
             <Outlet />
           </div>
         </main>

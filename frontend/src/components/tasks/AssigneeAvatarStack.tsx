@@ -1,4 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useTranslation } from 'react-i18next';
 import type { TaskAssignee } from '@/hooks/tasks';
 import { cn } from '@/lib/utils';
 
@@ -71,6 +72,7 @@ export function AvatarStack({
   withNames = false,
   className,
 }: AvatarStackProps) {
+  const { t } = useTranslation();
   const visible = members.slice(0, max);
   const overflow = members.length - visible.length;
 
@@ -88,8 +90,8 @@ export function AvatarStack({
         ))}
         {overflow > 0 && (
           <span
-            aria-label={`+${overflow} kişi daha`}
-            title={`+${overflow} kişi daha`}
+            aria-label={t('tasks.assignee.overflow', { count: overflow })}
+            title={t('tasks.assignee.overflow', { count: overflow })}
             className={cn(
               SIZE_CLASS[size],
               'relative inline-flex items-center justify-center rounded-full border-2 border-background bg-secondary font-semibold text-secondary-foreground transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-lg',

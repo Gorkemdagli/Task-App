@@ -1,5 +1,6 @@
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { formatCalendarDateDisplay } from '@/lib/calendarDate';
 import { RECORD_CAP_MESSAGE } from '@/lib/listLimits';
@@ -22,28 +23,28 @@ const RISK_TABS: Array<{
 }> = [
   {
     key: 'overdue',
-    label: 'Geciken görevler',
+    label: 'company.tables.overdueTasks',
     countKey: 'overdueTaskCount',
     filter: 'overdue',
     tone: 'text-priority-high',
   },
   {
     key: 'dueNextSevenDays',
-    label: 'Yedi gün içinde',
+    label: 'company.tables.dueNextSevenDays',
     countKey: 'dueNextSevenDaysTaskCount',
     filter: 'week',
     tone: 'text-priority-medium',
   },
   {
     key: 'pendingApproval',
-    label: 'Onay bekleyen',
+    label: 'company.tables.pendingApproval',
     countKey: 'pendingApprovalTaskCount',
     filter: 'all',
     tone: 'text-primary',
   },
   {
     key: 'expired',
-    label: 'Süresi dolmuş',
+    label: 'company.tables.expired',
     countKey: 'expiredTaskCount',
     filter: 'overdue',
     includeArchived: true,
@@ -52,9 +53,9 @@ const RISK_TABS: Array<{
 ];
 
 const STATUS_LABEL: Record<CompanyRiskTask['status'], string> = {
-  todo: 'Yapılacak',
-  in_progress: 'Yapılıyor',
-  done: 'Yapıldı',
+  todo: 'company.tables.todo',
+  in_progress: 'company.tables.inProgress',
+  done: 'company.tables.done',
 };
 
 const STATUS_TONE: Record<CompanyRiskTask['status'], string> = {
@@ -76,6 +77,7 @@ function initials(fullName: string) {
 }
 
 function StatusBadge({ status }: { status: CompanyRiskTask['status'] }) {
+  const { t } = useTranslation();
   return (
     <span
       className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-xs ${STATUS_TONE[status]}`}
@@ -90,16 +92,19 @@ function StatusBadge({ status }: { status: CompanyRiskTask['status'] }) {
               : 'bg-status-done'
         }`}
       />
-      {STATUS_LABEL[status]}
+      {t(STATUS_LABEL[status])}
     </span>
   );
 }
 
 function RiskTaskRow({ task }: { task: CompanyRiskTask }) {
+  const { t, i18n } = useTranslation();
   return (
     <tr className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-3 last:border-b-0 lg:table-row lg:p-0">
       <td className="col-span-2 min-w-0 lg:table-cell lg:px-3 lg:py-3">
-        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">Görev adı</span>
+        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">
+          {t('company.tables.taskName')}
+        </span>
         <Link
           to={`/tasks/${task.id}`}
           className="block truncate rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -109,7 +114,7 @@ function RiskTaskRow({ task }: { task: CompanyRiskTask }) {
       </td>
       <td className="min-w-0 lg:table-cell lg:px-3 lg:py-3">
         <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">
-          Proje / takım
+          {t('company.tables.projectTeam')}
         </span>
         <Link
           to={buildTeamTasksUrl(task.team.id)}
@@ -119,7 +124,9 @@ function RiskTaskRow({ task }: { task: CompanyRiskTask }) {
         </Link>
       </td>
       <td className="min-w-0 lg:table-cell lg:px-3 lg:py-3">
-        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">Sorumlu</span>
+        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">
+          {t('company.tables.assignee')}
+        </span>
         <div className="flex min-w-0 items-center gap-2">
           {task.assignee ? (
             <span
@@ -130,18 +137,22 @@ function RiskTaskRow({ task }: { task: CompanyRiskTask }) {
             </span>
           ) : null}
           <span className="truncate text-xs text-foreground">
-            {task.assignee?.fullName ?? 'Atanmamış'}
+            {task.assignee?.fullName ?? t('company.tables.unassigned')}
           </span>
         </div>
       </td>
       <td className="min-w-0 lg:table-cell lg:px-3 lg:py-3">
-        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">Son tarih</span>
+        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">
+          {t('company.tables.dueDate')}
+        </span>
         <span className="text-xs font-medium text-priority-high">
-          {formatCalendarDateDisplay(task.deadline)}
+          {formatCalendarDateDisplay(task.deadline, i18n.language)}
         </span>
       </td>
       <td className="min-w-0 lg:table-cell lg:px-3 lg:py-3">
-        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">Durum</span>
+        <span className="mb-1 block text-xs text-secondary-foreground lg:hidden">
+          {t('company.tables.status')}
+        </span>
         <StatusBadge status={task.status} />
       </td>
     </tr>
@@ -157,6 +168,7 @@ export function RiskLedger({
   riskTasks: RiskTasks;
   teamId: string | null;
 }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<RiskTab>('overdue');
   const [page, setPage] = useState(1);
   const tab = RISK_TABS.find((item) => item.key === activeTab) ?? RISK_TABS[0];
@@ -177,22 +189,22 @@ export function RiskLedger({
       <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center md:px-5">
         <div>
           <h2 id="company-risk-ledger-heading" className="text-lg font-semibold">
-            Riskli görevler
+            {t('company.tables.riskTasks')}
           </h2>
-          <p className="mt-1 text-sm text-secondary-foreground">Acil ilgi gerektiren görevler</p>
+          <p className="mt-1 text-sm text-secondary-foreground">{t('company.tables.urgentTasks')}</p>
         </div>
         <Link
           to={`/tasks?${allTasksParams.toString()}`}
           className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-sm text-xs font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Tümünü görüntüle
+          {t('company.tables.viewAll')}
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </div>
 
       <div
         role="tablist"
-        aria-label="Risk kategorileri"
+        aria-label={t('company.tables.riskCategories')}
         className="grid grid-cols-2 overflow-hidden border-b border-border px-2 sm:flex sm:overflow-x-auto"
       >
         {RISK_TABS.map((item) => {
@@ -214,7 +226,7 @@ export function RiskLedger({
                   : 'text-secondary-foreground hover:text-foreground'
               }`}
             >
-              {item.label} ({risk[item.countKey]})
+              {t(item.label)} ({risk[item.countKey]})
             </button>
           );
         })}
@@ -223,21 +235,21 @@ export function RiskLedger({
       <div
         id={`risk-panel-${tab.key}`}
         role="tabpanel"
-        aria-label={tab.label}
+        aria-label={t(tab.label)}
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="overflow-x-hidden lg:overflow-x-auto">
           <table
-            aria-label="Riskli görevler"
+            aria-label={t('company.tables.riskTasks')}
             className="w-full table-fixed text-left lg:table-auto"
           >
             <thead className="hidden border-b border-border bg-secondary/30 text-xs text-secondary-foreground lg:table-header-group">
               <tr>
-                <th className="px-3 py-2 font-medium">Görev adı</th>
-                <th className="px-3 py-2 font-medium">Proje</th>
-                <th className="px-3 py-2 font-medium">Sorumlu</th>
-                <th className="px-3 py-2 font-medium">Son tarih</th>
-                <th className="px-3 py-2 font-medium">Durum</th>
+                <th className="px-3 py-2 font-medium">{t('company.tables.taskName')}</th>
+                <th className="px-3 py-2 font-medium">{t('company.tables.project')}</th>
+                <th className="px-3 py-2 font-medium">{t('company.tables.assignee')}</th>
+                <th className="px-3 py-2 font-medium">{t('company.tables.dueDate')}</th>
+                <th className="px-3 py-2 font-medium">{t('company.tables.status')}</th>
               </tr>
             </thead>
             <tbody className="block lg:table-row-group">
@@ -250,25 +262,29 @@ export function RiskLedger({
 
         {visibleTasks.length === 0 && (
           <p className="px-4 py-10 text-center text-sm text-secondary-foreground">
-            Bu risk kategorisinde görev yok.
+            {t('company.tables.noTasksInRisk')}
           </p>
         )}
 
         <nav
-          aria-label="Risk sayfalama"
+          aria-label={t('company.tables.riskPagination')}
           className="mt-auto flex items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-secondary-foreground"
         >
           <span className="min-w-0 truncate">
             {tasks.length === 0
-              ? '0 görev'
-              : `${(visiblePage - 1) * PAGE_SIZE + 1}–${Math.min(visiblePage * PAGE_SIZE, tasks.length)} / ${tasks.length} görev`}
+              ? t('company.tables.zeroTasks')
+              : t('company.tables.taskRange', {
+                  start: (visiblePage - 1) * PAGE_SIZE + 1,
+                  end: Math.min(visiblePage * PAGE_SIZE, tasks.length),
+                  total: tasks.length,
+                })}
           </span>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={visiblePage === 1}
-              aria-label="Önceki risk sayfası"
+              aria-label={t('company.tables.previousRiskPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -278,7 +294,7 @@ export function RiskLedger({
               type="button"
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={visiblePage === totalPages}
-              aria-label="Sonraki risk sayfası"
+              aria-label={t('company.tables.nextRiskPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -299,6 +315,7 @@ export function MemberWorkloadTable({
   teamId: string | null;
   showDetails?: boolean;
 }) {
+  const { t } = useTranslation();
   const [mobilePage, setMobilePage] = useState(1);
   const maxOpenTaskCount = Math.max(0, ...members.items.map((member) => member.openTaskCount));
   const mobileTotalPages = Math.max(1, Math.ceil(members.items.length / MEMBER_PAGE_SIZE));
@@ -309,8 +326,10 @@ export function MemberWorkloadTable({
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
       <div className="border-b border-border px-4 py-4">
-        <h2 className="text-lg font-semibold">Üye görev yükü</h2>
-        <p className="mt-1 text-sm text-secondary-foreground">Takım üyelerinin açık görevleri</p>
+        <h2 className="text-lg font-semibold">{t('company.tables.memberWorkload')}</h2>
+        <p className="mt-1 text-sm text-secondary-foreground">
+          {t('company.tables.memberWorkloadDescription')}
+        </p>
       </div>
       <div
         className={`overflow-hidden px-2 pb-2 ${
@@ -318,18 +337,18 @@ export function MemberWorkloadTable({
         }`}
       >
         <table
-          aria-label="Üye görev yükü"
+          aria-label={t('company.tables.memberWorkload')}
           className="w-full table-fixed text-left text-xs sm:table-auto"
         >
           <thead className="hidden border-b border-border text-secondary-foreground sm:table-header-group">
             <tr>
-              <th className="px-2 py-2 font-medium">Üye</th>
-              <th className="px-2 py-2 font-medium">Açık görev</th>
-              <th className="px-2 py-2 text-right font-medium">Tamamlanan</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.member')}</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.openTask')}</th>
+              <th className="px-2 py-2 text-right font-medium">{t('company.tables.completed')}</th>
               {showDetails && (
                 <>
-                  <th className="px-2 py-2 text-right font-medium">Süresi dolan</th>
-                  <th className="px-2 py-2 text-right font-medium">Tamamlanma</th>
+                  <th className="px-2 py-2 text-right font-medium">{t('company.tables.expiredShort')}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t('company.tables.completion')}</th>
                 </>
               )}
             </tr>
@@ -349,28 +368,31 @@ export function MemberWorkloadTable({
                 >
                   <td className={`${showDetails ? 'sm:col-span-1' : ''} col-span-2 min-w-0 px-2 py-2.5 sm:table-cell`}>
                     <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                      Üye
+                      {t('company.tables.member')}
                     </span>
                     <Link
                       to={buildMemberTasksUrl(member.userId, teamId)}
                       className="block truncate rounded-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-label={`${member.fullName} görevlerini aç`}
+                      aria-label={t('company.tables.memberTasks', { name: member.fullName })}
                     >
                       {member.fullName}
                     </Link>
                     <span className="mt-0.5 block text-xs text-secondary-foreground">
-                      {member.assignedTaskCount} atanan
+                      {t('company.tables.assigned', { count: member.assignedTaskCount })}
                     </span>
                   </td>
                   <td className="min-w-0 px-2 py-2.5 sm:table-cell">
                     <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                      Açık görev
+                      {t('company.tables.openTask')}
                     </span>
                     <div className="flex items-center gap-2">
                       <Link
                         to={buildMemberTasksUrl(member.userId, teamId)}
                         className="font-medium tabular-nums text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        aria-label={`${member.fullName}: ${member.openTaskCount} açık görev`}
+                      aria-label={t('company.tables.memberOpenTasks', {
+                        name: member.fullName,
+                        count: member.openTaskCount,
+                      })}
                       >
                         {member.openTaskCount}
                       </Link>
@@ -386,22 +408,22 @@ export function MemberWorkloadTable({
                     </div>
                   </td>
                   <td className="min-w-0 px-2 py-2.5 text-right tabular-nums sm:table-cell">
-                    <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
-                      Tamamlanan
-                    </span>
+                      <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
+                        {t('company.tables.completed')}
+                      </span>
                     {member.completedTaskCount}
                   </td>
                   {showDetails && (
                     <>
                       <td className="min-w-0 px-2 py-2.5 text-right tabular-nums sm:table-cell">
                         <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
-                          Süresi dolan
+                          {t('company.tables.expiredShort')}
                         </span>
                         {member.expiredTaskCount}
                       </td>
                       <td className="min-w-0 px-2 py-2.5 text-right tabular-nums sm:table-cell">
                         <span className="mb-1 block text-right text-xs text-secondary-foreground sm:hidden">
-                          Tamamlanma
+                          {t('company.tables.completion')}
                         </span>
                         %{member.completionRate}
                       </td>
@@ -415,7 +437,7 @@ export function MemberWorkloadTable({
       </div>
       {members.items.length > MEMBER_PAGE_SIZE && (
         <nav
-          aria-label="Üye sayfalama"
+          aria-label={t('company.tables.memberPagination')}
           className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-secondary-foreground sm:hidden"
         >
           <span className="tabular-nums" aria-live="polite">
@@ -426,7 +448,7 @@ export function MemberWorkloadTable({
               type="button"
               onClick={() => setMobilePage((current) => Math.max(1, current - 1))}
               disabled={visibleMobilePage === 1}
-              aria-label="Önceki üye sayfası"
+              aria-label={t('company.tables.previousMemberPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -435,7 +457,7 @@ export function MemberWorkloadTable({
               type="button"
               onClick={() => setMobilePage((current) => Math.min(mobileTotalPages, current + 1))}
               disabled={visibleMobilePage === mobileTotalPages}
-              aria-label="Sonraki üye sayfası"
+              aria-label={t('company.tables.nextMemberPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -445,7 +467,7 @@ export function MemberWorkloadTable({
       )}
       {members.capped && (
         <p className="border-t border-border px-4 py-2 text-xs text-secondary-foreground">
-          {RECORD_CAP_MESSAGE}
+          {t('company.tables.recordCap', { defaultValue: RECORD_CAP_MESSAGE })}
         </p>
       )}
     </section>
@@ -453,6 +475,7 @@ export function MemberWorkloadTable({
 }
 
 export function TeamComparisonTable({ teams }: { teams: Teams }) {
+  const { t } = useTranslation();
   const [mobilePage, setMobilePage] = useState(1);
   const mobileTotalPages = Math.max(1, Math.ceil(teams.length / TEAM_PAGE_SIZE));
   const visibleMobilePage = Math.min(mobilePage, mobileTotalPages);
@@ -462,9 +485,9 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
       <div className="border-b border-border px-4 py-4">
-        <h2 className="text-lg font-semibold">Takım karşılaştırması</h2>
+        <h2 className="text-lg font-semibold">{t('company.tables.teamComparison')}</h2>
         <p className="mt-1 text-sm text-secondary-foreground">
-          Şirket kapsamındaki görev sonuçları
+          {t('company.tables.teamResultsDescription')}
         </p>
       </div>
       <div
@@ -473,16 +496,16 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
         }`}
       >
         <table
-          aria-label="Takım karşılaştırması"
+          aria-label={t('company.tables.teamComparison')}
           className="w-full table-fixed text-left text-xs sm:table-auto"
         >
           <thead className="hidden border-b border-border text-secondary-foreground sm:table-header-group">
             <tr>
-              <th className="px-2 py-2 font-medium">Takım</th>
-              <th className="px-2 py-2 font-medium">Açık</th>
-              <th className="px-2 py-2 font-medium">Tamamlanan</th>
-              <th className="px-2 py-2 font-medium">Süresi dolan</th>
-              <th className="px-2 py-2 font-medium">Tamamlanma</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.team')}</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.openTask')}</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.completed')}</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.expiredShort')}</th>
+              <th className="px-2 py-2 font-medium">{t('company.tables.completion')}</th>
             </tr>
           </thead>
           <tbody className="block sm:table-row-group">
@@ -495,37 +518,37 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
               >
                 <td className="col-span-2 min-w-0 px-2 py-2.5 font-medium sm:table-cell">
                   <span className="mr-1 text-xs font-normal text-secondary-foreground sm:hidden">
-                    Takım:
+                    {t('company.tables.teamLabel')}
                   </span>{' '}
                   <Link
                     to={`/teams/${team.teamId}`}
                     className="inline-flex min-h-11 items-center rounded-sm text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    aria-label={`${team.teamName} takım detayını aç`}
+                    aria-label={t('company.tables.teamDetails', { name: team.teamName })}
                   >
                     {team.teamName}
                   </Link>
                 </td>
                 <td className="px-2 py-2.5 tabular-nums sm:table-cell">
                   <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                    Açık
+                    {t('company.tables.openTask')}
                   </span>
                   {team.openTaskCount}
                 </td>
                 <td className="px-2 py-2.5 tabular-nums sm:table-cell">
                   <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                    Tamamlanan
+                    {t('company.tables.completed')}
                   </span>
                   {team.completedTaskCount}
                 </td>
                 <td className="px-2 py-2.5 tabular-nums sm:table-cell">
                   <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                    Süresi dolan
+                    {t('company.tables.expiredShort')}
                   </span>
                   {team.expiredTaskCount}
                 </td>
                 <td className="px-2 py-2.5 tabular-nums sm:table-cell">
                   <span className="mb-1 block text-xs text-secondary-foreground sm:hidden">
-                    Tamamlanma
+                    {t('company.tables.completion')}
                   </span>
                   %{team.completionRate}
                 </td>
@@ -536,7 +559,7 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
       </div>
       {teams.length > TEAM_PAGE_SIZE && (
         <nav
-          aria-label="Takım sayfalama"
+          aria-label={t('company.tables.teamPagination')}
           className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-secondary-foreground sm:hidden"
         >
           <span className="tabular-nums" aria-live="polite">
@@ -547,7 +570,7 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
               type="button"
               onClick={() => setMobilePage((current) => Math.max(1, current - 1))}
               disabled={visibleMobilePage === 1}
-              aria-label="Önceki takım sayfası"
+              aria-label={t('company.tables.previousTeamPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -556,7 +579,7 @@ export function TeamComparisonTable({ teams }: { teams: Teams }) {
               type="button"
               onClick={() => setMobilePage((current) => Math.min(mobileTotalPages, current + 1))}
               disabled={visibleMobilePage === mobileTotalPages}
-              aria-label="Sonraki takım sayfası"
+              aria-label={t('company.tables.nextTeamPage')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />

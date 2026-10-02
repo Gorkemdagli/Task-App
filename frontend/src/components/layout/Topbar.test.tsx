@@ -8,6 +8,7 @@ import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUiStore } from '@/stores/uiStore';
 import { api, authApi } from '@/lib/api';
+import i18n, { LANGUAGE_STORAGE_KEY } from '@/i18n';
 import * as companyInvitationsService from '@/services/companyInvitations';
 
 vi.mock('@/services/companyInvitations', () => ({
@@ -72,7 +73,9 @@ describe('Topbar', () => {
   let getSpy: MockInstance;
   let postSpy: MockInstance;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    await i18n.changeLanguage('tr');
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
     useUiStore.setState({ mobileSheetOpen: false });
     document.documentElement.removeAttribute('data-theme');
@@ -151,6 +154,23 @@ describe('Topbar', () => {
     expect(
       screen.getByRole('button', { name: /Karanlık temaya geç|Aydınlık temaya geç/ }),
     ).toBeInTheDocument();
+  });
+
+  it('switches the interface to English and saves the selection', async () => {
+    const user = userEvent.setup();
+    renderTopbar(member);
+
+    const languageButton = screen.getByRole('button', { name: 'Dili İngilizce yap' });
+    expect(languageButton.querySelector('img')).toHaveAttribute('src', expect.stringContaining('tr.png'));
+    await user.click(languageButton);
+
+    expect(screen.getByRole('button', { name: 'Switch language to Turkish' }).querySelector('img'))
+      .toHaveAttribute('src', expect.stringContaining('us.png'));
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
+    await i18n.changeLanguage('tr');
   });
 
   it('theme toggle flips store + DOM attribute', async () => {

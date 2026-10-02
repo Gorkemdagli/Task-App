@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 type PageItem = number | 'ellipsis-left' | 'ellipsis-right';
 
@@ -34,21 +35,22 @@ export function TaskPagination({
   totalPages,
   total,
   pageSize = 15,
-  itemLabel = 'görev',
-  ariaLabel = 'Görev sayfaları',
+  itemLabel,
+  ariaLabel,
   onPageChange,
 }: TaskPaginationProps) {
+  const { t } = useTranslation();
   const rangeStart = total === undefined || total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = total === undefined ? 0 : Math.min(page * pageSize, total);
 
   return (
     <nav
-      aria-label={ariaLabel}
+      aria-label={ariaLabel ?? t('tasks.pagination.aria')}
       className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4"
     >
       {total !== undefined && (
         <span className="text-xs text-secondary-foreground">
-          {rangeStart}–{rangeEnd} / {total} {itemLabel}
+          {rangeStart}–{rangeEnd} / {total} {itemLabel ?? t('tasks.pagination.task', { count: total })}
         </span>
       )}
       <div className="ml-auto flex items-center gap-1">
@@ -59,7 +61,7 @@ export function TaskPagination({
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
-          Önceki
+            {t('tasks.pagination.previous')}
         </Button>
         {pageItems(page, totalPages).map((item) =>
           typeof item === 'number' ? (
@@ -68,7 +70,7 @@ export function TaskPagination({
               type="button"
               variant={item === page ? 'primary' : 'secondary'}
               size="sm"
-              aria-label={`Sayfa ${item}`}
+              aria-label={t('tasks.pagination.page', { page: item })}
               aria-current={item === page ? 'page' : undefined}
               onClick={() => onPageChange(item)}
             >
@@ -87,7 +89,7 @@ export function TaskPagination({
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
-          Sonraki
+            {t('tasks.pagination.next')}
         </Button>
       </div>
     </nav>

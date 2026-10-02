@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useTeamDashboard } from '@/hooks/queries/useTeamDashboard';
 import type { CompanyDashboardRange } from '@/services/companyDashboard';
 import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
@@ -15,11 +16,14 @@ function KpiCard({
   value: string | number;
   tooltip?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <article className="border-l border-border px-3 first:border-l-0">
       <p className="text-xs text-secondary-foreground">
         {label}
-        {tooltip ? <InfoTooltip label={`${label} açıklaması`} description={tooltip} /> : null}
+        {tooltip ? (
+          <InfoTooltip label={`${label} ${t('teams.dashboard.descriptionSuffix')}`} description={tooltip} />
+        ) : null}
       </p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </article>
@@ -67,10 +71,6 @@ function RiskCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function formatDuration(value: number | null): string {
-  return value === null ? 'Ölçüm yok' : `${value} gün`;
-}
-
 function TeamDashboardSkeleton() {
   return (
     <div data-testid="team-dashboard-skeleton" className="space-y-4" aria-busy="true">
@@ -86,6 +86,7 @@ function TeamDashboardSkeleton() {
 }
 
 export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: boolean }) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<CompanyDashboardRange>('30d');
   const dashboard = useTeamDashboard(teamId, range, enabled);
 
@@ -94,13 +95,13 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
   if (dashboard.isError || !dashboard.data) {
     return (
       <div role="alert" className="rounded-lg border border-border bg-card p-5">
-        <p className="text-sm text-priority-high">Takım dashboard verisi yüklenemedi.</p>
+        <p className="text-sm text-priority-high">{t('teams.dashboard.error')}</p>
         <button
           type="button"
           onClick={() => dashboard.refetch()}
           className="mt-3 rounded-md bg-primary px-3 py-2 text-sm font-medium text-black hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Tekrar dene
+          {t('teams.dashboard.retry')}
         </button>
       </div>
     );
@@ -114,14 +115,14 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
     <div
       data-testid="team-dashboard"
       role="tabpanel"
-      aria-label="Dashboard"
+      aria-label={t('teams.dashboard.ariaLabel')}
       className="space-y-4 md:space-y-6"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Takım Dashboardu</h1>
+          <h1 className="text-2xl font-semibold">{t('teams.dashboard.title')}</h1>
           <p className="mt-1 text-sm text-secondary-foreground">
-            Takımın güncel görev ve iş yükü özeti
+            {t('teams.dashboard.subtitle')}
           </p>
         </div>
         <div className="space-y-2">
@@ -129,37 +130,40 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
             htmlFor="team-dashboard-range"
             className="block text-xs font-medium text-secondary-foreground"
           >
-            Dönem aralığı
+            {t('teams.dashboard.period')}
           </label>
           <select
             id="team-dashboard-range"
-            aria-label="Dönem aralığı"
+            aria-label={t('teams.dashboard.period')}
             value={range}
             onChange={(event) => setRange(event.target.value as CompanyDashboardRange)}
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
           >
-            <option value="7d">Son 7 gün</option>
-            <option value="30d">Son 30 gün</option>
-            <option value="90d">Son 90 gün</option>
+            <option value="7d">{t('teams.dashboard.last7Days')}</option>
+            <option value="30d">{t('teams.dashboard.last30Days')}</option>
+            <option value="90d">{t('teams.dashboard.last90Days')}</option>
           </select>
         </div>
       </div>
 
       {dashboard.isFetching && (
         <p role="status" aria-busy="true" className="text-sm text-secondary-foreground">
-          Veriler güncelleniyor…
+          {t('teams.dashboard.updating')}
         </p>
       )}
 
       <DashboardHealth health={data.health} />
 
-      <div className="grid grid-cols-2 gap-y-4 border-y border-border bg-card/40 py-4 sm:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="Toplam üye" value={data.summary.totalUserCount} />
-        <KpiCard label="Toplam görev" value={data.summary.totalTaskCount} />
-        <KpiCard label="Açık görev" value={data.summary.openTaskCount} />
-        <KpiCard label="Tamamlanan görev" value={data.summary.completedTaskCount} />
-        <KpiCard label="Süresi dolan" value={data.summary.expiredTaskCount} />
-        <KpiCard label="Tamamlanma oranı" value={`%${data.summary.completionRate}`} />
+      <div className="grid grid-cols-2 gap-y-4 rounded-lg border border-border bg-card py-4 sm:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label={t('teams.dashboard.totalMembers')} value={data.summary.totalUserCount} />
+        <KpiCard label={t('teams.dashboard.totalTasks')} value={data.summary.totalTaskCount} />
+        <KpiCard label={t('teams.dashboard.openTasks')} value={data.summary.openTaskCount} />
+        <KpiCard label={t('teams.dashboard.completedTasks')} value={data.summary.completedTaskCount} />
+        <KpiCard label={t('teams.dashboard.expired')} value={data.summary.expiredTaskCount} />
+        <KpiCard
+          label={t('teams.dashboard.completionRate')}
+          value={t('teams.dashboard.percent', { value: data.summary.completionRate })}
+        />
       </div>
 
       <section
@@ -169,21 +173,26 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
         <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 lg:flex lg:items-center">
           <div className="col-span-2 min-w-0 lg:col-span-1 lg:w-[28%] lg:shrink-0 lg:pr-4">
             <h2 id="team-risk-heading" className="text-lg font-semibold">
-              Risk özeti
+              {t('teams.dashboard.riskSummary')}
             </h2>
-            <p className="mt-1 text-sm text-secondary-foreground">Bu takımın görev durumu</p>
+            <p className="mt-1 text-sm text-secondary-foreground">
+              {t('teams.dashboard.teamStatus')}
+            </p>
           </div>
           <div className="col-span-2 grid min-w-0 grid-cols-2 gap-y-4 sm:grid-cols-4 lg:flex-1 lg:gap-y-0">
-            <RiskCard label="Geciken görev" value={data.risk.overdueTaskCount} />
-            <RiskCard label="Yedi gün içinde" value={data.risk.dueNextSevenDaysTaskCount} />
-            <RiskCard label="Onay bekleyen" value={data.risk.pendingApprovalTaskCount} />
-            <RiskCard label="Süresi dolan" value={data.risk.expiredTaskCount} />
-            <RiskCard label="Engellenen görev" value={data.risk.blockedTaskCount ?? 0} />
+            <RiskCard label={t('teams.dashboard.overdue')} value={data.risk.overdueTaskCount} />
+            <RiskCard label={t('teams.dashboard.dueSevenDays')} value={data.risk.dueNextSevenDaysTaskCount} />
+            <RiskCard label={t('teams.dashboard.pendingApproval')} value={data.risk.pendingApprovalTaskCount} />
+            <RiskCard label={t('teams.dashboard.expired')} value={data.risk.expiredTaskCount} />
+            <RiskCard label={t('teams.dashboard.blocked')} value={data.risk.blockedTaskCount ?? 0} />
             <RiskCard
-              label="3 günden uzun engel"
+              label={t('teams.dashboard.blockedOverThreeDays')}
               value={data.risk.blockedOverThreeDaysTaskCount ?? 0}
             />
-            <RiskCard label="Engel oranı" value={`%${data.risk.blockedRate ?? 0}`} />
+            <RiskCard
+              label={t('teams.dashboard.blockedRate')}
+              value={t('teams.dashboard.percent', { value: data.risk.blockedRate ?? 0 })}
+            />
           </div>
         </div>
       </section>
@@ -196,51 +205,59 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-5">
           <div>
             <h2 id="team-flow-heading" className="text-lg font-semibold">
-              Akış metrikleri
+              {t('teams.dashboard.flowMetrics')}
             </h2>
             <p className="mt-1 text-sm text-secondary-foreground">
-              Seçili dönemde tamamlanan görevler ve mevcut WIP
+              {t('teams.dashboard.cycleTimeDescription')}
             </p>
           </div>
-          <KpiCard label="Ölçüm örneği" value={`n=${data.cycleTime.sampleSize}`} />
+          <KpiCard label={t('teams.dashboard.sampleSize')} value={`n=${data.cycleTime.sampleSize}`} />
         </div>
         <div className="grid grid-cols-2 gap-y-4 px-4 py-4 md:px-5 sm:grid-cols-3">
           <KpiCard
-            label="Median çevrim süresi"
-            value={formatDuration(data.cycleTime.median)}
-            tooltip="Tamamlanan görevlerin yarısının bu süreden kısa, yarısının uzun sürdüğünü gösterir."
+            label={t('teams.dashboard.medianCycleTime')}
+            value={data.cycleTime.median === null
+              ? t('teams.dashboard.noMeasurement')
+              : t('teams.dashboard.days', { count: data.cycleTime.median })}
+            tooltip={t('teams.dashboard.medianCycleTooltip')}
           />
           <KpiCard
-            label="P85 çevrim süresi"
-            value={formatDuration(data.cycleTime.p85)}
-            tooltip="Tamamlanan görevlerin %85’inin bu sürede veya daha kısa sürede tamamlandığını gösterir."
+            label={t('teams.dashboard.p85CycleTime')}
+            value={data.cycleTime.p85 === null
+              ? t('teams.dashboard.noMeasurement')
+              : t('teams.dashboard.days', { count: data.cycleTime.p85 })}
+            tooltip={t('teams.dashboard.p85CycleTooltip')}
           />
           <KpiCard
-            label="Lead time"
-            value={formatDuration(data.leadTime.median)}
-            tooltip="Görevin oluşturulmasından tamamlanmasına kadar geçen medyan süreyi gösterir."
+            label={t('teams.dashboard.leadTime')}
+            value={data.leadTime.median === null
+              ? t('teams.dashboard.noMeasurement')
+              : t('teams.dashboard.days', { count: data.leadTime.median })}
+            tooltip={t('teams.dashboard.leadTimeTooltip')}
           />
         </div>
         <div className="border-t border-border px-4 py-4 md:px-5">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-semibold">
-              Aging WIP
+              {t('teams.dashboard.agingWip')}
               <InfoTooltip
-                label="Aging WIP açıklaması"
-                description="Tamamlanmamış işlerin ne kadar süredir açık olduğunu gösterir."
+                label={`${t('teams.dashboard.agingWip')} ${t('teams.dashboard.descriptionSuffix')}`}
+                description={t('teams.dashboard.agingWipTooltip')}
               />
             </h3>
             <span className="text-xs text-secondary-foreground">
-              {data.agingWip.totalCount === 0 ? 'WIP yok' : `${data.agingWip.totalCount} görev`}
+              {data.agingWip.totalCount === 0
+                ? t('teams.dashboard.noWip')
+                : t('teams.dashboard.tasks', { count: data.agingWip.totalCount })}
             </span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
-              ['0–3 gün', data.agingWip.buckets.zeroToThree],
-              ['4–7 gün', data.agingWip.buckets.fourToSeven],
-              ['8–14 gün', data.agingWip.buckets.eightToFourteen],
-              ['15–30 gün', data.agingWip.buckets.fifteenToThirty],
-              ['30+ gün', data.agingWip.buckets.overThirty],
+              [t('teams.dashboard.age0to3'), data.agingWip.buckets.zeroToThree],
+              [t('teams.dashboard.age4to7'), data.agingWip.buckets.fourToSeven],
+              [t('teams.dashboard.age8to14'), data.agingWip.buckets.eightToFourteen],
+              [t('teams.dashboard.age15to30'), data.agingWip.buckets.fifteenToThirty],
+              [t('teams.dashboard.ageOver30'), data.agingWip.buckets.overThirty],
             ].map(([label, count]) => (
               <div key={label} className="rounded-md bg-muted/40 px-3 py-2">
                 <p className="text-xs text-secondary-foreground">{label}</p>
@@ -249,10 +266,10 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
             ))}
           </div>
           <p className="mt-3 text-xs text-secondary-foreground">
-            Ölçülemeyen (başlangıç tarihi yok): {data.agingWip.unknownCount}
+            {t('teams.dashboard.unmeasured', { count: data.agingWip.unknownCount })}
             <InfoTooltip
-              label="Ölçülemeyen işler açıklaması"
-              description="Başlangıç tarihi olmayan WIP görevleri bu sayıya dahil edilir; yaşları ölçülemez."
+              label={t('teams.dashboard.unmeasuredTooltipLabel')}
+              description={t('teams.dashboard.unmeasuredTooltip')}
             />
           </p>
         </div>
@@ -263,7 +280,7 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
           data-testid="team-dashboard-empty"
           className="rounded-lg border border-dashed border-border bg-card/40 p-8 text-center text-sm text-secondary-foreground"
         >
-          Bu takımda henüz görev yok. Grafikler görev eklendiğinde burada görünecek.
+          {t('teams.dashboard.noTasks')}
         </div>
       ) : (
         <>

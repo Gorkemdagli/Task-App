@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_commented'
@@ -62,42 +64,50 @@ export function notificationCopy(n: NotificationLike): string {
     case 'task_assigned': {
       const title = n.payload.taskTitle;
       const actor = (n.payload.actorName ?? '').trim();
-      return actor
-        ? `${actor} sana yeni bir görev atadı: ${title}`
-        : `Yeni bir görev atandı: ${title}`;
+      return i18n.t(actor ? 'notification.taskAssignedWithActor' : 'notification.taskAssigned', {
+        actor,
+        title,
+      });
     }
     case 'task_commented': {
       const actor = (n.payload.actorName ?? '').trim();
       const title = n.payload.taskTitle;
-      return actor
-        ? `${actor}, "${title}" görevine yorum yaptı`
-        : `"${title}" görevine yeni bir yorum eklendi`;
+      return i18n.t(actor ? 'notification.taskCommentedWithActor' : 'notification.taskCommented', {
+        actor,
+        title,
+      });
     }
     case 'message_received': {
       const actor = (n.payload.actorName ?? '').trim();
-      return actor ? `${actor} sana mesaj gönderdi` : 'Yeni mesaj';
+      return i18n.t(actor ? 'notification.messageWithActor' : 'notification.newMessage', { actor });
     }
     case 'company_invite_accepted':
     case 'company_invite_rejected': {
       const actor = (n.payload.actorName ?? '').trim() || 'Davetli';
-      const outcome = n.type === 'company_invite_accepted' ? 'kabul etti' : 'reddetti';
-      return `${actor}, ${n.payload.companyName} şirketine katılma davetini ${outcome}`;
+      return i18n.t(
+        n.type === 'company_invite_accepted'
+          ? 'notification.companyInviteAccepted'
+          : 'notification.companyInviteRejected',
+        { actor, companyName: n.payload.companyName },
+      );
     }
     case 'task_status_pending': {
       const title = n.payload.taskTitle;
       const proposer = (n.payload.proposedByName ?? '').trim();
       const status = n.payload.proposedStatus ? STATUS_LABEL[n.payload.proposedStatus] : '';
-      return proposer
-        ? `${proposer} "${title}" görevini "${status}" olarak değiştirmek istiyor. Onayın gerekiyor.`
-        : `"${title}" görevi için status değişikliği teklif edildi.`;
+      return i18n.t(
+        proposer ? 'notification.taskStatusPendingWithActor' : 'notification.taskStatusPending',
+        { proposer, title, status },
+      );
     }
     case 'task_status_changed': {
       const title = n.payload.taskTitle;
       const actor = (n.payload.actorName ?? '').trim();
       const newStatus = n.payload.newStatus ? STATUS_LABEL[n.payload.newStatus] : '';
-      return actor
-        ? `${actor}, "${title}" görevinin durumunu ${newStatus} olarak güncelledi`
-        : `"${title}" görevinin durumu ${newStatus} olarak güncellendi`;
+      return i18n.t(
+        actor ? 'notification.taskStatusChangedWithActor' : 'notification.taskStatusChanged',
+        { actor, title, status: newStatus },
+      );
     }
   }
 }

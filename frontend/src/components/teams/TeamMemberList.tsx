@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TeamMember } from '@/services/teams';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,7 @@ function initials(name: string): string {
 }
 
 export function TeamMemberList({ members, compact = false, renderAction }: TeamMemberListProps) {
+  const { t } = useTranslation();
   const visibleMembers = members.slice(0, MAX_RENDERED_RECORDS);
   return (
     <>
@@ -75,7 +77,9 @@ export function TeamMemberList({ members, compact = false, renderAction }: TeamM
         ))}
       </ul>
       {members.length > MAX_RENDERED_RECORDS && (
-        <p className="mt-2 text-xs text-muted-foreground">{RECORD_CAP_MESSAGE}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t('teams.members.recordCap', { defaultValue: RECORD_CAP_MESSAGE })}
+        </p>
       )}
     </>
   );

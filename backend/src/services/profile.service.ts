@@ -18,7 +18,7 @@ const profileSelect = {
   notifyTaskAssigned: true,
   notifyTaskCommented: true,
   notifyMessageReceived: true,
-  tenant: { select: { name: true } },
+  tenant: { select: { name: true, logoUrl: true } },
 } satisfies Prisma.UserSelect;
 
 type ProfileRow = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
@@ -27,6 +27,7 @@ export type CurrentUserProfile = {
   id: string;
   tenantId: string | null;
   tenantName: string | null;
+  tenantLogoUrl: string | null;
   email: string;
   fullName: string;
   displayId: string;
@@ -42,6 +43,7 @@ function toProfile(user: ProfileRow): CurrentUserProfile {
     id: user.id,
     tenantId: user.tenantId,
     tenantName: user.tenant?.name ?? null,
+    tenantLogoUrl: user.tenant?.logoUrl ?? null,
     email: user.email,
     fullName: user.fullName,
     displayId: user.displayId,

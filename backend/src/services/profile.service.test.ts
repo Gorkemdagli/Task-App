@@ -35,11 +35,44 @@ describe('profile.service', () => {
       id: registered.user.id,
       tenantId: null,
       tenantName: null,
+      tenantLogoUrl: null,
       email: 'tenantless-profile@example.com',
       avatarUrl: null,
       notifyTaskAssigned: true,
       notifyTaskCommented: true,
       notifyMessageReceived: true,
+    });
+  });
+
+  it('returns the logo belonging to the current user tenant', async () => {
+    const first = await register({
+      fullName: 'Tenant Logo User',
+      email: 'tenant-logo-profile@example.com',
+      password: 'hunter22',
+      companyName: 'Logo Tenant',
+    });
+    const second = await register({
+      fullName: 'Other Tenant User',
+      email: 'other-tenant-logo-profile@example.com',
+      password: 'hunter22',
+      companyName: 'Other Logo Tenant',
+    });
+    const firstLogoUrl = 'https://storage.test/logos/logo-tenant.webp';
+    const secondLogoUrl = 'https://storage.test/logos/other-logo-tenant.webp';
+    await prisma.tenant.update({
+      where: { id: first.user.tenantId! },
+      data: { logoUrl: firstLogoUrl },
+    });
+    await prisma.tenant.update({
+      where: { id: second.user.tenantId! },
+      data: { logoUrl: secondLogoUrl },
+    });
+
+    await expect(getCurrentProfile(first.user.id)).resolves.toMatchObject({
+      tenantLogoUrl: firstLogoUrl,
+    });
+    await expect(getCurrentProfile(second.user.id)).resolves.toMatchObject({
+      tenantLogoUrl: secondLogoUrl,
     });
   });
 

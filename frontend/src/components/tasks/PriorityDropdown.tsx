@@ -1,12 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { TaskPriority } from '@/hooks/tasks';
-
-const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  high: 'Yüksek',
-  medium: 'Orta',
-  low: 'Düşük',
-};
 
 const PRIORITY_BG: Record<TaskPriority, string> = {
   high: 'bg-priority-high text-white',
@@ -21,6 +16,7 @@ interface PriorityDropdownProps {
 }
 
 export function PriorityDropdown({ value, onChange, disabled }: PriorityDropdownProps) {
+  const { t } = useTranslation();
   return (
     // Dialog içinde: modal=false → Radix focus trap devre dışı,
     // Dialog'un onInteractOutside'ı dropdown item'ları "outside" sanıp kapatmasın.
@@ -31,11 +27,11 @@ export function PriorityDropdown({ value, onChange, disabled }: PriorityDropdown
           disabled={disabled}
           className="inline-flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-secondary-foreground transition-colors hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Öncelik:
+          {t('tasks.priority.label')}:
           <span
             className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium ${PRIORITY_BG[value]}`}
           >
-            {PRIORITY_LABEL[value]}
+            {t(`tasks.priority.${value}`)}
           </span>
           <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
@@ -63,7 +59,7 @@ export function PriorityDropdown({ value, onChange, disabled }: PriorityDropdown
                       : 'bg-priority-low'
                 }`}
               />
-              {PRIORITY_LABEL[p]}
+              {t(`tasks.priority.${p}`)}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TeamMember } from '@/services/teams';
 import { Button } from '@/components/ui/button';
 import { TeamMemberList } from '@/components/teams/TeamMemberList';
@@ -29,6 +30,7 @@ export function MemberList({
   canManageRoles,
   compact = false,
 }: MemberListProps) {
+  const { t } = useTranslation();
   const [pendingRemove, setPendingRemove] = useState<TeamMember | null>(null);
   const removeMember = useRemoveMember(teamId);
   const updateRole = useUpdateMemberRole(teamId);
@@ -36,7 +38,7 @@ export function MemberList({
   if (members.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-secondary-foreground">
-        Bu takımda henüz üye yok.
+        {t('teams.members.empty')}
       </div>
     );
   }
@@ -67,7 +69,9 @@ export function MemberList({
                       type="button"
                       className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs"
                     >
-                      {member.role === 'teamAdmin' ? 'Takım Admini' : 'Üye'}
+                      {member.role === 'teamAdmin'
+                        ? t('teams.members.teamAdmin')
+                        : t('teams.members.member')}
                       <ChevronDown className="h-3 w-3" />
                     </button>
                   </DropdownMenuTrigger>
@@ -75,14 +79,14 @@ export function MemberList({
                     <DropdownMenuItem
                       onSelect={() => updateRole.mutate({ userId: member.userId, role: 'member' })}
                     >
-                      Üye
+                      {t('teams.members.member')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() =>
                         updateRole.mutate({ userId: member.userId, role: 'teamAdmin' })
                       }
                     >
-                      Takım Admini
+                      {t('teams.members.teamAdmin')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -94,9 +98,9 @@ export function MemberList({
                   removeMember.reset();
                   setPendingRemove(member);
                 }}
-                aria-label={`${member.fullName} kullanıcısını çıkar`}
+                aria-label={t('teams.members.removeAria', { name: member.fullName })}
               >
-                Çıkar
+                {t('teams.members.remove')}
               </Button>
             </div>
           ) : null
@@ -112,7 +116,9 @@ export function MemberList({
         onConfirm={handleConfirm}
         loading={removeMember.isPending}
         error={
-          removeMember.isError ? getApiErrorMessage(removeMember.error, 'Üye çıkarılamadı.') : null
+          removeMember.isError
+            ? getApiErrorMessage(removeMember.error, t('teams.members.removeError'))
+            : null
         }
       />
     </>

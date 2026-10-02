@@ -33,6 +33,9 @@ import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
 import { authApi } from '@/lib/api';
 import { queryClient } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
+import usFlag from '@/assets/flags/us.png';
+import trFlag from '@/assets/flags/tr.png';
 
 /**
  * Topbar (FRONTEND.md §5.2):
@@ -48,6 +51,7 @@ export function Topbar() {
 }
 
 function TopbarContent() {
+  const { t, i18n } = useTranslation();
   const { mode, toggleMode } = useTheme();
   const { user, isCompanyAdmin } = useAuth();
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -123,7 +127,7 @@ function TopbarContent() {
           type="button"
           onClick={openMobileSheet}
           className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary md:hidden"
-          aria-label="Menüyü aç"
+          aria-label={t('Menüyü aç')}
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -135,7 +139,7 @@ function TopbarContent() {
           TaskFlow
         </Link>
 
-        <nav className="hidden items-center md:flex" aria-label="Birincil gezinme">
+        <nav className="hidden items-center md:flex" aria-label={t('Birincil gezinme')}>
           {topbarNav.map((item) => (
             <NavLink
               key={item.path}
@@ -151,7 +155,7 @@ function TopbarContent() {
             >
               {({ isActive }) => (
                 <>
-                  {item.label}
+              {t(item.label)}
                   {isActive && (
                     <span
                       aria-hidden
@@ -171,11 +175,10 @@ function TopbarContent() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label={
-                notificationCount > 0
-                  ? `Bildirimler (${notificationCount} okunmamış)`
-                  : 'Bildirimler'
-              }
+              aria-label={t(
+                notificationCount > 0 ? 'Bildirimler ({{count}} okunmamış)' : 'Bildirimler',
+                { count: notificationCount },
+              )}
               data-testid="notification-bell"
               className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
             >
@@ -199,7 +202,7 @@ function TopbarContent() {
               isRejectingInvitation={rejectInvitation.isPending}
               invitationError={
                 acceptInvitation.isError || rejectInvitation.isError
-                  ? 'Davet işlemi başarısız oldu.'
+                  ? t('Davet işlemi başarısız oldu.')
                   : undefined
               }
             />
@@ -209,8 +212,22 @@ function TopbarContent() {
         <Button
           variant="ghost"
           size="sm"
+          onClick={() => void i18n.changeLanguage(i18n.language === 'tr' ? 'en' : 'tr')}
+          aria-label={t(i18n.language === 'tr' ? 'Dili İngilizce yap' : 'Switch language to Turkish')}
+          className="h-10 w-10 p-0"
+        >
+          <img
+            src={i18n.language === 'tr' ? trFlag : usFlag}
+            alt=""
+            aria-hidden="true"
+            className="h-6 w-6"
+          />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={toggleMode}
-          aria-label={mode === 'dark' ? 'Aydınlık temaya geç' : 'Karanlık temaya geç'}
+          aria-label={t(mode === 'dark' ? 'Aydınlık temaya geç' : 'Karanlık temaya geç')}
           className="h-10 w-10 p-0"
         >
           {mode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -221,7 +238,7 @@ function TopbarContent() {
             <button
               type="button"
               className="ml-1 inline-flex h-10 items-center gap-2 rounded-md px-2 text-sm hover:bg-secondary"
-              aria-label="Kullanıcı menüsünü aç"
+              aria-label={t('Kullanıcı menüsünü aç')}
             >
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="bg-secondary text-xs font-semibold text-foreground">
@@ -229,41 +246,59 @@ function TopbarContent() {
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-sm font-medium text-foreground md:inline">
-                {user?.fullName ?? 'Kullanıcı'}
+                {user?.fullName ?? t('Kullanıcı')}
               </span>
               <ChevronDown className="hidden h-4 w-4 text-secondary-foreground md:inline" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={6} className="bg-card text-foreground">
-            <DropdownMenuLabel className="text-secondary-foreground">
-              {user?.email ?? '—'}
+          <DropdownMenuContent
+            align="end"
+            sideOffset={6}
+            className="w-[220px] rounded-xl border-border bg-popover p-2 text-popover-foreground shadow-xl"
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-3 px-2 py-2">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+                    {initials || '??'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {user?.fullName ?? t('Kullanıcı')}
+                  </p>
+                  <p className="truncate text-xs font-normal text-muted-foreground">
+                    {user?.email ?? '—'}
+                  </p>
+                </div>
+              </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuSeparator className="my-1 bg-border" />
             <DropdownMenuItem
               onSelect={() => null /* Navigation handled by Link below */}
-              className="focus:bg-secondary"
+              className="rounded-lg focus:bg-secondary"
               asChild
             >
-              <Link to="/profile" className="flex w-full items-center gap-2">
+              <Link to="/profile" className="flex w-full items-center gap-2 py-1">
                 <User className="h-4 w-4" />
-                Profil
+                {t('Profil')}
               </Link>
             </DropdownMenuItem>
             {isCompanyAdmin && (
-              <DropdownMenuItem asChild className="focus:bg-secondary">
-                <Link to="/company" className="flex w-full items-center gap-2">
+              <DropdownMenuItem asChild className="rounded-lg focus:bg-secondary">
+                <Link to="/company" className="flex w-full items-center gap-2 py-1">
                   <Settings className="h-4 w-4" />
-                  Şirket Yönetimi
+                  {t('Şirket Yönetimi')}
                 </Link>
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuSeparator className="my-1 bg-border" />
             <DropdownMenuItem
               onSelect={handleLogout}
-              className="text-priority-high focus:bg-secondary focus:text-priority-high"
+              className="rounded-lg text-priority-high focus:bg-secondary focus:text-priority-high"
             >
               <LogOut className="h-4 w-4" />
-              Oturumu Kapat
+              {t('Oturumu Kapat')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

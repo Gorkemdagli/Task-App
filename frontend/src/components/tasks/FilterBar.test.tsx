@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ActiveFilterChips, FilterBar } from './FilterBar';
+import i18n from '@/i18n';
 
 function renderWithUrl(initialUrl: string) {
   return render(
@@ -41,6 +42,22 @@ function renderWithAssignees() {
 describe('FilterBar URL sync', () => {
   beforeEach(() => {
     // useSearchParams needs Location; MemoryRouter handles it
+  });
+
+  it('switches shared task filters between English and Turkish', async () => {
+    const previousLanguage = i18n.language;
+    try {
+      await i18n.changeLanguage('en');
+      renderWithUrl('/tasks');
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
+      expect(screen.getByTestId('filter-status-todo')).toHaveTextContent('To do');
+
+      await i18n.changeLanguage('tr');
+      expect(screen.getByRole('heading', { name: 'Filtreler' })).toBeInTheDocument();
+      expect(screen.getByTestId('filter-status-todo')).toHaveTextContent('Yapılacak');
+    } finally {
+      await i18n.changeLanguage(previousLanguage);
+    }
   });
 
   it('reads status filter from initial URL', () => {

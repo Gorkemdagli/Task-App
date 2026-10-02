@@ -72,7 +72,7 @@ describe('PendingAckModal', () => {
 
   it('renders title with proposed status label', () => {
     renderModal();
-    expect(screen.getByText(/Status teklifi: Yapılıyor/)).toBeInTheDocument();
+    expect(screen.getByText(/Durum teklifi: Yapılıyor/)).toBeInTheDocument();
   });
 
   it('renders proposer name in description when pendingProposer exists', () => {
@@ -84,7 +84,7 @@ describe('PendingAckModal', () => {
 
   it('renders fallback description when pendingProposer missing', () => {
     renderModal({ task: { ...baseTask, pendingProposer: null } });
-    expect(screen.getByText(/Status değişikliği teklif edildi/)).toBeInTheDocument();
+    expect(screen.getByText(/Durum değişikliği teklif edildi/)).toBeInTheDocument();
   });
 
   it('lists all assignees', () => {

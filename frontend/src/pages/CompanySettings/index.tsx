@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Camera, UserRound } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,6 +56,7 @@ function CompanySettingsContent({
   createInvitation,
   cancelInvitation,
 }: CompanySettingsContentProps) {
+  const { t, i18n } = useTranslation();
   const teamsQuery = useTeams();
   const usersQuery = useCompanyUsers();
   const [name, setName] = useState(settings.name);
@@ -65,6 +67,7 @@ function CompanySettingsContent({
   const [userFeedback, setUserFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
+    isTranslationKey?: boolean;
   } | null>(null);
   const [invitationToCancel, setInvitationToCancel] = useState<CompanyInvitationAdminDTO | null>(
     null,
@@ -91,12 +94,12 @@ function CompanySettingsContent({
     if (!file) return;
     if (file.size > MAX_LOGO_SIZE) {
       setLogoPreview(null);
-      setLogoError('Logo dosyası 25 MB veya daha küçük olmalı.');
+      setLogoError('company.settings.logoSizeError');
       return;
     }
     if (!LOGO_TYPES.includes(file.type)) {
       setLogoPreview(null);
-      setLogoError('Logo JPEG, PNG veya WebP olmalı.');
+      setLogoError('company.settings.logoTypeError');
       return;
     }
     setLogoPreview(URL.createObjectURL(file));
@@ -114,18 +117,25 @@ function CompanySettingsContent({
     try {
       await createInvitation.mutateAsync(userIdentifier);
       setUserIdentifier('');
-      setUserFeedback({ type: 'success', message: 'Davet gönderildi.' });
+      setUserFeedback({
+        type: 'success',
+        message: 'company.settings.invitationSent',
+        isTranslationKey: true,
+      });
     } catch (error) {
       const code = getErrorCode(error);
-      let message = 'Davet gönderilemedi.';
+      let message = 'company.settings.invitationSendError';
+      let isTranslationKey = true;
       if (code === 'USER_NOT_FOUND') {
-        message = 'Kullanıcı bulunamadı.';
+        message = 'company.settings.userNotFound';
       } else if (code === 'INVITATION_ALREADY_PENDING') {
-        message = 'Bu kullanıcıya zaten bekleyen davet var.';
+        message = 'company.settings.invitationPending';
       } else {
-        message = getApiErrorMessage(error, message);
+        const fallback = t(message);
+        message = getApiErrorMessage(error, fallback);
+        isTranslationKey = message === fallback;
       }
-      setUserFeedback({ type: 'error', message });
+      setUserFeedback({ type: 'error', message, isTranslationKey });
     }
   };
 
@@ -134,11 +144,18 @@ function CompanySettingsContent({
     try {
       await cancelInvitation.mutateAsync(invitationToCancel.id);
       setInvitationToCancel(null);
-      setUserFeedback({ type: 'success', message: 'Davet iptal edildi.' });
+      setUserFeedback({
+        type: 'success',
+        message: 'company.settings.invitationCanceled',
+        isTranslationKey: true,
+      });
     } catch (error) {
+      const fallback = t('company.settings.invitationCancelError');
+      const message = getApiErrorMessage(error, fallback);
       setUserFeedback({
         type: 'error',
-        message: getApiErrorMessage(error, 'Davet iptal edilemedi.'),
+        message: message === fallback ? 'company.settings.invitationCancelError' : message,
+        isTranslationKey: message === fallback,
       });
     }
   };
@@ -151,9 +168,11 @@ function CompanySettingsContent({
   return (
     <section data-testid="company-settings-page" className="mx-auto w-full max-w-6xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-4xl font-bold leading-tight text-foreground">Şirket Ayarları</h1>
+        <h1 className="text-4xl font-bold leading-tight text-foreground">
+          {t('company.settings.title')}
+        </h1>
         <p className="text-sm text-secondary-foreground">
-          Şirket kimliği ve kullanıcı erişimini yönetin.
+          {t('company.settings.subtitle')}
         </p>
       </header>
 
@@ -165,16 +184,16 @@ function CompanySettingsContent({
           data-testid="company-settings-identity-rail"
           className="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-6"
         >
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center lg:flex-col lg:items-start">
+          <div className="flex flex-col items-center gap-5 text-center">
             <label
               htmlFor="company-logo-upload"
-              className="group relative block h-40 w-40 shrink-0 cursor-pointer self-center rounded-lg focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 lg:self-auto"
+              className="group relative block h-40 w-40 shrink-0 cursor-pointer self-center rounded-lg focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
             >
               <Avatar className="h-40 w-40 rounded-lg">
                 {logoPreview || settings.logoUrl ? (
                   <img
                     src={logoPreview ?? settings.logoUrl ?? undefined}
-                    alt={logoPreview ? 'Şirket logosu önizleme' : 'Şirket logosu'}
+                    alt={logoPreview ? t('company.settings.logoPreview') : t('company.settings.logo')}
                     className="aspect-square h-full w-full"
                   />
                 ) : (
@@ -186,14 +205,14 @@ function CompanySettingsContent({
               <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/60 px-2 text-center text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                 <Camera className="h-5 w-5" aria-hidden="true" />
                 {uploadLogo.isPending
-                  ? 'Yükleniyor…'
+                  ? t('company.settings.uploadLoading')
                   : logoPreview || settings.logoUrl
-                    ? 'Logoyu değiştir'
-                    : 'Logo yükle'}
+                    ? t('company.settings.changeLogo')
+                    : t('company.settings.uploadLogo')}
               </span>
               <Input
                 id="company-logo-upload"
-                aria-label="Şirket logosu"
+                aria-label={t('company.settings.logo')}
                 className="sr-only"
                 type="file"
                 accept={LOGO_TYPES.join(',')}
@@ -205,36 +224,36 @@ function CompanySettingsContent({
                 }}
               />
             </label>
-            <div className="min-w-0 space-y-1">
+          <div className="w-full min-w-0 space-y-1 text-center">
               <h2 className="break-words text-2xl font-semibold">{settings.name}</h2>
               <p className="break-all text-sm text-secondary-foreground">{settings.slug}</p>
             </div>
           </div>
           {logoError && (
             <p role="alert" className="mt-3 text-sm text-priority-high">
-              {logoError}
+              {t(logoError)}
             </p>
           )}
           {uploadLogo.isError && (
             <p role="alert" className="mt-3 text-sm text-priority-high">
-              Logo yüklenemedi.
+              {t('company.settings.logoUploadError')}
             </p>
           )}
           <div
             data-testid="company-settings-summary"
-            className="mt-5 space-y-3 border-t border-border pt-5"
+          className="mt-5 space-y-3 border-t border-border pt-5 text-center"
           >
             <div>
-              <h3 className="text-sm font-semibold">Şirket durumu</h3>
-              <p className="text-sm">Mevcut</p>
+              <h3 className="text-sm font-semibold">{t('company.settings.status')}</h3>
+              <p className="text-sm">{t('company.settings.current')}</p>
             </div>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
+          <dl className="grid grid-cols-2 gap-3 text-center text-sm">
               <div>
-                <dt className="text-secondary-foreground">Takım sayısı</dt>
+                <dt className="text-secondary-foreground">{t('company.settings.teamCount')}</dt>
                 <dd className="font-semibold">{teamCount}</dd>
               </div>
               <div>
-                <dt className="text-secondary-foreground">Üye sayısı</dt>
+                <dt className="text-secondary-foreground">{t('company.settings.memberCount')}</dt>
                 <dd className="font-semibold">{memberCount}</dd>
               </div>
             </dl>
@@ -246,10 +265,10 @@ function CompanySettingsContent({
           className="h-full min-w-0 rounded-lg border border-border bg-card p-6"
         >
           <form onSubmit={handleSettingsSubmit} className="space-y-5">
-            <h2 className="text-lg font-semibold">Şirket bilgileri</h2>
+            <h2 className="text-lg font-semibold">{t('company.settings.profile')}</h2>
             <div className="space-y-2">
               <label htmlFor="company-name" className="text-sm font-medium">
-                Şirket adı
+                {t('company.settings.name')}
               </label>
               <Input
                 id="company-name"
@@ -259,11 +278,11 @@ function CompanySettingsContent({
             </div>
             <div className="space-y-2">
               <label htmlFor="company-description" className="text-sm font-medium">
-                Şirket açıklaması
+                {t('company.settings.description')}
               </label>
               <textarea
                 id="company-description"
-                aria-label="Şirket açıklaması"
+                aria-label={t('company.settings.description')}
                 maxLength={500}
                 rows={3}
                 value={description}
@@ -274,27 +293,27 @@ function CompanySettingsContent({
             </div>
             <div className="space-y-2">
               <label htmlFor="company-slug" className="text-sm font-medium">
-                Şirket slug
+                {t('company.settings.slug')}
               </label>
               <Input
                 id="company-slug"
-                aria-label="Şirket slug"
+                aria-label={t('company.settings.slug')}
                 aria-describedby="company-slug-description"
                 value={settings.slug}
                 readOnly
               />
               <p id="company-slug-description" className="text-xs text-secondary-foreground">
-                Salt okunur şirket kimliği.
+                {t('company.settings.readonlySlug')}
               </p>
             </div>
             {updateSettings.isError && (
               <p role="alert" className="text-sm text-priority-high">
-                Şirket değişiklikleri kaydedilemedi.
+                {t('company.settings.saveError')}
               </p>
             )}
             <div className="flex justify-end">
               <Button type="submit" loading={updateSettings.isPending}>
-                Şirket değişikliklerini kaydet
+                {t('company.settings.save')}
               </Button>
             </div>
           </form>
@@ -310,22 +329,22 @@ function CompanySettingsContent({
           data-testid="company-settings-invitation-band"
           className="space-y-4"
         >
-          <h2 className="text-lg font-semibold">Davet gönder</h2>
+          <h2 className="text-lg font-semibold">{t('company.settings.invitationTitle')}</h2>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="space-y-2">
               <label htmlFor="company-user-identifier" className="text-sm font-medium">
-                Kullanıcı display ID veya e-posta
+                {t('company.settings.identifier')}
               </label>
               <Input
                 id="company-user-identifier"
-                aria-label="Kullanıcı display ID veya e-posta"
-                placeholder="A3X9K veya user@example.com"
+                aria-label={t('company.settings.identifier')}
+                placeholder={t('company.settings.identifierPlaceholder')}
                 value={userIdentifier}
                 onChange={(event) => setUserIdentifier(event.target.value)}
               />
             </div>
             <Button type="submit" loading={createInvitation.isPending} className="w-full lg:w-auto">
-              Davet Gönder
+              {t('company.settings.sendInvitation')}
             </Button>
           </div>
           {userFeedback && (
@@ -335,7 +354,7 @@ function CompanySettingsContent({
                 userFeedback.type === 'success' ? 'text-priority-low' : 'text-priority-high'
               }`}
             >
-              {userFeedback.message}
+              {userFeedback.isTranslationKey ? t(userFeedback.message) : userFeedback.message}
             </p>
           )}
         </form>
@@ -345,9 +364,9 @@ function CompanySettingsContent({
             className="space-y-4 overflow-hidden border-t border-border pt-6"
           >
             <div>
-              <h2 className="text-lg font-semibold">Bekleyen davetler</h2>
+              <h2 className="text-lg font-semibold">{t('company.settings.pendingInvitations')}</h2>
               <p className="text-sm text-secondary-foreground">
-                Henüz kabul edilmemiş şirket davetleri.
+                {t('company.settings.noAcceptedInvitations')}
               </p>
             </div>
             {invitations.isPending ? (
@@ -355,11 +374,11 @@ function CompanySettingsContent({
                 data-testid="company-invitations-loading"
                 className="text-sm text-secondary-foreground"
               >
-                Davetler yükleniyor…
+                {t('company.settings.invitationsLoading')}
               </p>
             ) : invitations.isError ? (
               <p role="alert" className="text-sm text-priority-high">
-                Davetler yüklenemedi.
+                {t('company.settings.invitationsError')}
               </p>
             ) : invitations.data && invitations.data.length > 0 ? (
               <ul data-testid="company-invitations-list" className="space-y-2">
@@ -381,8 +400,10 @@ function CompanySettingsContent({
                           {invitation.recipientEmail} · {invitation.recipientDisplayId}
                         </p>
                         <p className="break-words text-xs text-secondary-foreground">
-                          Son geçerlilik:{' '}
-                          {new Intl.DateTimeFormat('tr-TR').format(new Date(invitation.expiresAt))}
+                          {t('company.settings.expires')}{' '}
+                          {new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-US' : 'tr-TR').format(
+                            new Date(invitation.expiresAt),
+                          )}
                         </p>
                       </div>
                     </div>
@@ -393,14 +414,14 @@ function CompanySettingsContent({
                       className="shrink-0 self-start sm:self-auto"
                       onClick={() => setInvitationToCancel(invitation)}
                     >
-                      İptal
+                      {t('company.settings.cancel')}
                     </Button>
                   </li>
                 ))}
               </ul>
             ) : (
               <p data-testid="company-invitations-empty" className="text-sm text-secondary-foreground">
-                Bekleyen davet yok.
+                {t('company.settings.noPendingInvitations')}
               </p>
             )}
           </section>
@@ -414,14 +435,16 @@ function CompanySettingsContent({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Daveti iptal et</DialogTitle>
+            <DialogTitle>{t('company.settings.cancelDialogTitle')}</DialogTitle>
             <DialogDescription>
-              {invitationToCancel?.recipientEmail} adresine gönderilen davet iptal edilecek.
+              {t('company.settings.cancelDialogDescription', {
+                email: invitationToCancel?.recipientEmail,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setInvitationToCancel(null)}>
-              Vazgeç
+              {t('company.settings.dismiss')}
             </Button>
             <Button
               type="button"
@@ -429,7 +452,7 @@ function CompanySettingsContent({
               loading={cancelInvitation.isPending}
               onClick={handleCancelInvitation}
             >
-              Daveti iptal et
+              {t('company.settings.cancelInvitation')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -439,6 +462,7 @@ function CompanySettingsContent({
 }
 
 export function CompanySettingsContentPage() {
+  const { t } = useTranslation();
   const settingsQuery = useCompanySettings();
   const updateSettings = useUpdateCompanySettings();
   const uploadLogo = useUploadCompanyLogo();
@@ -447,13 +471,13 @@ export function CompanySettingsContentPage() {
   const cancelInvitation = useCancelCompanyInvitation();
 
   if (settingsQuery.isLoading) {
-    return <p className="text-sm text-secondary-foreground">Yükleniyor…</p>;
+    return <p className="text-sm text-secondary-foreground">{t('company.settings.loading')}</p>;
   }
 
   if (settingsQuery.isError || !settingsQuery.data) {
     return (
       <p role="alert" className="text-sm text-priority-high">
-        Şirket ayarları yüklenemedi.
+        {t('company.settings.error')}
       </p>
     );
   }

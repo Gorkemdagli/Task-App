@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Archive,
   ArrowRight,
@@ -15,19 +16,17 @@ import './MotionSection.css';
 
 gsap.registerPlugin(useGSAP);
 
-const statement =
-  'İşleri netleştirin, ekibinizi aynı sayfada buluşturun, ilerlemeyi görün ve tamamlananları güvende tutun.';
-
-const steps = [
-  { title: 'Görevi aç', copy: 'Yeni bir göreve dönüştür.' },
-  { title: 'Sorumluyu belirle', copy: 'Doğru kişiye atayın, netlik sağlayın.' },
-  { title: 'Görevde konuş', copy: 'Tüm paydaşları aynı yerde.' },
-  { title: 'Durumu ilerlet', copy: 'Süreci şeffaf şekilde yönetin.' },
-  { title: 'Arşivde koru', copy: 'Tamamlanan işleri güvenle saklayın.' },
-] as const;
-
 export function MotionSection() {
+  const { t } = useTranslation();
   const scope = useRef<HTMLElement>(null);
+  const statement = t('landing.workflow.statement');
+  const steps = [
+    { title: t('landing.workflow.step1Title'), copy: t('landing.workflow.step1Copy') },
+    { title: t('landing.workflow.step2Title'), copy: t('landing.workflow.step2Copy') },
+    { title: t('landing.workflow.step3Title'), copy: t('landing.workflow.step3Copy') },
+    { title: t('landing.workflow.step4Title'), copy: t('landing.workflow.step4Copy') },
+    { title: t('landing.workflow.step5Title'), copy: t('landing.workflow.step5Copy') },
+  ];
 
   useGSAP(
     () => {
@@ -47,14 +46,13 @@ export function MotionSection() {
       <span className="workflow-snap-anchor" aria-hidden="true" />
       <div className="landing-section-shell">
         <div className="landing-lifecycle-intro">
-          <h2 id="motion-title" aria-label="Bir görev açılır. Herkes ne olacağını bilir.">
-            Bir görev açılır. <br />
-            <span className="landing-lifecycle-heading-line--wide">Herkes ne olacağını bilir.</span>
+          <h2 id="motion-title" aria-label={t('landing.workflow.headline')}>
+            {t('landing.workflow.headlineFirst')} <br />
+            <span className="landing-lifecycle-heading-line--wide">{t('landing.workflow.headlineSecond')}</span>
           </h2>
           <div className="landing-lifecycle-intro__aside">
             <p>
-              İşleri netleştirin, ekibinizi aynı sayfada buluşturun, ilerlemeyi görün ve
-              tamamlananları güvende tutun.
+              {statement}
             </p>
           </div>
         </div>
@@ -68,7 +66,7 @@ export function MotionSection() {
         </p>
 
         <div className="workflow-story" data-testid="lifecycle-ribbon">
-          <ol className="workflow-steps" aria-label="Görev yaşam döngüsü">
+          <ol className="workflow-steps" aria-label={t('landing.workflow.stepsLabel')}>
             {steps.map((step, index) => (
               <li key={step.title}>
                 <span>{String(index + 1).padStart(2, '0')}</span>
@@ -82,27 +80,27 @@ export function MotionSection() {
             <header className="workflow-toolbar">
               <span>
                 <LayoutDashboard aria-hidden />
-                <strong>Ürün Ekibi</strong>
-                <span className="workflow-toolbar-divider">/</span>Görevler
+                <strong>{t('landing.workflow.productTeam')}</strong>
+                <span className="workflow-toolbar-divider">/</span>{t('landing.workflow.tasks')}
               </span>
-              <small>Örnek çalışma alanı</small>
+              <small>{t('landing.workflow.workspace')}</small>
             </header>
             <div className="workflow-workspace">
-              <article className="workflow-board" data-motion-frame aria-label="Görev oluşturuldu">
+              <article className="workflow-board" data-motion-frame aria-label={t('landing.workflow.boardCreated')}>
                 <div className="workflow-board-title">
-                  <h3>Her işin yeri belli.</h3>
-                  <span>Kanban görünümü</span>
+                  <h3>{t('landing.workflow.boardHeadline')}</h3>
+                  <span>{t('landing.workflow.boardView')}</span>
                 </div>
                 <div className="workflow-columns">
                   <div className="workflow-column">
                     <h4>
                       <Circle aria-hidden />
-                      Yapılacak<span>2</span>
+                      {t('landing.workflow.todo')}<span>2</span>
                     </h4>
                     <div className="workflow-card">
-                      <small>Görev oluşturuldu</small>
-                      <strong>Bildirim tercihlerini belirle</strong>
-                      <p>Önemli güncellemeleri netleştir.</p>
+                      <small>{t('landing.workflow.boardCreated')}</small>
+                      <strong>{t('landing.workflow.notificationPreferences')}</strong>
+                      <p>{t('landing.workflow.importantUpdates')}</p>
                       <div className="workflow-card-meta">
                         <span className="workflow-avatar" aria-hidden>
                           MK
@@ -111,24 +109,24 @@ export function MotionSection() {
                       </div>
                     </div>
                     <div className="workflow-card workflow-card--quiet">
-                      <strong>Mevcut akışı incele</strong>
+                      <strong>{t('landing.workflow.reviewCurrentFlow')}</strong>
                       <div className="workflow-card-meta">
                         <CalendarDays aria-hidden />
-                        <span>22 Nis</span>
+                        <span>{t('landing.workflow.reviewDate')}</span>
                       </div>
                     </div>
                   </div>
                   <div className="workflow-column">
                     <h4>
                       <Circle aria-hidden />
-                      Yapılıyor<span>1</span>
+                      {t('landing.workflow.doing')}<span>1</span>
                     </h4>
                     <div className="workflow-card workflow-card--selected">
                       <small>
-                        Seçili görev <ArrowRight aria-hidden />
+                        {t('landing.workflow.selectedTask')} <ArrowRight aria-hidden />
                       </small>
-                      <strong>Bildirim akışını sadeleştir</strong>
-                      <p>Kullanıcılara giden bildirimleri daha anlaşılır hale getirelim.</p>
+                      <strong>{t('landing.features.taskTitle')}</strong>
+                      <p>{t('landing.workflow.selectedTaskCopy')}</p>
                       <div className="workflow-card-meta">
                         <span className="workflow-avatar" aria-hidden>
                           ZY
@@ -141,11 +139,11 @@ export function MotionSection() {
                   <div className="workflow-column">
                     <h4>
                       <CheckCircle2 aria-hidden />
-                      Yapıldı<span>1</span>
+                      {t('landing.workflow.done')}<span>1</span>
                     </h4>
                     <div className="workflow-card workflow-card--quiet">
-                      <small>Tamamlandı</small>
-                      <strong>Bildirim metinlerini düzenle</strong>
+                      <small>{t('landing.workflow.completed')}</small>
+                      <strong>{t('landing.workflow.editNotificationText')}</strong>
                       <div className="workflow-card-meta">
                         <span className="workflow-avatar" aria-hidden>
                           MK
@@ -160,43 +158,42 @@ export function MotionSection() {
               <article
                 className="workflow-detail is-active"
                 data-motion-frame
-                aria-label="Seçili görev ayrıntıları"
+                aria-label={t('landing.workflow.selectedTaskDetails')}
               >
                 <header>
                   <span>TASK-2847</span>
-                  <span className="workflow-status">Yapılıyor</span>
+                  <span className="workflow-status">{t('landing.workflow.doing')}</span>
                 </header>
-                <h3>Bildirim akışını sadeleştir</h3>
-                <p>Kullanıcılara giden bildirimleri daha anlaşılır ve sade hale getirelim.</p>
+                <h3>{t('landing.features.taskTitle')}</h3>
+                <p>{t('landing.workflow.editNotificationCopy')}</p>
                 <dl>
                   <div>
-                    <dt>Sorumlu</dt>
+                    <dt>{t('landing.workflow.assignee')}</dt>
                     <dd>Zeynep Yılmaz</dd>
                   </div>
                   <div>
-                    <dt>Son tarih</dt>
+                    <dt>{t('landing.workflow.dueDate')}</dt>
                     <dd>
                       <CalendarDays aria-hidden />
-                      24 Nis 2025
+                      {t('landing.workflow.dueDateValue')}
                     </dd>
                   </div>
                   <div>
-                    <dt>Öncelik</dt>
-                    <dd>Yüksek</dd>
+                    <dt>{t('landing.workflow.priority')}</dt>
+                    <dd>{t('landing.workflow.high')}</dd>
                   </div>
                 </dl>
                 <div className="workflow-comments">
                   <h4>
                     <MessageCircle aria-hidden />
-                    Konuşma<span>2 yorum</span>
+                    {t('landing.workflow.comments')}<span>{t('landing.workflow.commentCount')}</span>
                   </h4>
                   <div>
                     <span className="workflow-avatar" aria-hidden>
                       MK
                     </span>
                     <p>
-                      <strong>Mert Kaya</strong>Tasarım taslağını paylaştım. Görüşlerinizi
-                      bekliyorum.
+                      <strong>Mert Kaya</strong>{t('landing.workflow.firstComment')}
                     </p>
                   </div>
                   <div>
@@ -204,7 +201,7 @@ export function MotionSection() {
                       ZY
                     </span>
                     <p>
-                      <strong>Zeynep Yılmaz</strong>Harika, birkaç küçük not ekledim.
+                      <strong>Zeynep Yılmaz</strong>{t('landing.workflow.secondComment')}
                     </p>
                   </div>
                 </div>
@@ -212,17 +209,17 @@ export function MotionSection() {
             </div>
           </div>
 
-          <article className="workflow-archive" data-motion-frame>
+          <article className="workflow-archive">
             <span className="workflow-archive-icon">
               <Archive aria-hidden />
             </span>
             <div>
-              <h3>Görev tamamlandı. Bağlamı kaldı.</h3>
-              <p>Tamamlanan iş güvenle saklanır; geçmişi kaybolmaz.</p>
+              <h3>{t('landing.workflow.archiveHeadline')}</h3>
+              <p>{t('landing.workflow.archiveCopy')}</p>
             </div>
             <span className="workflow-archive-state">
               <CheckCircle2 aria-hidden />
-              Arşivde
+              {t('landing.workflow.archived')}
             </span>
           </article>
         </div>

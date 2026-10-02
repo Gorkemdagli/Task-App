@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_CAP_MESSAGE } from '@/lib/listLimits';
+import i18n from '@/i18n';
 import type { CompanyDashboard as CompanyDashboardData } from '@/services/companyDashboard';
 import { CompanyDashboard } from './CompanyDashboard';
 
@@ -168,7 +169,8 @@ function renderDashboard() {
 }
 
 describe('CompanyDashboard', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('tr');
     mocks.useTeams.mockReset();
     mocks.useCompanyDashboard.mockReset();
     mocks.useTeams.mockReturnValue({ data: teams, isLoading: false, isError: false });
@@ -721,5 +723,34 @@ describe('CompanyDashboard', () => {
       'lg:max-h-52',
       'lg:overflow-y-auto',
     );
+  });
+});
+
+describe('CompanyDashboard localization', () => {
+  it('renders English copy and switches back to Turkish', async () => {
+    mocks.useTeams.mockReturnValue({ data: teams });
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: allDashboard,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    try {
+      await act(() => i18n.changeLanguage('en'));
+      renderDashboard();
+
+      expect(screen.getByRole('heading', { name: 'Company dashboard' })).toBeVisible();
+      expect(screen.getByRole('combobox', { name: 'Date range' })).toBeVisible();
+      expect(screen.getByRole('heading', { name: 'Created and completed' })).toBeVisible();
+      expect(screen.getByText('To do: 7 tasks, 35%')).toBeVisible();
+
+      await act(() => i18n.changeLanguage('tr'));
+      expect(screen.getByRole('heading', { name: 'Şirket Dashboardu' })).toBeVisible();
+      expect(screen.getByRole('combobox', { name: 'Dönem aralığı' })).toBeVisible();
+    } finally {
+      await act(() => i18n.changeLanguage('tr'));
+    }
   });
 });

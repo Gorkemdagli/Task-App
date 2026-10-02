@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { AvatarStack } from './AssigneeAvatarStack';
 
@@ -61,11 +62,12 @@ export function AssigneePicker({
   members,
   value,
   onChange,
-  label = 'Atanan Kişiler',
+  label,
   minSelected = 0,
   disabled,
   invalid,
 }: AssigneePickerProps) {
+  const { t } = useTranslation();
   const selectedSet = new Set(value);
   const selectedMembers = value
     .map((id) => members.find((m) => m.id === id))
@@ -84,14 +86,14 @@ export function AssigneePicker({
 
   const triggerLabel =
     selectedMembers.length === 0
-      ? 'Kişi Ekle'
+      ? t('tasks.assignee.add')
       : selectedMembers.length === 1
         ? selectedMembers[0].fullName
-        : `${selectedMembers.length} kişi seçildi`;
+        : t('tasks.assignee.selected', { count: selectedMembers.length });
 
   return (
     <div>
-      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
+      <label className="mb-1 block text-xs text-muted-foreground">{label ?? t('tasks.assignee.people')}</label>
       {/* Dialog içinde Radix DropdownMenu modal=false — focus trap + onInteractOutside çakışmasını önler */}
       <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
@@ -120,7 +122,7 @@ export function AssigneePicker({
             className="z-50 min-w-[220px] max-h-60 overflow-auto rounded-md border border-border bg-card text-card-foreground shadow-panel animate-in fade-in slide-in-from-top-1"
           >
             {members.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">Takım üyesi yok</div>
+              <div className="px-3 py-2 text-xs text-muted-foreground">{t('tasks.assignee.none')}</div>
             ) : (
               members.map((m) => {
                 const checked = selectedSet.has(m.id);
@@ -161,7 +163,7 @@ export function AssigneePicker({
               <span className="max-w-[140px] truncate">{m.fullName}</span>
               <button
                 type="button"
-                aria-label={`${m.fullName} kaldır`}
+                    aria-label={t('tasks.assignee.remove', { name: m.fullName })}
                 disabled={value.length <= minSelected}
                 onClick={() => remove(m.id)}
                 className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"

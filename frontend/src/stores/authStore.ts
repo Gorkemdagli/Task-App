@@ -13,6 +13,7 @@ export interface AuthUser {
   // Display name of the tenant (e.g. "Acme A.Ş."). Optional — populated
   // by login/me flows when backend returns it; null until then.
   tenantName?: string | null;
+  tenantLogoUrl?: string | null;
 }
 
 interface AuthState {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { AxiosError } from 'axios';
 import { useCreateTask } from '@/hooks/tasks';
@@ -15,6 +16,7 @@ interface CreateTaskDialogProps {
 }
 
 export function CreateTaskDialog({ open, onOpenChange, teamId, members }: CreateTaskDialogProps) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [scopeText, setScopeText] = useState('');
@@ -70,7 +72,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
       const msg =
         ax.response?.data?.message ??
         ax.response?.data?.issues?.[0]?.message ??
-        'Görev oluşturulamadı';
+        t('tasks.create.error');
       setError(msg);
     }
   };
@@ -88,11 +90,11 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
           className="fixed left-1/2 top-1/2 z-50 max-h-screen w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-card p-6 text-card-foreground shadow-modal animate-in fade-in zoom-in-95"
         >
           <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-4 flex items-center justify-between bg-card px-6 pb-2 pt-6">
-            <Dialog.Title className="text-lg font-semibold">Yeni Görev</Dialog.Title>
+            <Dialog.Title className="text-lg font-semibold">{t('tasks.create.title')}</Dialog.Title>
             <Dialog.Close asChild>
               <button
                 type="button"
-                aria-label="Kapat"
+                aria-label={t('tasks.create.close')}
                 className="shrink-0 rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <span aria-hidden="true" className="text-xl leading-none">×</span>
@@ -101,7 +103,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Başlık *</label>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.create.taskTitle')}</label>
               <input
                 type="text"
                 value={title}
@@ -114,7 +116,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Açıklama</label>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.create.description')}</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -125,7 +127,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
             </div>
             <div>
               <label htmlFor="task-create-scope" className="mb-1 block text-xs text-muted-foreground">
-                Kapsam (her satır bir madde, isteğe bağlı)
+                {t('tasks.create.scope')}
               </label>
               <textarea
                 id="task-create-scope"
@@ -137,7 +139,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
             </div>
             <div>
               <label htmlFor="task-create-expected-output" className="mb-1 block text-xs text-muted-foreground">
-                Beklenen çıktı (isteğe bağlı)
+                {t('tasks.create.output')}
               </label>
               <textarea
                 id="task-create-expected-output"
@@ -150,7 +152,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Öncelik</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.create.priority')}</label>
                 <PriorityDropdown value={priority} onChange={setPriority} />
               </div>
               <DeadlinePicker
@@ -165,7 +167,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 className="mb-1 block text-xs text-muted-foreground"
                 htmlFor="task-estimate-minutes"
               >
-                Tahmini süre (dakika, isteğe bağlı)
+                {t('tasks.create.estimate')}
               </label>
               <input
                 id="task-estimate-minutes"
@@ -189,7 +191,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 data-testid="assignee-required-hint"
                 className="text-xs text-destructive"
               >
-                En az bir kişi seçin
+                {t('tasks.create.assigneeRequired')}
               </p>
             )}
             {error && (
@@ -207,7 +209,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                   type="button"
                   className="h-10 rounded-md border border-border bg-secondary px-4 text-sm text-secondary-foreground transition-colors hover:border-primary/50"
                 >
-                  İptal
+                  {t('tasks.create.cancel')}
                 </button>
               </Dialog.Close>
               <button
@@ -215,7 +217,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 disabled={submitDisabled}
                 className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {create.isPending ? 'Oluşturuluyor…' : 'Görev Oluştur'}
+                {create.isPending ? t('tasks.create.submitting') : t('tasks.create.submit')}
               </button>
             </div>
           </form>

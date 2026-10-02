@@ -59,7 +59,7 @@ function renderDialog(overrides: Partial<Parameters<typeof ProposeConfirmDialog>
 describe('ProposeConfirmDialog', () => {
   it('renders title with task title and target status', () => {
     renderDialog();
-    expect(screen.getByText(/Status değişikliği teklif et/)).toBeInTheDocument();
+    expect(screen.getByText(/Durum değişikliği teklif et/)).toBeInTheDocument();
     expect(
       screen.getByText(/"Login bug" görevini "Yapılıyor" olarak değiştirmek istiyorsun/),
     ).toBeInTheDocument();

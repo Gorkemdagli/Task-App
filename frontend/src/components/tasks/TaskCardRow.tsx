@@ -1,4 +1,5 @@
 import { Flag } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { Task, TaskPriority } from '@/hooks/tasks';
@@ -6,22 +7,10 @@ import { AssigneeAvatarStack } from './AssigneeAvatarStack';
 import { PendingStatusBadge } from './PendingStatusBadge';
 import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
 
-const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  high: 'Yüksek',
-  medium: 'Orta',
-  low: 'Düşük',
-};
-
 const PRIORITY_COLOR: Record<TaskPriority, string> = {
   high: 'text-priority-high',
   medium: 'text-priority-medium',
   low: 'text-priority-low',
-};
-
-const STATUS_LABEL: Record<Task['status'], string> = {
-  todo: 'Yapılacak',
-  in_progress: 'Yapılıyor',
-  done: 'Yapıldı',
 };
 
 const STATUS_COLOR: Record<Task['status'], string> = {
@@ -34,6 +23,7 @@ const TASK_GRID =
   'lg:grid-cols-[minmax(14rem,1.7fr)_minmax(7rem,.85fr)_5rem_minmax(6rem,.75fr)_5rem_6.5rem]';
 
 export function TaskListHeader() {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="task-list-header"
@@ -42,17 +32,18 @@ export function TaskListHeader() {
         TASK_GRID,
       )}
     >
-      <span>Başlık</span>
-      <span>Durum</span>
-      <span>Öncelik</span>
-      <span>Takım</span>
-      <span>Atanan</span>
-      <span>Bitiş Tarihi</span>
+      <span>{t('tasks.columns.title')}</span>
+      <span>{t('tasks.columns.status')}</span>
+      <span>{t('tasks.columns.priority')}</span>
+      <span>{t('tasks.columns.team')}</span>
+      <span>{t('tasks.columns.assignee')}</span>
+      <span>{t('tasks.columns.deadline')}</span>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: Task['status'] }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -69,18 +60,19 @@ function StatusBadge({ status }: { status: Task['status'] }) {
           status === 'done' && 'bg-status-done',
         )}
       />
-      {STATUS_LABEL[status]}
+      {t(`tasks.status.${status}`)}
     </span>
   );
 }
 
 function PriorityBadge({ priority }: { priority: TaskPriority }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn('inline-flex items-center gap-1 text-xs font-medium', PRIORITY_COLOR[priority])}
     >
       <Flag className="h-3.5 w-3.5 fill-current" aria-hidden />
-      {PRIORITY_LABEL[priority]}
+      {t(`tasks.priority.${priority}`)}
     </span>
   );
 }
@@ -90,6 +82,7 @@ interface TaskCardRowProps {
 }
 
 export function TaskCardRow({ task }: TaskCardRowProps) {
+  const { t, i18n } = useTranslation();
   const overdue =
     task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
   const isPending = task.pendingStatus !== null;
@@ -110,7 +103,7 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
           <h3 className="min-w-0 truncate text-sm font-medium text-foreground">{task.title}</h3>
           {task.archivedAt && (
             <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
-              Arşiv
+              {t('tasks.columns.archive')}
             </span>
           )}
         </div>
@@ -120,7 +113,7 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
       </div>
 
       <div className="flex min-w-0 items-center justify-between gap-3 text-xs lg:block">
-        <span className="text-secondary-foreground lg:hidden">Durum</span>
+        <span className="text-secondary-foreground lg:hidden">{t('tasks.columns.status')}</span>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <StatusBadge status={task.status} />
           {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
@@ -128,29 +121,29 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:block">
-        <span className="text-xs text-secondary-foreground lg:hidden">Öncelik</span>
+        <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.priority')}</span>
         <PriorityBadge priority={task.priority} />
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:block">
-        <span className="text-xs text-secondary-foreground lg:hidden">Takım</span>
+        <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.team')}</span>
         <span className="truncate text-xs text-foreground">{task.team.name}</span>
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:block">
-        <span className="text-xs text-secondary-foreground lg:hidden">Atanan</span>
+        <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.assignee')}</span>
         <AssigneeAvatarStack assignees={task.assignees} max={2} size="sm" />
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:block">
-        <span className="text-xs text-secondary-foreground lg:hidden">Bitiş Tarihi</span>
+        <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.deadline')}</span>
         <span
           className={cn(
             'text-xs text-secondary-foreground',
             overdue && 'font-medium text-priority-high',
           )}
         >
-          {formatCalendarDateDisplay(task.deadline)}
+          {formatCalendarDateDisplay(task.deadline, i18n.language)}
         </span>
       </div>
     </Link>

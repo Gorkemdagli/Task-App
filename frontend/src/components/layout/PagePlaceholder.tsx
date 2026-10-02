@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTranslation } from '@/i18n';
 
 /**
  * PagePlaceholder: standardized "Faz X'te implement edilecek" screen used
@@ -24,13 +25,16 @@ export interface PagePlaceholderProps {
 }
 
 export function PagePlaceholder({ title, description, source, children }: PagePlaceholderProps) {
+  const { t } = useTranslation();
   return (
     <section className="mx-auto max-w-3xl space-y-8">
       <header className="space-y-2">
-        <h1 className="text-3xl font-bold text-foreground">{title}</h1>
-        <p className="text-sm text-secondary-foreground">{description}</p>
+        <h1 className="text-3xl font-bold text-foreground">{t(title)}</h1>
+        <p className="text-sm text-secondary-foreground">
+          {typeof description === 'string' ? t(description) : description}
+        </p>
         <p className="text-xs text-secondary-foreground">
-          İmplementasyon referansı: <span className="font-mono">{source}</span>
+          {t('İmplementasyon referansı:')} <span className="font-mono">{source}</span>
         </p>
       </header>
 

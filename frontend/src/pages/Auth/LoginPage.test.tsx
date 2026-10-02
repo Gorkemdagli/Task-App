@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { LoginPage } from './LoginPage';
+import i18n from '../../i18n';
 
 import { authApi } from '../../lib/api';
 vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() } }));
@@ -16,6 +17,26 @@ describe('LoginPage', () => {
     );
     expect(screen.getByLabelText(/e-posta/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Şifre')).toBeInTheDocument();
+  });
+
+  it('switches login copy between English and Turkish', async () => {
+    const previousLanguage = i18n.language;
+    try {
+      await i18n.changeLanguage('en');
+      render(
+        <MemoryRouter>
+          <LoginPage />
+        </MemoryRouter>,
+      );
+      expect(screen.getByLabelText('Email')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+
+      await i18n.changeLanguage('tr');
+      expect(screen.getByLabelText('E-posta')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Giriş Yap' })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage(previousLanguage);
+    }
   });
   it('field errors on empty submit', async () => {
     const u = userEvent.setup();

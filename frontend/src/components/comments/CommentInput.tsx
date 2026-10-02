@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCreateComment } from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
+import { useTranslation } from '@/i18n';
 
 interface CommentInputProps {
   taskId: string;
@@ -8,6 +9,7 @@ interface CommentInputProps {
 }
 
 export function CommentInput({ taskId, disabled }: CommentInputProps) {
+  const { t } = useTranslation();
   const [body, setBody] = useState('');
   const [error, setError] = useState(false);
   const create = useCreateComment(taskId);
@@ -45,12 +47,12 @@ export function CommentInput({ taskId, disabled }: CommentInputProps) {
           }}
           maxLength={2000}
           rows={2}
-          placeholder="Yorumunuzu yazın…"
+          placeholder={t('Yorumunuzu yazın…')}
           disabled={disabled}
           className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="comment-input"
         />
-        {error && <p role="alert" className="mt-2 text-xs text-destructive">Yorum gönderilemedi. Tekrar deneyin.</p>}
+        {error && <p role="alert" className="mt-2 text-xs text-destructive">{t('Yorum gönderilemedi. Tekrar deneyin.')}</p>}
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">{body.length}/2000</span>
           <button
@@ -58,7 +60,7 @@ export function CommentInput({ taskId, disabled }: CommentInputProps) {
             disabled={disabled || body.trim().length === 0 || create.isPending}
             className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {create.isPending ? 'Gönderiliyor…' : 'Yorum yap'}
+            {create.isPending ? t('Gönderiliyor…') : t('Yorum yap')}
           </button>
         </div>
       </div>
