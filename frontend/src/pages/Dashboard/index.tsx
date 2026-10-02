@@ -619,7 +619,7 @@ export function DashboardPage() {
       data-testid="dashboard-page"
       className={`p-4 md:p-8 lg:flex lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:flex-col lg:overflow-hidden ${hasTaskDetail ? 'lg:pr-[min(38vw,32rem)]' : ''}`}
     >
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
+      <div className="mb-6 flex min-h-[150px] flex-col gap-4 xl:min-h-0 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
         <div>
           <h1 className="text-2xl font-semibold">{heading}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('{{count}} görev', { count: visibleTasks.length })}</p>
