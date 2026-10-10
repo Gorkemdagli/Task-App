@@ -1,4 +1,4 @@
-import { expect, request as playwrightRequest, test, type APIRequestContext, type BrowserContext } from '@playwright/test';
+import { expect, request as playwrightRequest, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import { guardedTestDatabaseUrl, resetFixtureRegistrationLimit } from './helpers/test-environment';
 
@@ -9,7 +9,7 @@ type FixtureTenant = { id: string; name: string };
 type FixtureTeam = { id: string; tenantId: string; name: string };
 type FixtureTask = { id: string; teamId: string; assignerId: string; title: string };
 
-async function login(page: import('@playwright/test').Page, user: FixtureUser, password: string) {
+async function login(page: Page, user: FixtureUser, password: string) {
   await page.goto('/login');
   await page.locator('#email').fill(user.email);
   await page.locator('#password').fill(password);
