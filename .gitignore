@@ -144,3 +144,5 @@ frontend/.impeccable/
 !/.wrongstack/
 /.wrongstack/*
 !/.wrongstack/project.json
+.wrongstack
+docs/agentSetup.md

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:4173';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173';
 const parsedBaseURL = new URL(baseURL);
 if (!['127.0.0.1', 'localhost'].includes(parsedBaseURL.hostname)) {
   throw new Error('Playwright E2E is local-only; use localhost or 127.0.0.1');
@@ -29,10 +29,19 @@ export default defineConfig({
     launchOptions:
       chromePath && existsSync(chromePath) ? { executablePath: chromePath } : undefined,
   },
-  webServer: {
-    command: 'npm run preview --workspace=frontend -- --host 127.0.0.1',
-    url: `${baseURL}/`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command:
+        'npm run preview --workspace=frontend -- --config ../e2e/vite-preview.config.ts --host 127.0.0.1',
+      url: `${baseURL}/`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'node backend/scripts/start-e2e-server.mjs',
+      url: 'http://127.0.0.1:3001/api/v1/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 });
