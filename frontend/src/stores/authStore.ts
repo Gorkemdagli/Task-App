@@ -19,6 +19,7 @@ export interface AuthUser {
 interface AuthState {
   accessToken: string | null;
   user: AuthUser | null;
+  sessionGeneration: number;
   setAccessToken: (token: string | null) => void;
   setUser: (user: AuthUser | null) => void;
   clearAuth: () => void;
@@ -27,7 +28,20 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   user: null,
+  sessionGeneration: 0,
   setAccessToken: (token) => set({ accessToken: token }),
-  setUser: (user) => set({ user }),
-  clearAuth: () => set({ accessToken: null, user: null }),
+  setUser: (user) =>
+    set((state) => ({
+      user,
+      sessionGeneration:
+        state.user?.id !== user?.id || state.user?.tenantId !== user?.tenantId
+          ? state.sessionGeneration + 1
+          : state.sessionGeneration,
+    })),
+  clearAuth: () =>
+    set((state) => ({
+      accessToken: null,
+      user: null,
+      sessionGeneration: state.sessionGeneration + 1,
+    })),
 }));

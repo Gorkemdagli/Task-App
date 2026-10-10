@@ -75,7 +75,7 @@ export function TaskDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
-  const { data: task, isLoading } = useTask(id);
+  const { data: task, isLoading, isError, error } = useTask(id);
   const { data: teamDetail } = useTeam(task?.teamId);
   const { data: commentsData } = useTaskComments(id);
   const updateStatus = useUpdateTaskStatus();
@@ -126,7 +126,11 @@ export function TaskDetailPage() {
     );
   }
 
-  if (!task) {
+  const accessDenied = [401, 403, 404].includes(
+    (error as { response?: { status?: number } } | null)?.response?.status ?? 0,
+  );
+
+  if (!task || (isError && accessDenied)) {
     return (
       <div className="p-8">
         <Link to="/tasks" className="text-sm text-primary hover:underline">

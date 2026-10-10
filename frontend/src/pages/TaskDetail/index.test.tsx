@@ -77,6 +77,8 @@ vi.mock('@/components/tasks/ProposeConfirmDialog', () => ({
 }));
 
 let mockTask: Task | null = null;
+let mockTaskError: unknown = null;
+let mockTaskIsError = false;
 let mockTeamMembers: TeamMember[] = [];
 vi.mock('@/hooks/queries/useTeams', () => ({
   useTeam: () => ({ data: { members: mockTeamMembers }, isLoading: false, isError: false }),
@@ -96,7 +98,12 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    useTask: () => ({ data: mockTask, isLoading: false, isError: false }),
+    useTask: () => ({
+      data: mockTask,
+      isLoading: false,
+      isError: mockTaskIsError,
+      error: mockTaskError,
+    }),
     useTaskComments: () => ({ data: { comments: [] }, isLoading: false, isError: false }),
     useTaskFiles: () => ({ data: { files: [] }, isLoading: false, isError: false }),
     useTaskHistory: () => ({
@@ -179,6 +186,8 @@ describe('TaskDetailPage — approved workbench', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockTeamMembers = [];
+    mockTaskError = null;
+    mockTaskIsError = false;
     updateFieldsMock.mockReset();
     updateFieldsPending = false;
     useAuthStore.setState({ accessToken: 't', user: admin });
@@ -199,6 +208,25 @@ describe('TaskDetailPage — approved workbench', () => {
     } finally {
       await i18n.changeLanguage(previousLanguage);
     }
+  });
+
+  it.each([401, 403, 404])('hides cached task data after a denied or missing response (%i)', (status) => {
+    mockTask = makeTask({ title: 'Private task title' });
+    mockTaskError = { response: { status } };
+    mockTaskIsError = true;
+    renderTaskDetail();
+
+    expect(screen.queryByText('Private task title')).not.toBeInTheDocument();
+    expect(screen.getByText(/görev bulunamadı|task not found/i)).toBeInTheDocument();
+  });
+
+  it('keeps cached task data visible after a transient query error', () => {
+    mockTask = makeTask({ title: 'Cached task title' });
+    mockTaskError = { isAxiosError: true, response: undefined };
+    mockTaskIsError = true;
+    renderTaskDetail();
+
+    expect(screen.getByRole('heading', { name: 'Cached task title', level: 1 })).toBeInTheDocument();
   });
 
   it('renders the semantic desktop regions and real task context with the task reference', () => {

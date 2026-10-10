@@ -866,28 +866,54 @@ describe('task status proposal routes over HTTP', () => {
 describe('structured task field routes', () => {
   beforeEach(cleanDb);
 
-  it('keeps a demoted task assigner able to assign, but denies admin-only fields', async () => {
-    const { admin, member, team } = await makeTeamWithTeamAdminMember();
-    const second = await makeMember('demoted-assigner-second@example.com', admin.tenantId!);
-    await addMemberByDisplayId(team.id, second.displayId, admin);
-    const task = await tasksService.createTask(
-      { title: 'Demoted assigner task', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
-      member,
-    );
+  it('denies a demoted task assigner and leaves assignees and history unchanged', async () => {
+    const { member, memberAccessToken, task, team } = await makeRouteTaskFixture();
     await prisma.teamMember.update({
       where: { teamId_userId: { teamId: team.id, userId: member.id } },
       data: { role: 'member' },
     });
 
-    const updated = await tasksService.updateTaskFields(
-      task.id,
-      { assigneeIds: [member.id, second.id] },
+    const beforeEvents = await prisma.taskEvent.count({ where: { taskId: task.id } });
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ assigneeIds: [member.id] });
+
+    expect(response.status).toBe(403);
+    const persisted = await prisma.task.findUnique({ where: { id: task.id }, include: { assignees: true } });
+    expect(persisted?.assignees.map((assignee) => assignee.userId)).toEqual([member.id]);
+    expect(await prisma.taskEvent.count({ where: { taskId: task.id } })).toBe(beforeEvents);
+  });
+
+  it('denies a removed former task assigner through the task route', async () => {
+    const { member, memberAccessToken, team } = await makeRouteTaskFixture();
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: team.id, userId: member.id } },
+      data: { role: 'teamAdmin' },
+    });
+    const task = await tasksService.createTask(
+      { title: 'Former assigner', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
       member,
     );
-    expect(updated.assignees.map((assignee) => assignee.userId)).toContain(second.id);
-    await expect(
-      tasksService.updateTaskFields(task.id, { targetAudience: 'Nope' }, member),
-    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    await prisma.teamMember.delete({ where: { teamId_userId: { teamId: team.id, userId: member.id } } });
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ assigneeIds: [member.id] });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('denies a regular Member from assigning through the task route', async () => {
+    const { member, memberAccessToken, task } = await makeRouteTaskFixture();
+
+    const response = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ assigneeIds: [member.id] });
+
+    expect(response.status).toBe(403);
   });
 
   it('allows an in-scope Team Admin to update all structured fields', async () => {
@@ -915,10 +941,17 @@ describe('structured task field routes', () => {
       tags: ['Mobil'],
     });
     expect(response.body.assignerId).toBe(admin.id);
+
+    const assignment = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ assigneeIds: [member.id] });
+    expect(assignment.status).toBe(200);
+    expect(assignment.body.assignees.map((assignee: { userId: string }) => assignee.userId)).toContain(member.id);
   });
 
   it('allows a Company Admin to update structured fields within the tenant', async () => {
-    const { adminAccessToken, task } = await makeRouteTaskFixture();
+    const { adminAccessToken, member, task } = await makeRouteTaskFixture();
 
     const response = await request(createApp())
       .patch(`/api/v1/tasks/${task.id}`)
@@ -932,6 +965,33 @@ describe('structured task field routes', () => {
       expectedOutput: null,
       tags: ['plan'],
     });
+
+    const assignment = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ assigneeIds: [member.id] });
+    expect(assignment.status).toBe(200);
+  });
+
+  it('rejects assignees from another team or tenant on direct PATCH', async () => {
+    const { admin, adminAccessToken, task } = await makeRouteTaskFixture();
+    const otherTeamMember = await makeMember('patch-other-team@example.com', admin.tenantId!);
+    const otherTeam = await createTeam({ name: 'Patch Other Team' }, admin);
+    await addMemberByDisplayId(otherTeam.id, otherTeamMember.displayId, admin);
+    const otherTenantRegistration = await register({
+      fullName: 'Patch Other Tenant',
+      email: 'patch-other-tenant@example.com',
+      password: 'hunter22',
+      companyName: 'Patch Other Tenant Co',
+    });
+
+    for (const assigneeId of [otherTeamMember.id, otherTenantRegistration.user.id]) {
+      const response = await request(createApp())
+        .patch(`/api/v1/tasks/${task.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ assigneeIds: [assigneeId] });
+      expect(response.status).toBe(400);
+    }
   });
 
   it('denies a regular Member from updating structured fields', async () => {
@@ -968,7 +1028,7 @@ describe('structured task field routes', () => {
     const response = await request(createApp())
       .patch(`/api/v1/tasks/${task.id}`)
       .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
-      .send({ targetAudience: 'Nope' });
+      .send({ assigneeIds: [outsiderRegistration.user.id] });
 
     expect(response.status).toBe(403);
   });
@@ -985,7 +1045,7 @@ describe('structured task field routes', () => {
     const response = await request(createApp())
       .patch(`/api/v1/tasks/${task.id}`)
       .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
-      .send({ targetAudience: 'Nope' });
+      .send({ assigneeIds: [outsiderRegistration.user.id] });
 
     expect(response.status).toBe(404);
     expect(response.body).not.toHaveProperty('title');
