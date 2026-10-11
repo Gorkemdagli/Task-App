@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -123,13 +125,27 @@ class Session:
     task_observation_count: int = 0
     missing_task_duration_count: int = 0
     spawn_calls: set[tuple[str, str, str]] = field(default_factory=set)
+    spawn_details: set[tuple[str, datetime | None, str, str, str]] = field(default_factory=set)
     unparsed_spawn_calls: set[str] = field(default_factory=set)
+    tool_calls: set[tuple[str, str]] = field(default_factory=set)
+    tool_call_arguments: set[tuple[str, str, str]] = field(default_factory=set)
+    function_events: set[tuple[str, datetime | None, str, str]] = field(default_factory=set)
+    function_results: set[tuple[str, datetime | None, str, bool]] = field(default_factory=set)
+    context_records: set[tuple[datetime | None, int | None, int | None, int | None]] = field(default_factory=set)
+    request_inputs: set[tuple[datetime | None, int | None, str, int | None]] = field(default_factory=set)
+    compaction_events: set[tuple[datetime | None, str]] = field(default_factory=set)
+    custom_tool_calls: set[tuple[str, str, str]] = field(default_factory=set)
+    custom_tool_events: set[tuple[str, datetime | None, str, str]] = field(default_factory=set)
+    shell_commands: set[tuple[str, str, str]] = field(default_factory=set)
+    shell_command_events: set[tuple[str, datetime | None, str, str]] = field(default_factory=set)
+    first_user_message: str | None = None
     composite_subagent_paths: set[str] = field(default_factory=set)
     composite_history_start_ordinal: int | None = None
     composite_token_records: set[tuple[datetime | None, int]] = field(default_factory=set)
     composite_token_observations: int = 0
     token_records: set[tuple[datetime | None, int]] = field(default_factory=set)
     category_records: set[tuple[datetime | None, int | None, int | None, int | None, int | None, int | None]] = field(default_factory=set)
+    request_records: set[tuple[datetime | None, int | None, str, int | None, int | None]] = field(default_factory=set)
     tokens: int | None = None
     category_tokens: dict[str, int | None] = field(default_factory=dict)
     token_decreases: int = 0
@@ -356,6 +372,14 @@ def read_session(path: Path, global_errors: dict[str, int]) -> Session:
                 category_values = token_categories(usage)
                 valid_total = total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
                 session.category_records.add((event_time, valid_total, *category_values))
+                response_usage = payload.get("usage")
+                response_id = payload.get("response_id")
+                if isinstance(response_usage, dict) and isinstance(response_id, str) and response_id:
+                    uncached, cached, _, _ = token_categories(response_usage)
+                    session.request_records.add((event_time, ordinal if isinstance(ordinal, int) and not isinstance(ordinal, bool) else None, response_id, uncached, cached))
+                    request_input = response_usage.get("input_tokens")
+                    valid_request_input = request_input if isinstance(request_input, int) and not isinstance(request_input, bool) and request_input >= 0 else None
+                    session.request_inputs.add((event_time, ordinal if isinstance(ordinal, int) and not isinstance(ordinal, bool) else None, response_id, valid_request_input))
                 if isinstance(total, int) and not isinstance(total, bool) and total >= 0:
                     record = (event_time, total)
                     session.token_records.add(record)
@@ -364,6 +388,23 @@ def read_session(path: Path, global_errors: dict[str, int]) -> Session:
                         session.composite_token_records.add(record)
                 else:
                     session.missing_usage_value += 1
+
+            if row.get("type") == "event_msg" and payload.get("type") == "token_count":
+                info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+                last_usage = info.get("last_token_usage") if isinstance(info.get("last_token_usage"), dict) else {}
+                total_usage = info.get("total_token_usage") if isinstance(info.get("total_token_usage"), dict) else {}
+                last_input = last_usage.get("input_tokens")
+                total_input = total_usage.get("input_tokens")
+                valid_last = last_input if isinstance(last_input, int) and not isinstance(last_input, bool) and last_input >= 0 else None
+                valid_total = total_input if isinstance(total_input, int) and not isinstance(total_input, bool) and total_input >= 0 else None
+                session.context_records.add((event_time, ordinal if isinstance(ordinal, int) and not isinstance(ordinal, bool) else None, valid_last, valid_total))
+
+            if row.get("type") == "compacted":
+                session.compaction_events.add((event_time, str(payload.get("type") or "compacted")))
+            if row.get("type") == "event_msg" and payload.get("type") == "item_completed":
+                item = payload.get("item")
+                if isinstance(item, dict) and item.get("type") == "ContextCompaction":
+                    session.compaction_events.add((event_time, "ContextCompaction"))
 
             if row.get("type") == "task_complete" or payload.get("type") == "task_complete":
                 duration = payload.get("duration_ms", row.get("duration_ms"))
@@ -385,12 +426,61 @@ def read_session(path: Path, global_errors: dict[str, int]) -> Session:
                 if isinstance(arguments, dict):
                     role = arguments.get("agent_type")
                     task_name = arguments.get("task_name")
+                    spawn_message = arguments.get("message")
+                    context = " ".join(spawn_message.split()) if isinstance(spawn_message, str) else "NOT AVAILABLE"
+                    if context.startswith("gAAAA"):
+                        context = "NOT AVAILABLE (opaque encoded spawn payload)"
+                    session.spawn_details.add((call_identity, event_time, str(role or "NOT AVAILABLE"), str(task_name or "NOT AVAILABLE"), context))
                     if isinstance(role, str) and role and isinstance(task_name, str) and task_name:
                         session.spawn_calls.add((call_identity, role, task_name))
                     else:
                         session.unparsed_spawn_calls.add(call_identity)
                 else:
                     session.unparsed_spawn_calls.add(call_identity)
+            if row.get("type") == "response_item" and payload.get("type") == "function_call":
+                call_id = payload.get("call_id") or payload.get("id") or f"{event_time}:{ordinal}"
+                name = str(payload.get("name") or "NOT AVAILABLE")
+                arguments = payload.get("arguments")
+                if not isinstance(arguments, str):
+                    arguments = json.dumps(arguments, ensure_ascii=False) if arguments is not None else ""
+                session.tool_calls.add((str(call_id), name))
+                session.tool_call_arguments.add((str(call_id), name, arguments))
+                session.function_events.add((str(call_id), event_time, name, arguments))
+            if row.get("type") == "response_item" and payload.get("type") == "function_call_output":
+                call_id = str(payload.get("call_id") or payload.get("id") or "NOT AVAILABLE")
+                result = str(payload.get("output") or "")
+                session.function_results.add((call_id, event_time, result, bool(payload.get("is_error"))))
+            if row.get("type") == "response_item" and payload.get("type") == "custom_tool_call":
+                call_id = payload.get("call_id") or payload.get("id") or f"{event_time}:{ordinal}"
+                tool_name = str(payload.get("name") or "NOT AVAILABLE")
+                tool_input = str(payload.get("input") or "")
+                session.custom_tool_calls.add((str(call_id), tool_name, tool_input))
+                session.custom_tool_events.add((str(call_id), event_time, tool_name, tool_input))
+            if row.get("type") == "event_msg" and payload.get("type") == "item_completed":
+                item = payload.get("item")
+                if isinstance(item, dict) and item.get("type") == "UserMessage" and session.first_user_message is None:
+                    content = item.get("content")
+                    if isinstance(content, list):
+                        parts = [part.get("text", "") for part in content if isinstance(part, dict) and isinstance(part.get("text"), str)]
+                        session.first_user_message = " ".join(" ".join(parts).split()) or None
+                if isinstance(item, dict) and item.get("type") == "CommandExecution":
+                    command = item.get("command")
+                    if isinstance(command, list):
+                        command_parts = [str(part) for part in command]
+                        command_index = next((index for index, part in enumerate(command_parts) if part.casefold() in {"-command", "-c"}), None)
+                        command_text = subprocess.list2cmdline(command_parts[command_index + 1:]) if command_index is not None else subprocess.list2cmdline(command_parts)
+                    elif isinstance(command, str):
+                        command_text = command
+                    else:
+                        command_text = "NOT AVAILABLE"
+                    command_text = " ".join(command_text.split()).strip()
+                    if len(command_text) >= 2 and command_text[0] == command_text[-1] == '"':
+                        command_text = command_text[1:-1]
+                    exit_code = item.get("exit_code")
+                    status = str(exit_code) if isinstance(exit_code, int) and not isinstance(exit_code, bool) else "NOT AVAILABLE"
+                    command_id = str(item.get("id") or f"{event_time}:{ordinal}")
+                    session.shell_commands.add((command_id, command_text, status))
+                    session.shell_command_events.add((command_id, event_time, command_text, status))
     finalize_metadata(session)
     finalize_metrics(session)
     return session
@@ -437,11 +527,21 @@ def load_sessions(log_roots: list[Path]) -> tuple[dict[str, Session], dict[str, 
                 previous.last_event = candidate.last_event
             previous.token_records.update(candidate.token_records)
             previous.category_records.update(candidate.category_records)
+            previous.request_records.update(candidate.request_records)
             previous.task_records.update(candidate.task_records)
             previous.task_observation_count += candidate.task_observation_count
             previous.missing_task_duration_count += candidate.missing_task_duration_count
             previous.spawn_calls.update(candidate.spawn_calls)
+            previous.spawn_details.update(candidate.spawn_details)
             previous.unparsed_spawn_calls.update(candidate.unparsed_spawn_calls)
+            previous.tool_calls.update(candidate.tool_calls)
+            previous.function_events.update(candidate.function_events)
+            previous.function_results.update(candidate.function_results)
+            previous.custom_tool_events.update(candidate.custom_tool_events)
+            previous.shell_commands.update(candidate.shell_commands)
+            previous.shell_command_events.update(candidate.shell_command_events)
+            if previous.first_user_message is None:
+                previous.first_user_message = candidate.first_user_message
             previous.composite_subagent_paths.update(candidate.composite_subagent_paths)
             if previous.composite_history_start_ordinal is None:
                 previous.composite_history_start_ordinal = candidate.composite_history_start_ordinal
@@ -497,6 +597,145 @@ def duration_average(values: list[int | None]) -> str:
     return formatted if len(known) == len(values) else f"NOT AVAILABLE (known average {formatted}; {len(known)}/{len(values)} threads)"
 
 
+def cache_rate(cached: list[int | None], uncached: list[int | None]) -> str:
+    pairs = [(c, u) for c, u in zip(cached, uncached) if c is not None and u is not None]
+    if not pairs:
+        return "NOT AVAILABLE (no known input-token pairs)"
+    cached_total = sum(c for c, _ in pairs)
+    input_total = cached_total + sum(u for _, u in pairs)
+    if not input_total:
+        return f"NOT AVAILABLE (zero input tokens; {len(pairs)}/{len(cached)} threads)"
+    rate = f"{cached_total / input_total:.1%} ({cached_total}/{input_total} input tokens)"
+    return rate if len(pairs) == len(cached) else f"{rate}; NOT AVAILABLE for {len(cached) - len(pairs)}/{len(cached)} threads"
+
+
+def request_cache_rates(threads: list[Session]) -> tuple[str, str]:
+    first: list[tuple[int, int]] = []
+    later: list[tuple[int, int]] = []
+    for thread in threads:
+        latest: dict[str, tuple[datetime | None, int | None, int | None, int | None]] = {}
+        for timestamp, ordinal, turn_id, uncached, cached in thread.request_records:
+            current = latest.get(turn_id)
+            position = (timestamp or datetime.max.replace(tzinfo=timezone.utc), ordinal if ordinal is not None else -1)
+            if current is None or position > (current[0] or datetime.max.replace(tzinfo=timezone.utc), current[1] if current[1] is not None else -1):
+                latest[turn_id] = (timestamp, ordinal, uncached, cached)
+        ordered = sorted(latest.items(), key=lambda item: (item[1][0] or datetime.max.replace(tzinfo=timezone.utc), item[1][1] if item[1][1] is not None else -1, item[0]))
+        for index, (_, (_, _, uncached, cached)) in enumerate(ordered):
+            if uncached is None or cached is None:
+                continue
+            (first if index == 0 else later).append((cached, uncached))
+    return request_pair_rate(first), request_pair_rate(later)
+
+
+def request_pair_rate(pairs: list[tuple[int, int]]) -> str:
+    if not pairs:
+        return "NOT AVAILABLE (no supported request usage records)"
+    cached = sum(pair[0] for pair in pairs)
+    total = cached + sum(pair[1] for pair in pairs)
+    return f"NOT AVAILABLE (zero input tokens; {len(pairs)} request(s) observed)" if not total else f"{cached / total:.1%} ({cached}/{total} input tokens; {len(pairs)} request(s))"
+
+
+def low_hit_threads(threads: list[Session]) -> list[tuple[float, Session, int]]:
+    ranked = []
+    for thread in threads:
+        uncached = thread.category_tokens.get("uncached_input")
+        cached = thread.category_tokens.get("cached_input")
+        total = (uncached or 0) + (cached or 0)
+        if uncached is not None and cached is not None and total > 100_000:
+            ranked.append((cached / total, thread, total))
+    return sorted(ranked, key=lambda item: (item[0], item[1].thread_id or ""))[:10]
+
+
+def role_hit_ranking(children: list[Session]) -> list[str]:
+    grouped: dict[str, list[Session]] = defaultdict(list)
+    for child in children:
+        grouped[child_role(child)].append(child)
+    rates = []
+    for role, agents in grouped.items():
+        pairs = [(agent.category_tokens.get("cached_input"), agent.category_tokens.get("uncached_input")) for agent in agents]
+        known = [(cached, uncached) for cached, uncached in pairs if cached is not None and uncached is not None]
+        cached_total = sum(cached for cached, _ in known)
+        input_total = cached_total + sum(uncached for _, uncached in known)
+        rates.append((cached_total / input_total if input_total else None, role, cached_total, input_total, len(known), len(agents)))
+    rates.sort(key=lambda row: (row[0] is None, -(row[0] or 0), row[1]))
+    return [
+        f"  {role}: {rate:.1%} ({cached}/{total}; known {known}/{count} threads)" if rate is not None
+        else f"  {role}: NOT AVAILABLE (zero or unknown input; known {known}/{count} threads)"
+        for rate, role, cached, total, known, count in rates
+    ]
+
+
+def _self_check() -> None:
+    assert cache_rate([75], [25]).startswith("75.0% (75/100")
+    assert cache_rate([0], [0]).startswith("NOT AVAILABLE (zero input tokens")
+    assert cache_rate([None, 25], [10, 75]).startswith("25.0% (25/100")
+    thread = Session(thread_id="t", request_records={
+        (datetime(2026, 1, 1, tzinfo=timezone.utc), 1, "response-1", 20, 80),
+        (datetime(2026, 1, 1, tzinfo=timezone.utc), 2, "response-1", 30, 170),
+        (datetime(2026, 1, 2, tzinfo=timezone.utc), 3, "response-2", 50, 50),
+    })
+    first, later = request_cache_rates([thread])
+    assert first.startswith("85.0% (170/200") and later.startswith("50.0% (50/100")
+    assert request_cache_rates([Session()])[0].startswith("NOT AVAILABLE")
+    request_thread = Session(request_records={
+        (datetime(2026, 1, 1, tzinfo=timezone.utc), 1, "response-1", 25, 75),
+        (datetime(2026, 1, 1, tzinfo=timezone.utc), 2, "response-1", 50, 150),
+        (datetime(2026, 1, 2, tzinfo=timezone.utc), 3, "response-2", 20, 80),
+    })
+    assert request_summary(request_thread) == (2, 300, 2, True)
+    thread.category_tokens = {"uncached_input": 100_000, "cached_input": 0}
+    assert not low_hit_threads([thread])
+    thread.category_tokens = {"uncached_input": 100_000, "cached_input": 2}
+    assert len(low_hit_threads([thread])) == 1
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    waits = Session(
+        function_events={
+            ("w1", moment, "wait_agent", '{"timeout_ms":10000}'),
+            ("w2", moment.replace(second=1), "wait_agent", '{"timeout_ms":60000}'),
+        },
+        request_inputs={(moment.replace(second=2), 3, "r1", 42)},
+    )
+    attributed, mapped, allocated, denominator, mappings = root_wait_attribution(waits)
+    assert attributed == {"10000": 0, "60000": 42} and mapped == {"10000": 42, "60000": 42} and allocated == denominator == 42
+    assert [row[4] for row in mappings] == [0, 42] and mappings[0][5]
+    calls, timeouts = root_call_counts(waits)
+    assert calls["wait_agent"] == 2 and timeouts == {"10000": 1, "60000": 1}
+    assert median_text([0, 4]) == "2"
+    root_tokens = Session(thread_id="r", tokens=10)
+    child_tokens = Session(thread_id="c", parent_id="r", tokens=20)
+    assert token_accounting(root_tokens, [child_tokens]) == ("10", "20", "30")
+    session_report, _, _ = render_session(root_tokens, [root_tokens, child_tokens], ["c"], False)
+    assert "root-only tokens: 10" in session_report and "descendants-only tokens: 20" in session_report and "total tokens (root + linked descendants): 30" in session_report
+    analysis_report = render_token_analysis([root_tokens], {"r": root_tokens, "c": child_tokens}, {"r": ["c"]}, set(), [], {}, ".", moment)
+    assert "root-only tokens=10; descendants-only tokens=20; total tokens=30" in analysis_report
+    _, excluded = exclusion_subtrees(["c"], {"r": root_tokens, "c": child_tokens}, {"r": ["c"]})
+    assert excluded == {"c"} and token_accounting(root_tokens, [])[2] == "10"
+    assert within_after(moment, moment + timedelta(seconds=300)) and not within_after(moment, moment + timedelta(seconds=301))
+    assert is_source_read("rtk rg backend/src frontend/src")
+    assert not is_source_read("rtk git grep backend/src")
+    assert not is_source_read("rtk docker run backend/src")
+    repeated_command = "rg --files backend/src"
+    second_run = moment + timedelta(minutes=10)
+    repeated = Session(
+        custom_tool_events={
+            ("call-1", moment, "exec", json.dumps({"cmd": repeated_command})),
+            ("call-2", second_run, "exec", json.dumps({"cmd": repeated_command})),
+        },
+        function_events={
+            ("call-1", moment, "exec", json.dumps({"cmd": repeated_command})),
+            ("call-2", second_run, "exec", json.dumps({"cmd": repeated_command})),
+        },
+        shell_command_events={
+            ("cmd-1", moment + timedelta(seconds=14), repeated_command, "0"),
+            ("cmd-2", second_run + timedelta(seconds=15), repeated_command, "0"),
+        },
+    )
+    occurrences = exec_commands(repeated)
+    assert len(occurrences) == 2
+    assert occurrences[0][0] == moment and occurrences[1][0] == second_run
+    assert all(len(row[2]) == 3 and any(item.startswith("CommandExecution:") for item in row[2]) for row in occurrences)
+
+
 def role_breakdown(children: list[Session]) -> list[str]:
     grouped: dict[str, list[Session]] = defaultdict(list)
     for child in children:
@@ -507,7 +746,7 @@ def role_breakdown(children: list[Session]) -> list[str]:
         "Child-role breakdown (tokens are cumulative per-thread snapshots; duration is summed task_complete duration):",
         "  role source: session_meta.agent_role (payload or row); absent or conflicting values are unknown.",
         "  explicit additional role rows: " + (", ".join(extra_roles) if extra_roles else "none"),
-        "  role | threads | uncached input avg/total | cached input avg/total | output avg/total | reasoning avg/total | avg duration",
+        "  role | threads | cache hit rate | uncached input avg/total | cached input avg/total | output avg/total | reasoning avg/total | avg duration",
     ]
     for role in roles:
         agents = grouped.get(role, [])
@@ -521,8 +760,9 @@ def role_breakdown(children: list[Session]) -> list[str]:
             for agent in agents
         ]
         pairs = [f"{metric_text(categories[category], True)}/{metric_text(categories[category])}" for category in TOKEN_CATEGORIES]
+        rate = cache_rate(categories["cached_input"], categories["uncached_input"])
         duration = duration_average(durations)
-        lines.append(f"  {role} | {len(agents)} | " + " | ".join(pairs) + f" | {duration}")
+        lines.append(f"  {role} | {len(agents)} | {rate} | " + " | ".join(pairs) + f" | {duration}")
     return lines
 
 
@@ -606,6 +846,9 @@ def print_reconstruction_audit(threads: dict[str, Session], errors: dict[str, in
 def render_session(root: Session, threads: list[Session], child_ids: list[str], cycle: bool) -> tuple[str, int, int]:
     thread_count = len(threads)
     known_tokens = [thread.tokens for thread in threads if thread.tokens is not None]
+    child_tokens = [thread.tokens for thread in threads[1:] if thread.tokens is not None]
+    root_token_text = str(root.tokens) if root.tokens is not None else "NOT AVAILABLE"
+    child_token_text = str(sum(child_tokens)) if len(child_tokens) == len(threads) - 1 else f"NOT AVAILABLE (known partial {sum(child_tokens)}; {len(child_tokens)}/{len(threads) - 1} threads)"
     if len(known_tokens) == thread_count:
         token_text = str(sum(known_tokens))
     else:
@@ -617,7 +860,10 @@ def render_session(root: Session, threads: list[Session], child_ids: list[str], 
         f"Session {root.thread_id}",
         f"  started: {root.started.isoformat() if root.started else 'NOT AVAILABLE'}",
         f"  observed wall span: {format_duration(session_duration(root))} (first-to-last log timestamp; may include idle time)",
+        f"  root-only tokens: {root_token_text}",
+        f"  descendants-only tokens: {child_token_text}",
         f"  total tokens (root + linked descendants): {token_text}",
+        f"  root-session cache hit rate: {cache_rate([root.category_tokens.get('cached_input')], [root.category_tokens.get('uncached_input')])}",
         f"  linked child sessions: {len(child_ids)} (spawned sessions represented in logs; attempted calls are NOT AVAILABLE)",
         f"  physical log copies merged for root: {len(root.physical_paths)}",
         f"  retry loops: {retry_loops} (exact repeated agent_type + task_name pairs across the root and linked descendants; {repeat_spawns} repeat spawn(s) from {spawn_calls} parseable calls in {sessions_with_spawns} thread(s); {unparsed_spawns} unparsed spawn call(s))",
@@ -668,7 +914,537 @@ def render_session(root: Session, threads: list[Session], child_ids: list[str], 
     return "\n".join(lines), len(known_tokens), thread_count
 
 
+def request_summary(thread: Session) -> tuple[int, int, int, bool]:
+    latest: dict[str, tuple[datetime | None, int | None, int | None]] = {}
+    for timestamp, ordinal, response_id, uncached, cached in thread.request_records:
+        current = latest.get(response_id)
+        position = (timestamp or datetime.max.replace(tzinfo=timezone.utc), ordinal if ordinal is not None else -1)
+        current_position = (current[0] or datetime.max.replace(tzinfo=timezone.utc), current[1] if current[1] is not None else -1) if current else None
+        if current is None or position > current_position:
+            latest[response_id] = (timestamp, ordinal, None if uncached is None or cached is None else uncached + cached)
+    values = [record[2] for record in latest.values()]
+    known = [value for value in values if value is not None]
+    return len(values), sum(known), len(known), len(known) == len(values)
+
+
+def median_text(values: list[int]) -> str:
+    if not values:
+        return "NOT AVAILABLE"
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    value = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+    return f"{value:g}"
+
+
+def token_accounting(root: Session, descendants_only: list[Session]) -> tuple[str, str, str]:
+    known = [thread.tokens for thread in descendants_only if thread.tokens is not None]
+    root_text = str(root.tokens) if root.tokens is not None else "NOT AVAILABLE"
+    descendants_text = str(sum(known)) if len(known) == len(descendants_only) else f"NOT AVAILABLE (known partial {sum(known)}; {len(known)}/{len(descendants_only)})"
+    total_text = str(root.tokens + sum(known)) if root.tokens is not None and len(known) == len(descendants_only) else f"NOT AVAILABLE (known partial {(root.tokens or 0) + sum(known)}; {int(root.tokens is not None) + len(known)}/{len(descendants_only) + 1})"
+    return root_text, descendants_text, total_text
+
+
+def within_after(error_time: datetime | None, event_time: datetime | None, seconds: int = 300) -> bool:
+    return bool(error_time is not None and event_time is not None and 0 <= (event_time - error_time).total_seconds() <= seconds)
+
+
+def root_call_counts(root: Session) -> tuple[dict[str, int], dict[str, int]]:
+    counts: dict[str, int] = defaultdict(int)
+    waits: dict[str, int] = defaultdict(int)
+    for _, _, name, raw_arguments in root.function_events:
+        category = {
+            "spawn_agent": "spawn_agent", "wait_agent": "wait_agent",
+            "send_message": "send_input", "send_input": "send_input",
+            "followup_task": "send_input", "close_agent": "close_agent",
+        }.get(name)
+        if category:
+            counts[category] += 1
+        if name == "wait_agent":
+            try:
+                args = json.loads(raw_arguments) if raw_arguments else {}
+            except json.JSONDecodeError:
+                args = {}
+            timeout = args.get("timeout_ms") if isinstance(args, dict) else None
+            waits[str(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) else "NOT AVAILABLE"] += 1
+    return counts, waits
+
+
+def root_wait_attribution(root: Session) -> tuple[dict[str, int], dict[str, int], int, int, list[tuple[datetime | None, str, str, int | None, int | None, bool]]]:
+    requests: dict[str, tuple[datetime | None, int | None]] = {}
+    for when, ordinal, response_id, value in root.request_inputs:
+        old = requests.get(response_id)
+        if old is None or (when or datetime.min.replace(tzinfo=timezone.utc), ordinal or -1) > (old[0] or datetime.min.replace(tzinfo=timezone.utc), old[1] or -1):
+            requests[response_id] = (when, value)
+    request_events = sorted(
+        ((when, ordinal, response_id, value) for response_id, (when, value) in requests.items()),
+        key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1] if row[1] is not None else -1),
+    )
+    waits = []
+    for call_id, when, name, raw_arguments in root.function_events:
+        if name != "wait_agent":
+            continue
+        try:
+            args = json.loads(raw_arguments) if raw_arguments else {}
+        except json.JSONDecodeError:
+            args = {}
+        timeout = args.get("timeout_ms") if isinstance(args, dict) else None
+        bucket = str(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) else "NOT AVAILABLE"
+        following = next((row for row in request_events if when is not None and row[0] is not None and (row[0], row[1] or -1) > (when, -1)), None)
+        waits.append((when, call_id, bucket, following[3] if following else None, following[2] if following else None))
+    latest_wait_for_response: dict[str, str] = {}
+    for _, call_id, _, _, response_id in sorted(waits, key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1])):
+        if response_id:
+            latest_wait_for_response[response_id] = call_id
+    sums: dict[str, int] = defaultdict(int)
+    mapped_sums: dict[str, int] = defaultdict(int)
+    known_allocated = known_mapped = 0
+    mappings = []
+    for when, call_id, bucket, value, response_id in sorted(waits, key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1])):
+        count_value = response_id is not None and value is not None
+        if count_value:
+            known_mapped += value
+            mapped_sums[bucket] += value
+        is_allocated = bool(response_id and latest_wait_for_response.get(response_id) == call_id and count_value)
+        allocated_value = value if is_allocated else (0 if count_value and response_id else None)
+        if allocated_value is not None:
+            sums[bucket] += allocated_value
+            known_allocated += allocated_value
+        mappings.append((when, bucket, response_id or "NOT AVAILABLE", value if count_value else None, allocated_value, bool(response_id and count_value and not is_allocated)))
+    total_known_request_input = sum(value for _, value in requests.values() if value is not None)
+    return sums, mapped_sums, known_allocated, total_known_request_input, mappings
+
+
+def exec_commands(root: Session) -> list[tuple[datetime | None, str, tuple[str, ...], datetime | None]]:
+    invocations: dict[tuple[str, str], dict[str, Any]] = {}
+    for call_id, when, name, raw_input in root.custom_tool_events:
+        if name != "exec":
+            continue
+        try:
+            parsed_input = json.loads(raw_input)
+        except json.JSONDecodeError:
+            parsed_input = None
+        command_values = [parsed_input["cmd"]] if isinstance(parsed_input, dict) and isinstance(parsed_input.get("cmd"), str) else []
+        if not command_values:
+            for match in re.finditer(r"\bcmd[\"']?\s*:\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')", raw_input):
+                literal = match.group(1)
+                try:
+                    command_values.append(json.loads(literal) if literal.startswith('"') else literal[1:-1])
+                except json.JSONDecodeError:
+                    command_values.append(literal[1:-1])
+        for command in command_values:
+            command = str(command)
+            key = (call_id, " ".join(command.split()))
+            record = invocations.setdefault(key, {"when": when, "command": command, "ids": set(), "completion": None})
+            record["ids"].add(f"custom_tool_call:{call_id}")
+    for call_id, when, name, raw_args in root.function_events:
+        if name not in {"exec", "exec_command"}:
+            continue
+        try:
+            args = json.loads(raw_args) if raw_args else {}
+        except json.JSONDecodeError:
+            args = {}
+        if isinstance(args, dict) and isinstance(args.get("cmd"), str):
+            command = args["cmd"]
+            key = (call_id, " ".join(command.split()))
+            record = invocations.setdefault(key, {"when": when, "command": command, "ids": set(), "completion": None})
+            record["ids"].add(f"function_call:{call_id}")
+
+    completions = sorted(root.shell_command_events, key=lambda row: (row[1] or datetime.max.replace(tzinfo=timezone.utc), row[0]))
+    candidates_by_completion: dict[str, list[tuple[str, str]]] = {}
+    completion_by_id = {command_id: (when, command) for command_id, when, command, _ in completions}
+    for command_id, when, command, _ in completions:
+        command_key = " ".join(command.split())
+        candidates_by_completion[command_id] = [
+            key for key, record in invocations.items()
+            if key[1] == command_key and when is not None and record["when"] is not None
+            and abs((when - record["when"]).total_seconds()) <= 300
+        ]
+    completions_by_invocation: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for command_id, keys in candidates_by_completion.items():
+        if len(keys) == 1:
+            completions_by_invocation[keys[0]].append(command_id)
+    paired_completions: set[str] = set()
+    for command_id, keys in candidates_by_completion.items():
+        if len(keys) != 1 or len(completions_by_invocation[keys[0]]) != 1:
+            continue
+        key = keys[0]
+        record = invocations[key]
+        completion_time, _ = completion_by_id[command_id]
+        record["ids"].add(f"CommandExecution:{command_id}")
+        record["completion"] = completion_time
+        paired_completions.add(command_id)
+    for command_id, when, command, _ in completions:
+        if command_id not in paired_completions:
+            key = (f"CommandExecution:{command_id}", " ".join(command.split()))
+            invocations[key] = {"when": when, "command": command, "ids": {f"CommandExecution:{command_id}"}, "completion": when}
+    return sorted(
+        ((record["when"], record["command"], tuple(sorted(record["ids"])), record["completion"]) for record in invocations.values()),
+        key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1], row[2]),
+    )
+
+
+def source_read_kind(command: str) -> str | None:
+    if re.search(r"(^|[\s;&|])(?:rtk\s+)?(?:git|docker)(?:\s|$)", command, re.I):
+        return None
+    if not re.search(r"(?:backend|frontend)[/\\]src(?:[/\\]|\b)", command, re.I):
+        return None
+    if re.search(r"\b(rg|grep|findstr|Select-String|Get-Content|type|cat|more|open|read_text|read_bytes|readFile(?:Sync)?)\b", command, re.I):
+        return "confirmed"
+    if re.search(r"\b(python|node)\b", command, re.I):
+        return "candidate"
+    return None
+
+
+def is_source_read(command: str) -> bool:
+    return source_read_kind(command) is not None
+
+
+def render_session_flow_analysis(
+    before: list[Session], after: list[Session], threads: dict[str, Session], children: dict[str, list[str]],
+    excluded_threads: set[str], cutoff_time: datetime, exclusions: list[tuple[str, str]], current_id: str | None,
+) -> str:
+    output = [
+        "Agent orchestration and wait-input analysis",
+        f"Cutoff (UTC): {cutoff_time.isoformat()}",
+        f"Current session exclusion from CODEX_SESSION_ID: {current_id or 'NOT AVAILABLE'}",
+        "Root call counts include response_item/function_call events in each root log only; child calls are excluded.",
+        "wait_agent timeout buckets use the logged timeout_ms argument; missing or invalid values are NOT AVAILABLE.",
+        "Wait-input analysis maps each wait to the first later root token_usage_record response by timestamp/ordinal. Per-call sums by timeout bucket include the full known request input for every mapped wait and can duplicate input when several waits precede one response. The separate deduplicated estimate allocates that response once to the latest preceding wait; earlier waits show 0 allocated and shared mapping. Unknown usage is omitted.",
+        "Denominator is the sum of distinct root response_id usage.input_tokens with known values. Cumulative thread_token_usage snapshots are reported separately by the existing token analysis and are not used in the estimate.",
+        "Source-read commands include root custom_tool_call exec wrappers and completed CommandExecution events. Commands with explicit read/search operations are confirmed; commands that mention the source path inside Python/Node are qualified candidates when the actual operation is ambiguous. Git and docker commands are excluded.",
+        "Exec occurrences retain distinct invocation IDs even when command text repeats. A completed CommandExecution is merged with an invocation only when normalized command text has a unique one-to-one match within five minutes; the output keeps both IDs and the completion timestamp. Ambiguous or unmatched records remain separate.",
+        "",
+        "Exclusions:",
+    ]
+    output.extend(f"  {session_id}: {reason}" for session_id, reason in exclusions)
+    groups = (("Before", before), ("After", after))
+    all_group_ratios = {}
+    for label, roots in groups:
+        output.extend(["", f"{label} group: {len(roots)} roots"])
+        counts_by_category: dict[str, list[int]] = defaultdict(list)
+        timeout_totals: dict[str, int] = defaultdict(int)
+        per_root = []
+        for root in roots:
+            counts, timeouts = root_call_counts(root)
+            for category in ("spawn_agent", "wait_agent", "send_input", "close_agent"):
+                counts_by_category[category].append(counts.get(category, 0))
+            for bucket, count in timeouts.items():
+                timeout_totals[bucket] += count
+            per_root.append((root, counts, timeouts))
+        output.append("  function calls (total | median per root):")
+        for category in ("spawn_agent", "wait_agent", "send_input", "close_agent"):
+            values = counts_by_category[category]
+            output.append(f"    {category}: {sum(values)} | {median_text(values)}")
+        output.append("  wait timeout distribution (ms | count): " + (", ".join(f"{key} | {timeout_totals[key]}" for key in sorted(timeout_totals, key=lambda x: (x == "NOT AVAILABLE", int(x) if x.isdigit() else 0))) or "NOT AVAILABLE"))
+        output.append("  root token accounting (root-only | descendants-only | total):")
+        for root in roots:
+            child_ids, _ = descendants(root.thread_id or "", children)
+            child_threads = [threads[thread_id] for thread_id in child_ids if thread_id in threads and thread_id not in excluded_threads]
+            root_value, descendants_value, total_value = token_accounting(root, child_threads)
+            output.append(f"    {root.thread_id} | root-only={root_value} | descendants-only={descendants_value} | total={total_value}")
+        output.append("  root | spawn_agent | wait_agent | send_input | close_agent | wait_agent zero-close comparison")
+        group_wait_totals: dict[str, int] = defaultdict(int)
+        group_wait_input = group_denominator = group_mapped = 0
+        group_mapped_by_timeout: dict[str, int] = defaultdict(int)
+        group_allocated_by_timeout: dict[str, int] = defaultdict(int)
+        roots_with_spawn_errors = roots_with_following_source = spawn_error_count = source_error_pairs = 0
+        for root, counts, timeouts in per_root:
+            zero_close = counts.get("close_agent", 0) == 0
+            output.append(f"    {root.thread_id} | {counts.get('spawn_agent', 0)} | {counts.get('wait_agent', 0)} | {counts.get('send_input', 0)} | {counts.get('close_agent', 0)} | waits={counts.get('wait_agent', 0)}, closes={counts.get('close_agent', 0)}, zero-close={zero_close}")
+            for bucket, count in timeouts.items():
+                group_wait_totals[bucket] += count
+            sums, mapped_sums, allocated, denominator, mappings = root_wait_attribution(root)
+            group_wait_input += allocated
+            group_denominator += denominator
+            group_mapped += sum(mapped_sums.values())
+            for bucket, value in mapped_sums.items():
+                group_mapped_by_timeout[bucket] += value
+                output.append(f"      wait input per-call sum timeout={bucket}ms: {value} tokens (may count one response for multiple preceding waits)")
+            for bucket, value in sums.items():
+                group_allocated_by_timeout[bucket] += value
+                output.append(f"      wait input deduplicated allocation timeout={bucket}ms: {value} tokens")
+            for when, bucket, response_id, per_call_value, allocated_value, shared in mappings:
+                output.append(f"      wait mapping {when.isoformat() if when else 'NOT AVAILABLE'} | timeout={bucket}ms | next_response={response_id} | per_call_input={per_call_value if per_call_value is not None else 'NOT AVAILABLE'} | deduplicated_allocation={allocated_value if allocated_value is not None else 'NOT AVAILABLE'}" + (" | shared request allocated once to latest preceding wait" if shared else ""))
+            errors = {call_id: (result_time, text, is_error) for call_id, result_time, text, is_error in root.function_results}
+            spawn_errors = []
+            for call_id, when, name, _ in root.function_events:
+                if name != "spawn_agent" or call_id not in errors:
+                    continue
+                result_time, text, is_error = errors[call_id]
+                if is_error or re.search(r"\b(error|failed|failure|exception|unable)\b", text, re.I):
+                    spawn_errors.append((result_time or when, call_id, text, is_error))
+                    output.append(f"      spawn error {result_time.isoformat() if result_time else when.isoformat() if when else 'NOT AVAILABLE'} | call={call_id} | evidence={text[:500] or 'is_error=true'}")
+            roots_with_spawn_errors += bool(spawn_errors)
+            spawn_error_count += len(spawn_errors)
+            source_reads = [(when, command, event_ids, completed, source_read_kind(command)) for when, command, event_ids, completed in exec_commands(root) if is_source_read(command)]
+            for when, command, event_ids, completed, kind in source_reads:
+                source_label = "source read" if kind == "confirmed" else "source-read candidate (path mentioned; operation ambiguous)"
+                output.append(f"      {source_label} {when.isoformat() if when else 'NOT AVAILABLE'} | event_ids={','.join(event_ids)} | completed_at={completed.isoformat() if completed else 'NOT AVAILABLE'} | {command}")
+            related = [
+                (error_time, call_id, source_time, command, event_ids)
+                for error_time, call_id, _evidence, _flag in spawn_errors
+                for source_time, command, event_ids, _completed, _kind in source_reads
+                if within_after(error_time, source_time)
+            ]
+            output.append(f"      source read within 5 minutes after spawn error: {'yes' if related else 'no'}")
+            roots_with_following_source += bool(related)
+            source_error_pairs += len(related)
+            for error_time, call_id, source_time, command, event_ids in related:
+                output.append(f"        evidence: spawn error {error_time.isoformat()} call={call_id} -> source read {source_time.isoformat()} event_ids={','.join(event_ids)} | {command}")
+        output.append(f"  spawn-error/source-read relation: {spawn_error_count} spawn errors across {roots_with_spawn_errors} roots; source read within 5 minutes after an error in {roots_with_following_source}/{len(roots)} roots ({source_error_pairs} matching pairs). Per-pair timestamps and commands are listed above.")
+        output.append("  wait input per-call sums by timeout (ms | tokens; repeated response attribution may double-count): " + (", ".join(f"{bucket} | {group_mapped_by_timeout[bucket]}" for bucket in sorted(group_mapped_by_timeout, key=lambda x: (x == "NOT AVAILABLE", int(x) if x.isdigit() else 0))) or "NOT AVAILABLE"))
+        output.append("  wait input deduplicated allocation by timeout (ms | tokens): " + (", ".join(f"{bucket} | {group_allocated_by_timeout[bucket]}" for bucket in sorted(group_allocated_by_timeout, key=lambda x: (x == "NOT AVAILABLE", int(x) if x.isdigit() else 0))) or "NOT AVAILABLE"))
+        share = (group_wait_input / group_denominator * 100) if group_denominator else None
+        all_group_ratios[label] = (group_wait_input, group_denominator, share)
+        output.append(f"  wait input estimate: {group_wait_input} distinct allocated known input tokens / {group_denominator} known root request input tokens = {share:.2f}%" if share is not None else f"  wait input estimate: NOT AVAILABLE ({group_wait_input}/{group_denominator})")
+        output.append(f"  requests matched by at least one wait: {group_mapped} input tokens mapped before duplicate-request allocation; may overlap and is not summed as estimate")
+        output.append(f"  aggregate poll/zero-close evidence: {group_wait_totals.get('10000', 0)} calls at 10000 ms timeout; {sum(root_call_counts(root)[0].get('close_agent', 0) == 0 for root in roots)}/{len(roots)} roots have zero close_agent calls")
+    output.extend(["", "Comparison:"])
+    for category in ("spawn_agent", "wait_agent", "send_input", "close_agent"):
+        b = [root_call_counts(root)[0].get(category, 0) for root in before]
+        a = [root_call_counts(root)[0].get(category, 0) for root in after]
+        output.append(f"  {category}: before total/median={sum(b)}/{median_text(b)}; after total/median={sum(a)}/{median_text(a)}")
+    for label in ("Before", "After"):
+        allocated, denominator, share = all_group_ratios[label]
+        output.append(f"  wait input estimate: {label.lower()} {allocated}/{denominator} ({share:.2f}%)" if share is not None else f"  wait input estimate: {label.lower()} NOT AVAILABLE ({allocated}/{denominator})")
+    return "\n".join(output)
+
+
+def analysis_average(total: int, count: int, complete: bool) -> str:
+    if not count:
+        return "NOT AVAILABLE"
+    value = f"{total / count:.1f}"
+    return value if complete else f"NOT AVAILABLE (known average {value}; {count} known requests)"
+
+
+def reviewer_globs(config_path: Path) -> list[str]:
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    active = False
+    globs = []
+    for line in lines:
+        if "Deterministic Reviewer trigger:" in line:
+            active = True
+            continue
+        if active and "Default high-risk route:" in line:
+            break
+        if active:
+                globs.extend(__import__("re").findall(r"`([^`]+)`", line))
+    return globs
+
+
+def render_token_analysis(
+    selected: list[Session],
+    threads: dict[str, Session],
+    children: dict[str, list[str]],
+    excluded_threads: set[str],
+    exclusion_ids: list[str],
+    exclusion_reasons: dict[str, str],
+    workspace: str,
+    after_started: datetime,
+) -> str:
+    command = "rtk proxy python scripts/agent-metrics.py --workspace 'C:\\Users\\Gorkem\\Desktop\\Task' --after-started 2026-10-03T22:09:12Z"
+    for session_id in exclusion_ids:
+        command += f" --exclude-session {session_id} --exclude-session-reason '{session_id}={exclusion_reasons.get(session_id, 'NOT AVAILABLE')}'"
+    command += " --token-analysis"
+    output = [
+        "Agent token analysis",
+        f"Workspace: {workspace}",
+        f"Root cutoff: strictly after session_meta start {after_started.isoformat()}",
+        f"Matching root count after exclusions: {len(selected)}",
+        f"Reproduction command: {command}",
+        "Included roots and descendants are deduplicated by session/thread id.",
+        "The previous report's `total tokens` meant root plus linked descendants; that label was correct. This report separates root-only, descendants-only, and their sum.",
+        "Request = distinct token_usage_record response_id with per-response usage; averages use known usage only.",
+        "Token totals use the latest cumulative thread_token_usage.total_tokens snapshot per thread; cached input is included in input_tokens and reasoning_output_tokens is included in output_tokens.",
+        "Function-call counts use response_item/function_call. custom_tool_call exec wrappers and completed CommandExecution events are reported separately; nested calls inside exec payloads are not individually counted.",
+        "Command executions are logged as event_msg/item_completed with payload.item.type=CommandExecution. send_input groups logged send_message and followup_task calls; original names remain in the raw logs.",
+        "Duration = first-to-last observed log timestamp (wall span; includes idle time), not active compute time.",
+        "",
+        "Exclusions:",
+    ]
+    for session_id in exclusion_ids:
+        output.append(f"  {session_id}: {exclusion_reasons.get(session_id, 'NOT AVAILABLE')}")
+    groups: list[tuple[Session, list[Session]]] = []
+    included_threads: dict[str, Session] = {}
+    for root in selected:
+        child_ids, _ = descendants(root.thread_id or "", children)
+        included = [root] + [threads[child_id] for child_id in child_ids if child_id in threads and child_id not in excluded_threads]
+        groups.append((root, included))
+        included_threads.update((thread.thread_id, thread) for thread in included if thread.thread_id)
+
+    output.extend(["", "Role metrics:", "  role | threads | avg requests/thread | avg input tokens/request | tool calls (total)"])
+    role_groups: dict[str, list[Session]] = defaultdict(list)
+    for thread in included_threads.values():
+        role_groups["root" if not thread.parent_id else child_role(thread)].append(thread)
+    for role in ["root", *CHILD_ROLES, "unknown"]:
+        agents = role_groups.get(role, [])
+        if not agents:
+            continue
+        counts = [request_summary(agent) for agent in agents]
+        request_count = sum(row[0] for row in counts)
+        known_input = sum(row[1] for row in counts)
+        known_requests = sum(row[2] for row in counts)
+        requests_complete = all(row[3] for row in counts)
+        output.append(f"  {role} | {len(agents)} | {request_count / len(agents):.2f} | {analysis_average(known_input, known_requests, requests_complete)} | {sum(len(agent.tool_calls) for agent in agents)}")
+
+    output.extend(["", "Root sessions:"])
+    for root, included in groups:
+        request_count, input_total, known_requests, requests_complete = request_summary(root)
+        root_tokens = root.tokens if root.tokens is not None else "NOT AVAILABLE"
+        descendants_only = included[1:]
+        known_descendant_tokens = [thread.tokens for thread in descendants_only if thread.tokens is not None]
+        descendants_tokens = sum(known_descendant_tokens) if len(known_descendant_tokens) == len(descendants_only) else f"NOT AVAILABLE (known partial {sum(known_descendant_tokens)}; {len(known_descendant_tokens)}/{len(descendants_only)} threads)"
+        total_tokens = (root.tokens + sum(known_descendant_tokens)) if root.tokens is not None and len(known_descendant_tokens) == len(descendants_only) else f"NOT AVAILABLE (known partial {(root.tokens or 0) + sum(known_descendant_tokens)}; {int(root.tokens is not None) + len(known_descendant_tokens)}/{len(included)} threads)"
+        final_input = "NOT AVAILABLE"
+        if root.request_records:
+            last = max(root.request_records, key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1] if row[1] is not None else -1))
+            if last[3] is not None and last[4] is not None:
+                final_input = str(last[3] + last[4])
+        first_message = root.first_user_message or "NOT AVAILABLE"
+        output.append(f"  {root.thread_id}: requests={request_count}; final input context={final_input}; root-only tokens={root_tokens}; descendants-only tokens={descendants_tokens}; total tokens={total_tokens}; child count={len(included)-1}; duration={format_duration(session_duration(root))}; first user message={first_message[:100]}")
+        child_rows = sorted(descendants_only, key=lambda item: (item.started or datetime.max.replace(tzinfo=timezone.utc), item.thread_id or ""))
+        output.append("    child threads (role | thread | start):")
+        output.extend(f"      {child_role(child)} | {child.thread_id} | {child.started.isoformat() if child.started else 'NOT AVAILABLE'}" for child in child_rows)
+        spawn_rows = sorted(((parent, row) for parent in included for row in parent.spawn_details), key=lambda item: (item[1][1] or datetime.max.replace(tzinfo=timezone.utc), item[1][0]))
+        output.append("    logged descendant spawn calls (parent | role | task_name | start | cumulative tokens at spawn):")
+        for parent, (call_id, started, role, task_name, _) in spawn_rows:
+            prior = [total for when, total in parent.token_records if when is not None and started is not None and when <= started]
+            cumulative_at_spawn = max(prior) if prior else "NOT AVAILABLE"
+            output.append(f"      {parent.thread_id} | {role} | {task_name} | {started.isoformat() if started else 'NOT AVAILABLE'} | {cumulative_at_spawn}")
+        if not spawn_rows:
+            output.append("      NOT AVAILABLE (no logged spawn calls)")
+        if root.thread_id in {"01a12751-f53d-7ed1-8b21-f74d50d42937", "01a11263-60ce-7893-9f46-aa3d9bf57d7f"}:
+            output.append("    per-request input context (request usage.input_tokens; nearest token_count last_token_usage.input_tokens and cumulative total_token_usage.input_tokens; no response-ID link in token_count):")
+            context_rows = sorted(root.context_records, key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1] if row[1] is not None else -1))
+            requests = sorted(root.request_inputs, key=lambda row: (row[0] or datetime.max.replace(tzinfo=timezone.utc), row[1] if row[1] is not None else -1, row[2]))
+            for when, ordinal, response_id, request_input in requests:
+                candidates = [row for row in context_rows if row[0] is not None and when is not None]
+                nearest = min(candidates, key=lambda row: abs((row[0] - when).total_seconds())) if candidates else None
+                delta = abs((nearest[0] - when).total_seconds()) if nearest and nearest[0] and when else None
+                output.append(f"      {when.isoformat() if when else 'NOT AVAILABLE'} | response={response_id} | usage.input={request_input if request_input is not None else 'NOT AVAILABLE'} | last_token_usage.input={nearest[2] if nearest and nearest[2] is not None else 'NOT AVAILABLE'} | total_token_usage.input={nearest[3] if nearest and nearest[3] is not None else 'NOT AVAILABLE'} | token_count_delta_seconds={delta if delta is not None else 'NOT AVAILABLE'}")
+            compacted = sorted(root.compaction_events, key=lambda row: row[0] or datetime.max.replace(tzinfo=timezone.utc))
+            output.append("    compaction events: " + (", ".join(f"{when.isoformat() if when else 'NOT AVAILABLE'} ({kind})" for when, kind in compacted) if compacted else "none logged"))
+
+    function_counts: dict[str, int] = defaultdict(int)
+    function_calls = [call for root, _ in groups for call in root.tool_calls]
+    for _, name in function_calls:
+        category = {
+            "spawn_agent": "spawn_agent",
+            "wait_agent": "wait_agent",
+            "send_message": "send_input",
+            "send_input": "send_input",
+            "followup_task": "send_input",
+            "close_agent": "close_agent",
+            "apply_patch": "apply_patch",
+            "exec": "shell/exec",
+            "shell": "shell/exec",
+            "exec_command": "shell/exec",
+        }.get(name, "other")
+        function_counts[category] += 1
+    output.extend(["", f"Root function-call breakdown ({len(function_calls)} calls; categories sum to this total):"])
+    for category in ("spawn_agent", "wait_agent", "send_input", "close_agent", "shell/exec", "apply_patch", "other"):
+        output.append(f"  {category}: {function_counts.get(category, 0)}")
+    wait_timeouts: dict[str, int] = defaultdict(int)
+    for root, _ in groups:
+        for _, name, raw_arguments in root.tool_call_arguments:
+            if name != "wait_agent":
+                continue
+            try:
+                arguments = json.loads(raw_arguments) if raw_arguments else {}
+            except json.JSONDecodeError:
+                arguments = {}
+            timeout = arguments.get("timeout_ms") if isinstance(arguments, dict) else None
+            wait_timeouts[str(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) else "NOT AVAILABLE"] += 1
+    output.append("  wait_agent timeout values (ms | count): " + (", ".join(f"{value} | {count}" for value, count in sorted(wait_timeouts.items())) if wait_timeouts else "NOT AVAILABLE"))
+    all_custom = [call for root, _ in groups for call in root.custom_tool_calls]
+    output.append(f"  separately logged custom_tool_call events: {len(all_custom)} (exec/shell wrappers={sum(name == 'exec' for _, name, _ in all_custom)}); not included in the {len(function_calls)} function-call total")
+
+    root_commands: dict[str, dict[str, Any]] = {}
+    custom_command_keys: set[str] = set()
+    for root, _ in groups:
+        for _, tool_name, tool_input in root.custom_tool_calls:
+            if tool_name != "exec":
+                continue
+            for match in re.finditer(r"\bcmd\s*:\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')", tool_input):
+                literal = match.group(1)
+                try:
+                    command = json.loads(literal) if literal.startswith('"') else literal[1:-1]
+                except json.JSONDecodeError:
+                    command = literal[1:-1]
+                normalized = " ".join(str(command).split())[:100]
+                custom_command_keys.add(normalized)
+                entry = root_commands.setdefault(normalized, {"count": 0, "statuses": set(), "source": False, "checks": False})
+                entry["count"] += 1
+                entry["source"] |= bool(re.search(r"\b(rg|grep|findstr|Select-String|Get-Content|type|cat|more)\b.*(src|frontend|backend|app|components|services|routes)", str(command), re.I))
+                entry["checks"] |= bool(re.search(r"\b(test|build|lint|e2e|vitest|jest|playwright|tsc)\b|npm\s+run\s+(test|build|lint|e2e)", str(command), re.I))
+        for _, command, status in root.shell_commands:
+            normalized = " ".join(command.split())[:100]
+            entry = root_commands.setdefault(normalized, {"count": 0, "statuses": set(), "source": False, "checks": False})
+            if normalized not in custom_command_keys:
+                entry["count"] += 1
+            entry["statuses"].add(status)
+            entry["source"] |= bool(re.search(r"\b(rg|grep|findstr|Select-String|Get-Content|type|cat|more)\b.*(src|frontend|backend|app|components|services|routes)", command, re.I))
+            entry["checks"] |= bool(re.search(r"\b(test|build|lint|e2e|vitest|jest|playwright|tsc)\b|npm\s+run\s+(test|build|lint|e2e)", command, re.I))
+    output.extend(["", "Root shell/exec commands (normalized to 100 characters):"])
+    if not root_commands:
+        output.append("  NOT AVAILABLE")
+    for command, row in sorted(root_commands.items()):
+        flags = ",".join(flag for flag, enabled in (("reads/searches application source", row["source"]), ("runs tests/builds/linters", row["checks"])) if enabled) or "none detected"
+        output.append(f"  {command} | count={row['count']} | flags={flags}")
+
+    output.extend(["", "Tester threads:"])
+    testers = [thread for thread in included_threads.values() if thread.parent_id and child_role(thread) == "tester"]
+    tester_requests = sum(request_summary(thread)[0] for thread in testers)
+    tester_calls = sum(len(thread.tool_calls) for thread in testers)
+    output.append(f"  Tester discrepancy: {tester_requests} logged response requests vs {tester_calls} response_item/function_call events; request records and tool-call records are distinct event types.")
+    for thread in sorted(testers, key=lambda item: (item.started or datetime.max.replace(tzinfo=timezone.utc), item.thread_id or "")):
+        request_count, _, _, _ = request_summary(thread)
+        commands: dict[str, dict[str, Any]] = {}
+        for _, command, exit_status in thread.shell_commands:
+            normalized = " ".join(command.split())[:100]
+            row = commands.setdefault(normalized, {"count": 0, "statuses": set()})
+            row["count"] += 1
+            row["statuses"].add(exit_status)
+        output.append(f"  {thread.thread_id}: duration={format_duration(session_duration(thread))}; requests={request_count}")
+        if not commands:
+            output.append("    shell commands: NOT AVAILABLE")
+        for command, row in sorted(commands.items()):
+            output.append(f"    {command[:100]} | repeats={row['count']} | exit={','.join(sorted(row['statuses']))}")
+    if len(testers) != 7:
+        output.append(f"  Expected 7 tester threads; observed {len(testers)} after filters. This is the logged count; no padding or forced selection applied.")
+
+    output.extend(["", "Reviewer spawns by root:"])
+    globs = reviewer_globs(Path(workspace) / ".codex" / "config.toml")
+    for root, included in groups:
+        calls = [(parent, record) for parent in included for record in parent.spawn_details if record[2] == "reviewer"]
+        output.append(f"  {root.thread_id}:")
+        reviewer_children = sorted((thread for thread in threads.values() if thread.parent_id == root.thread_id and child_role(thread) == "reviewer" and thread.thread_id not in excluded_threads), key=lambda item: (item.started or datetime.max.replace(tzinfo=timezone.utc), item.thread_id or ""))
+        output.append("    reviewer child threads: " + (", ".join(f"{thread.thread_id} ({thread.started.isoformat() if thread.started else 'NOT AVAILABLE'})" for thread in reviewer_children) if reviewer_children else "none logged"))
+        if not calls:
+            output.append("    NOT AVAILABLE (no logged reviewer spawn from root)")
+            continue
+        for parent, (call_id, started, _, task_name, context) in sorted(calls, key=lambda row: row[1][1] or datetime.max.replace(tzinfo=timezone.utc)):
+            start = started.isoformat() if started else "NOT AVAILABLE"
+            previous_implementations = [record for candidate in included for record in candidate.spawn_details if record[2] in {"coder", "fast-coder"} and (started is None or record[1] is not None and record[1] < started)]
+            previous = max(previous_implementations, key=lambda row: row[1] or datetime.min.replace(tzinfo=timezone.utc)) if previous_implementations else None
+            output.append(f"    parent={parent.thread_id}; task={task_name}; start={start}; thread=NOT AVAILABLE (no call-ID link); logged instruction/skill context={context[:240]}")
+            if previous is None:
+                output.append("      preceding implementation spawn: NOT AVAILABLE (no earlier coder/fast-coder spawn in root log)")
+            else:
+                output.append(f"      preceding implementation spawn by timestamp: task={previous[3]}; start={previous[1].isoformat() if previous[1] else 'NOT AVAILABLE'}; thread=NOT AVAILABLE (call-ID link is absent; sequence alone cannot confirm thread)")
+                output.append("      reported changed files and trigger match: NOT AVAILABLE (implementation thread cannot be linked to the spawn log by call ID)")
+    output.extend(["  Current Reviewer trigger globs:"])
+    output.extend([f"    {glob}" for glob in globs] or ["    NOT AVAILABLE"])
+    output.extend(["", f"Tester sample size: {len(testers)} thread(s); role and per-command averages are descriptive only. Root sample size: {len(groups)} session(s). With n=7 roots, root-level averages, rates, rankings, and cross-root comparisons are too noisy for general conclusions; treat them as descriptive. Tester averages are also descriptive at n=7.", "Limitations: first-to-last spans include idle time; usage records omit attempted requests without response usage; calls hidden inside nested functions.exec payloads cannot be counted individually; command exit status is NOT AVAILABLE where CommandExecution.item.exit_code is absent."])
+    return "\n".join(output)
+
+
 def main() -> int:
+    if __debug__:
+        _self_check()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", default=str(Path.cwd()), help="root-session cwd filter (default: current directory)")
     parser.add_argument("--logs-dir", action="append", help="scan this log tree instead of the default current and archived trees; repeatable")
@@ -678,6 +1454,9 @@ def main() -> int:
     parser.add_argument("--exclude-session", action="append", type=session_identifier, default=[], metavar="ID", help="exclude this session and its descendants; repeatable")
     parser.add_argument("--exclude-session-reason", action="append", type=exclusion_reason, default=[], metavar="ID=REASON", help="record a reason for an excluded session; repeatable")
     parser.add_argument("--rtk-gain", action="store_true", help="capture one timestamped global `rtk gain` snapshot as supplementary data")
+    parser.add_argument("--token-analysis", action="store_true", help="print request, tool, tester-command, reviewer-spawn, and per-root analysis")
+    parser.add_argument("--session-flow-analysis", action="store_true", help="compare root orchestration and wait-input usage before/after --analysis-cutoff")
+    parser.add_argument("--analysis-cutoff", type=cutoff, help="cutoff for --session-flow-analysis (default: historical baseline cutoff)")
     args = parser.parse_args()
     try:
         after_started = resolve_after(args.after, args.after_started)
@@ -685,6 +1464,11 @@ def main() -> int:
         parser.error(str(error))
     exclusion_ids = list(dict.fromkeys(args.exclude_session))
     exclusion_reasons = dict(args.exclude_session_reason)
+    current_id = os.environ.get("CODEX_SESSION_ID")
+    if args.session_flow_analysis and current_id:
+        if current_id not in exclusion_ids:
+            exclusion_ids.append(current_id)
+        exclusion_reasons.setdefault(current_id, "current session from CODEX_SESSION_ID")
     if set(exclusion_reasons) - set(exclusion_ids):
         parser.error("--exclude-session-reason IDs must also appear in --exclude-session")
     print_historical_baseline_preamble(args.before)
@@ -694,7 +1478,8 @@ def main() -> int:
         Path.home() / ".codex" / "archived_sessions",
     ]
     threads, errors = load_sessions(roots)
-    print_reconstruction_audit(threads, errors)
+    if not args.token_analysis and not args.session_flow_analysis:
+        print_reconstruction_audit(threads, errors)
     workspace = normalized_path(args.workspace)
     children: dict[str, list[str]] = defaultdict(list)
     for thread in threads.values():
@@ -720,6 +1505,22 @@ def main() -> int:
             continue
         (selected_excluded_roots if excluded_root else selected).append(thread)
     selected.sort(key=lambda thread: (thread.started or datetime.min.replace(tzinfo=timezone.utc), thread.thread_id or ""))
+
+    if args.session_flow_analysis:
+        flow_cutoff = args.analysis_cutoff or cutoff(HISTORICAL_BASELINE_CUTOFF)
+        before = sorted((root for root in all_workspace_roots if root.started and root.started < flow_cutoff and root.thread_id not in excluded_threads), key=lambda root: (root.started, root.thread_id or ""))
+        after = sorted((root for root in all_workspace_roots if root.started and root.started > flow_cutoff and root.thread_id not in excluded_threads), key=lambda root: (root.started, root.thread_id or ""))
+        sys.stdout.reconfigure(encoding="utf-8")
+        exclusions = [(session_id, exclusion_reasons.get(session_id, "NOT AVAILABLE")) for session_id in exclusion_ids]
+        print(render_session_flow_analysis(before, after, threads, children, excluded_threads, flow_cutoff, exclusions, current_id))
+        return 0
+
+    if args.token_analysis:
+        if after_started is None:
+            parser.error("--token-analysis requires --after or --after-started")
+        sys.stdout.reconfigure(encoding="utf-8")
+        print(render_token_analysis(selected, threads, children, excluded_threads, exclusion_ids, exclusion_reasons, args.workspace, after_started))
+        return 0
 
     print(f"Workspace: {args.workspace}")
     after_label = f"strictly after-started {after_started.isoformat()}" if args.after_started else (f"strictly after {after_started.isoformat()} (--after compatibility)" if args.after else "no after cutoff")
@@ -784,9 +1585,27 @@ def main() -> int:
     print("  accounting: uncached input = input_tokens - cached_input_tokens; cached input is included in input_tokens; reasoning_output_tokens is included in output_tokens and is not additive.")
     for category in TOKEN_CATEGORIES:
         print(f"  {category}: {metric_text([thread.category_tokens.get(category) for thread in baseline_threads.values()])}")
+    all_threads = list(baseline_threads.values())
+    print("  overall weighted cache hit rate (cached input / total input): " + cache_rate([thread.category_tokens.get("cached_input") for thread in all_threads], [thread.category_tokens.get("uncached_input") for thread in all_threads]))
+    print("  root-session weighted cache hit rate: " + cache_rate([root.category_tokens.get("cached_input") for root in selected], [root.category_tokens.get("uncached_input") for root in selected]))
+    first_rate, later_rate = request_cache_rates(all_threads)
+    print(f"  first recorded request per thread cache hit rate: {first_rate}")
+    print(f"  later recorded requests per thread cache hit rate: {later_rate}")
+    print("  request coverage: per-response usage is taken from token_usage_record payload.usage keyed by response_id and ordered by observed timestamp/ordinal. These are first/later recorded response events; the actual first request is NOT AVAILABLE where log-history completeness is unproven. Missing per-response fields are NOT AVAILABLE; attempted requests without response events are not counted.")
+    print("  10 lowest-hit threads with >100000 input tokens (duration is first-to-last observed log timestamp):")
+    lowest = low_hit_threads(all_threads)
+    for rate, thread, total in lowest:
+        role = child_role(thread) if thread.parent_id else "root"
+        duration = format_duration(session_duration(thread))
+        print(f"    {thread.thread_id or 'NOT AVAILABLE'} | {role} | {rate:.1%} | {total} input tokens | {duration}")
+    if not lowest:
+        print("    NOT AVAILABLE (no threads meet the input-token threshold)")
     child_sessions = list(baseline_children.values())
     print()
     for line in role_breakdown(child_sessions):
+        print(line)
+    print("  child-role weighted cache hit ranking:")
+    for line in role_hit_ranking(child_sessions):
         print(line)
     print("  largest share of known child total tokens: " + top_role(child_sessions, lambda thread: thread.tokens, "known child-token"))
     print("  largest share of known child reasoning tokens: " + top_role(child_sessions, lambda thread: thread.category_tokens.get("reasoning"), "known child reasoning-token"))

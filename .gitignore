@@ -146,3 +146,4 @@ frontend/.impeccable/
 !/.wrongstack/project.json
 .wrongstack
 docs/agentSetup.md
+scripts/__pycache__

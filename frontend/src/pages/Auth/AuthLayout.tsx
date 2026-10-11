@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthLanguageToggle, AuthThemeToggle, BrandPanel } from '../../components/auth/BrandPanel';
 
@@ -30,7 +30,7 @@ export function AuthLayout() {
                   {t('auth.brand.footer')}
                 </p>
                 <p className="mt-1 text-xl font-bold leading-none tracking-tight text-foreground">
-                  TaskFlow
+                  <Link to="/">TaskFlow</Link>
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
