@@ -867,7 +867,17 @@ describe('structured task field routes', () => {
   beforeEach(cleanDb);
 
   it('denies a demoted task assigner and leaves assignees and history unchanged', async () => {
-    const { member, memberAccessToken, task, team } = await makeRouteTaskFixture();
+    const { admin, member, memberAccessToken, team } = await makeRouteTaskFixture();
+    const second = await makeMember('demoted-assigner-second@example.com', admin.tenantId!);
+    await addMemberByDisplayId(team.id, second.displayId, admin);
+    await prisma.teamMember.update({
+      where: { teamId_userId: { teamId: team.id, userId: member.id } },
+      data: { role: 'teamAdmin' },
+    });
+    const task = await tasksService.createTask(
+      { title: 'Demoted assigner task', priority: 'medium', assigneeIds: [member.id], teamId: team.id },
+      member,
+    );
     await prisma.teamMember.update({
       where: { teamId_userId: { teamId: team.id, userId: member.id } },
       data: { role: 'member' },
@@ -877,12 +887,18 @@ describe('structured task field routes', () => {
     const response = await request(createApp())
       .patch(`/api/v1/tasks/${task.id}`)
       .set('Authorization', `Bearer ${memberAccessToken}`)
-      .send({ assigneeIds: [member.id] });
+      .send({ assigneeIds: [member.id, second.id] });
 
     expect(response.status).toBe(403);
     const persisted = await prisma.task.findUnique({ where: { id: task.id }, include: { assignees: true } });
     expect(persisted?.assignees.map((assignee) => assignee.userId)).toEqual([member.id]);
     expect(await prisma.taskEvent.count({ where: { taskId: task.id } })).toBe(beforeEvents);
+
+    const adminFields = await request(createApp())
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ targetAudience: 'Nope' });
+    expect(adminFields.status).toBe(403);
   });
 
   it('denies a removed former task assigner through the task route', async () => {
@@ -1025,12 +1041,16 @@ describe('structured task field routes', () => {
       data: { role: 'teamAdmin' },
     });
 
-    const response = await request(createApp())
-      .patch(`/api/v1/tasks/${task.id}`)
-      .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
-      .send({ assigneeIds: [outsiderRegistration.user.id] });
-
-    expect(response.status).toBe(403);
+    for (const body of [
+      { assigneeIds: [outsiderRegistration.user.id] },
+      { targetAudience: 'Nope' },
+    ]) {
+      const response = await request(createApp())
+        .patch(`/api/v1/tasks/${task.id}`)
+        .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
+        .send(body);
+      expect(response.status).toBe(403);
+    }
   });
 
   it('returns no task data for a wrong-tenant direct request', async () => {
@@ -1042,14 +1062,18 @@ describe('structured task field routes', () => {
       companyName: 'Route Globex',
     });
 
-    const response = await request(createApp())
-      .patch(`/api/v1/tasks/${task.id}`)
-      .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
-      .send({ assigneeIds: [outsiderRegistration.user.id] });
-
-    expect(response.status).toBe(404);
-    expect(response.body).not.toHaveProperty('title');
-    expect(response.body).not.toHaveProperty('scopeItems');
+    for (const body of [
+      { assigneeIds: [outsiderRegistration.user.id] },
+      { targetAudience: 'Nope' },
+    ]) {
+      const response = await request(createApp())
+        .patch(`/api/v1/tasks/${task.id}`)
+        .set('Authorization', `Bearer ${outsiderRegistration.accessToken}`)
+        .send(body);
+      expect(response.status).toBe(404);
+      expect(response.body).not.toHaveProperty('title');
+      expect(response.body).not.toHaveProperty('scopeItems');
+    }
   });
 });
 
