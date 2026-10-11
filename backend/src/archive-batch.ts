@@ -9,6 +9,7 @@ export async function runArchiveBatch(): Promise<{ archivedCount: number }> {
   for (const tenant of tenants) {
     try {
       const result = await maintenancePrisma.$transaction(async (db) => {
+        await db.$queryRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
         const archived = await archiveExpiredTasks(db, tenant.id);
         return { archivedCount: archived.archivedCount };
       });

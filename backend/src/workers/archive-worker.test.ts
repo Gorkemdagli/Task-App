@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   findTenants: vi.fn(),
   transaction: vi.fn(),
+  queryRaw: vi.fn(),
   archive: vi.fn(),
   schedule: vi.fn(),
 }));
@@ -25,6 +26,7 @@ describe('archive worker isolation', () => {
     vi.resetModules();
     state.findTenants.mockReset();
     state.transaction.mockReset();
+    state.queryRaw.mockReset();
     state.archive.mockReset();
     state.schedule.mockReset();
   });
@@ -49,7 +51,10 @@ describe('archive worker isolation', () => {
   it('continues with the next tenant after a batch failure', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     state.findTenants.mockResolvedValue([{ id: 'tenant-a' }, { id: 'tenant-b' }]);
-    state.transaction.mockImplementation((work: (db: unknown) => Promise<unknown>) => work({}));
+    state.queryRaw.mockResolvedValue([]);
+    state.transaction.mockImplementation((work: (db: unknown) => Promise<unknown>) =>
+      work({ $queryRaw: state.queryRaw } as never),
+    );
     state.archive.mockImplementation(async (_db: unknown, tenantId: string) => {
       if (tenantId === 'tenant-a') throw new Error('tenant-a failed');
       return { archivedCount: 2 };
@@ -60,6 +65,12 @@ describe('archive worker isolation', () => {
 
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-a');
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-b');
+    expect(state.queryRaw).toHaveBeenCalledTimes(2);
+    expect(state.queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      state.archive.mock.invocationCallOrder[0],
+    );
+    expect(state.queryRaw.mock.calls[0]?.[1]).toBe('tenant-a');
+    expect(state.queryRaw.mock.calls[1]?.[1]).toBe('tenant-b');
     errorSpy.mockRestore();
   });
 
