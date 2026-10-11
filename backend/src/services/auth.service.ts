@@ -14,6 +14,8 @@ import {
 } from '../lib/jwt';
 import { companyNameKey, slugify } from './tenant.service';
 import { AppError } from '../lib/appError';
+import { withTenantContext } from '../db/withTenant';
+import { withUserContext } from '../db/withUser';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
 import {
   accessSessionKey,
@@ -44,14 +46,6 @@ export interface AuthResult {
   sessionExpiresAt: number;
 }
 
-async function findUniqueDisplayId(): Promise<string> {
-  for (let i = 0; i < DISPLAY_ID_RETRIES; i++) {
-    const c = generateDisplayId();
-    if (!(await prisma.user.findUnique({ where: { displayId: c } }))) return c;
-  }
-  throw new AppError(500, 'displayId üretilemedi', 'INTERNAL');
-}
-
 function issueTokens(user: AuthUser): AuthResult {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const sessionExpiresAt = nowSeconds + AUTH_SESSION_MAX_TTL_SECONDS;
@@ -70,44 +64,86 @@ function issueTokens(user: AuthUser): AuthResult {
   };
 }
 
-export async function register(input: RegisterInput): Promise<AuthResult> {
-  if (await prisma.user.findUnique({ where: { email: input.email } })) {
-    throw new AppError(409, 'Bu e-posta zaten kullanılıyor', 'CONFLICT_EMAIL');
+function isUniqueConstraint(error: unknown, column: string): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
   }
-  // companyName verilmişse yeni tenant oluştur, user companyAdmin olur.
-  // Verilmemişse tenantless user (NULL) — henüz bir şirkette değil.
-  // Admin bu user'ı takıma eklerken tenantId otomatik olarak admin'in
-  // tenant'ına transfer olur (services/teams.service.addMemberByDisplayId).
-  let tenantId: string | null = null;
-  if (input.companyName) {
-    const slug = slugify(input.companyName);
-    const nameKey = companyNameKey(input.companyName);
-    if (await prisma.tenant.findUnique({ where: { nameKey } })) {
-      throw new AppError(409, 'Bu şirket adı alınmış', 'CONFLICT_SLUG');
-    }
+  const target = error.meta?.target;
+  const adapterCause = error.meta?.driverAdapterError as
+    | { cause?: { constraint?: unknown } }
+    | undefined;
+  const constraint = adapterCause?.cause?.constraint;
+  return [target, constraint, error.message].some((value) =>
+    Array.isArray(value)
+      ? value.some((item) => typeof item === 'string' && item.includes(column))
+      : typeof value === 'string' && value.includes(column),
+  );
+}
+
+async function findUserById(userId: string) {
+  return withUserContext(userId, (tx) => tx.user.findUnique({ where: { id: userId } }));
+}
+
+async function findTenantName(userId: string, tenantId: string | null): Promise<string | null> {
+  if (!tenantId) return null;
+  const tenant = await withTenantContext(userId, tenantId, (tx) =>
+    tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+  );
+  return tenant?.name ?? null;
+}
+
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  const rows = await prisma.$queryRaw<Array<{ id: string | null }>>`
+    SELECT private.auth_user_id_by_email(${email}) AS id
+  `;
+  return rows[0]?.id ?? null;
+}
+
+export async function register(input: RegisterInput): Promise<AuthResult> {
+  const userId = randomUUID();
+  const company = input.companyName
+    ? {
+        id: randomUUID(),
+        slug: slugify(input.companyName),
+        nameKey: companyNameKey(input.companyName),
+        name: input.companyName,
+      }
+    : null;
+  const passwordHash = await hashPassword(input.password);
+  const data = {
+    id: userId,
+    tenantId: company?.id ?? null,
+    email: input.email,
+    fullName: input.fullName,
+    passwordHash,
+    role: company ? ('companyAdmin' as const) : ('member' as const),
+  };
+
+  let user;
+  for (let attempt = 0; attempt < DISPLAY_ID_RETRIES; attempt++) {
     try {
-      tenantId = (await prisma.tenant.create({ data: { name: input.companyName, slug, nameKey } }))
-        .id;
+      const displayId = generateDisplayId();
+      user = company
+        ? await withTenantContext(userId, company.id, async (tx) => {
+            await tx.tenant.create({ data: company });
+            return tx.user.create({ data: { ...data, displayId } });
+          })
+        : await withUserContext(userId, (tx) => tx.user.create({ data: { ...data, displayId } }));
+      break;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (isUniqueConstraint(error, 'display_id')) continue;
+      if (isUniqueConstraint(error, 'email')) {
+        throw new AppError(409, 'Bu e-posta zaten kullanılıyor', 'CONFLICT_EMAIL');
+      }
+      if (isUniqueConstraint(error, 'slug') || isUniqueConstraint(error, 'name_key')) {
         throw new AppError(409, 'Bu şirket adı alınmış', 'CONFLICT_SLUG');
       }
       throw error;
     }
   }
-  const displayId = await findUniqueDisplayId();
-  const passwordHash = await hashPassword(input.password);
-  const user = await prisma.user.create({
-    data: {
-      tenantId,
-      email: input.email,
-      fullName: input.fullName,
-      displayId,
-      passwordHash,
-      role: input.companyName ? 'companyAdmin' : 'member',
-    },
-  });
-  const r = issueTokens({
+
+  if (!user) throw new AppError(500, 'displayId üretilemedi', 'INTERNAL');
+  const result = issueTokens({
     id: user.id,
     displayId: user.displayId,
     email: user.email,
@@ -116,42 +152,41 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     tenantId: user.tenantId,
   });
   await registerIssuedTokens(
-    r.accessToken,
-    r.refreshToken,
+    result.accessToken,
+    result.refreshToken,
     user.id,
     randomUUID(),
-    r.sessionExpiresAt,
+    result.sessionExpiresAt,
   );
-  return r;
+  return result;
 }
 
 const DUMMY_HASH = '$2b$12$0000000000000000000000000000000000000000000000000000000';
 
 export async function login(input: LoginInput): Promise<AuthResult> {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
-    include: { tenant: { select: { name: true } } },
-  });
+  const userId = await findUserIdByEmail(input.email);
+  const user = userId ? await findUserById(userId) : null;
   const hash = user?.passwordHash ?? DUMMY_HASH;
   const valid = await verifyPassword(input.password, hash);
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
-  const r = issueTokens({
+  const tenantName = await findTenantName(user.id, user.tenantId);
+  const result = issueTokens({
     id: user.id,
     displayId: user.displayId,
     email: user.email,
     fullName: user.fullName,
     role: user.role,
     tenantId: user.tenantId,
-    tenantName: user.tenant?.name ?? null,
+    tenantName,
   });
   await registerIssuedTokens(
-    r.accessToken,
-    r.refreshToken,
+    result.accessToken,
+    result.refreshToken,
     user.id,
     randomUUID(),
-    r.sessionExpiresAt,
+    result.sessionExpiresAt,
   );
-  return r;
+  return result;
 }
 
 export async function refresh(refreshToken: string): Promise<AuthResult> {
@@ -170,12 +205,9 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   if (sessionExpiresAt <= nowSeconds) {
     throw new AppError(401, 'Oturum süresi doldu', 'SESSION_EXPIRED');
   }
-  // tenant join → response'da tenantName döner; Sidebar/MobileSidebar tenant adını gösterir.
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { tenant: { select: { name: true } } },
-  });
+  const user = await findUserById(userId);
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
+  const tenantName = await findTenantName(user.id, user.tenantId);
   const accessToken = signAccessToken(user.id, user.tenantId);
   const refreshLifetimeSeconds = Math.min(
     REFRESH_TOKEN_IDLE_TTL_SECONDS,
@@ -190,7 +222,7 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
     accessToken,
     newRefreshToken,
   );
-  if (!rotated) throw new AppError(401, 'Oturum sonlandÄ±rÄ±lmÄ±ÅŸ', 'TOKEN_REVOKED');
+  if (!rotated) throw new AppError(401, 'Oturum sonlandÄ±rÄ±lmÄ±Å¸', 'TOKEN_REVOKED');
   return {
     user: {
       id: user.id,
@@ -199,7 +231,7 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
       fullName: user.fullName,
       role: user.role,
       tenantId: user.tenantId,
-      tenantName: user.tenant?.name ?? null,
+      tenantName,
     },
     accessToken,
     refreshToken: newRefreshToken,
