@@ -2,7 +2,7 @@ import '../env';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { maintenancePrisma } from '../lib/maintenancePrisma';
@@ -42,7 +42,7 @@ const roleAttributeGuard = readFileSync(
   ),
   'utf8',
 ).match(
-  /DO \$\$\r?\nBEGIN\r?\n  IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'taskflow_maintenance'\) THEN\r?\n    RAISE EXCEPTION 'taskflow_maintenance role was not created';[\s\S]*?\$\$;/,
+  /DO \$\$\r?\nBEGIN\r?\n {2}IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'taskflow_maintenance'\) THEN\r?\n {4}RAISE EXCEPTION 'taskflow_maintenance role was not created';[\s\S]*?\$\$;/,
 )?.[0];
 
 queryClient.$on('query', ({ query }) => {
