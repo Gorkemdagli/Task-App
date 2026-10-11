@@ -35,6 +35,15 @@ const membershipGuard = readFileSync(
   ),
   'utf8',
 ).match(/DO \$\$\s*DECLARE\s+maintenance_role oid;[\s\S]*?\$\$;/)?.[0];
+const roleAttributeGuard = readFileSync(
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20261012090000_maintenance_archive_role/migration.sql',
+  ),
+  'utf8',
+).match(
+  /DO \$\$\r?\nBEGIN\r?\n  IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'taskflow_maintenance'\) THEN\r?\n    RAISE EXCEPTION 'taskflow_maintenance role was not created';[\s\S]*?\$\$;/,
+)?.[0];
 
 queryClient.$on('query', ({ query }) => {
   const setClause = query.match(/UPDATE\s+(?:"[^"]+"\.)?"tasks"\s+SET\s+([\s\S]*?)\s+WHERE/i)?.[1];
@@ -123,12 +132,16 @@ describe('maintenance archive role', () => {
         rolcanlogin: boolean;
         rolinherit: boolean;
         rolsuper: boolean;
+        rolcreatedb: boolean;
+        rolcreaterole: boolean;
+        rolreplication: boolean;
         rolbypassrls: boolean;
         has_membership: boolean;
         owns_public_objects: boolean;
         can_create_public: boolean;
       }[]
-    >`SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolbypassrls,
+    >`SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreatedb,
+        r.rolcreaterole, r.rolreplication, r.rolbypassrls,
         EXISTS (
           SELECT 1 FROM pg_auth_members
           WHERE roleid = r.oid OR member = r.oid
@@ -147,11 +160,42 @@ describe('maintenance archive role', () => {
       rolcanlogin: false,
       rolinherit: false,
       rolsuper: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolreplication: false,
       rolbypassrls: false,
       has_membership: false,
       owns_public_objects: false,
       can_create_public: false,
     });
+  });
+
+  it('fails closed on privileged or inheriting role attributes', async () => {
+    if (!roleAttributeGuard) throw new Error('maintenance role attribute guard was not found');
+    const roleAttributePairs = [
+      ['SUPERUSER', 'NOSUPERUSER'],
+      ['CREATEDB', 'NOCREATEDB'],
+      ['CREATEROLE', 'NOCREATEROLE'],
+      ['REPLICATION', 'NOREPLICATION'],
+      ['BYPASSRLS', 'NOBYPASSRLS'],
+      ['INHERIT', 'NOINHERIT'],
+    ] as const;
+
+    try {
+      for (const [unsafeOption, safeOption] of roleAttributePairs) {
+        await maintenancePrisma.$executeRawUnsafe(
+          `ALTER ROLE taskflow_maintenance ${unsafeOption}`,
+        );
+        await expect(maintenancePrisma.$executeRawUnsafe(roleAttributeGuard)).rejects.toThrow(
+          'taskflow_maintenance has unsafe security attributes',
+        );
+        await maintenancePrisma.$executeRawUnsafe(`ALTER ROLE taskflow_maintenance ${safeOption}`);
+      }
+    } finally {
+      await maintenancePrisma.$executeRawUnsafe(
+        'ALTER ROLE taskflow_maintenance NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT',
+      );
+    }
   });
 
   it('allows only provider-admin inverse membership in the migration guard', async () => {

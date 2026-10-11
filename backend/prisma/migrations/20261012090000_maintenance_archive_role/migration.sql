@@ -8,6 +8,25 @@ END
 $$;
 
 DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taskflow_maintenance') THEN
+    RAISE EXCEPTION 'taskflow_maintenance role was not created';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+    WHERE rolname = 'taskflow_maintenance'
+      AND (
+        rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication
+        OR rolbypassrls OR rolinherit
+      )
+  ) THEN
+    RAISE EXCEPTION 'taskflow_maintenance has unsafe security attributes';
+  END IF;
+END
+$$;
+
+DO $$
 DECLARE
   maintenance_role oid;
 BEGIN
@@ -45,9 +64,6 @@ BEGIN
   END IF;
 END
 $$;
-
-ALTER ROLE taskflow_maintenance
-  NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 
 REVOKE ALL ON SCHEMA public FROM taskflow_maintenance;
 GRANT USAGE ON SCHEMA public TO taskflow_maintenance;
