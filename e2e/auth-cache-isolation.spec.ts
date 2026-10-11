@@ -56,11 +56,12 @@ test('late task edit from a prior session cannot restore data after same-tenant 
   let tenantId: string | undefined;
   let adminBrowser: BrowserContext | undefined;
   let adminToken: string | undefined;
-  let memberToken: string | undefined;
   let adminRegistrationToken: string | undefined;
   let memberRegistrationToken: string | undefined;
   let assigneeRegistrationToken: string | undefined;
   let releaseMutation!: () => void;
+  let testError: unknown;
+  let testFailed = false;
 
   try {
     const adminResponse = await registration.post('/api/v1/auth/register', {
@@ -189,7 +190,7 @@ test('late task edit from a prior session cannot restore data after same-tenant 
     await adminPage.getByRole('button', { name: /Kullanıcı menüsünü aç|open user menu/i }).click();
     await adminPage.getByRole('menuitem', { name: /Oturumu Kapat|log out/i }).click();
     await expect(adminPage.locator('#email')).toBeVisible();
-    memberToken = await login(adminPage, member, password);
+    await login(adminPage, member, password);
     await adminPage.evaluate((path) => {
       window.history.pushState({}, '', path);
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -229,7 +230,12 @@ test('late task edit from a prior session cannot restore data after same-tenant 
     ).toBe(realmMarker);
     await expect(adminPage.getByText(taskTitle, { exact: true })).toHaveCount(0);
     await expect(adminPage.getByText('Optimistic private title', { exact: true })).toHaveCount(0);
-  } finally {
+  } catch (error) {
+    testError = error;
+    testFailed = true;
+  }
+
+  {
     releaseMutation?.();
     if (adminBrowser) await logout(adminBrowser.request, adminToken);
     await logout(registration, adminRegistrationToken);
@@ -237,6 +243,8 @@ test('late task edit from a prior session cannot restore data after same-tenant 
     await logout(registration, assigneeRegistrationToken);
     await adminBrowser?.close();
     await registration.dispose();
+    let cleanupError: unknown;
+    let hasCleanupError = false;
     try {
       await database.query('BEGIN');
       if (tenantId && admin) {
@@ -262,9 +270,12 @@ test('late task edit from a prior session cannot restore data after same-tenant 
       await database.query('COMMIT');
     } catch (error) {
       await database.query('ROLLBACK');
-      throw error;
+      cleanupError = error;
+      hasCleanupError = true;
     } finally {
       await database.end();
     }
+    if (hasCleanupError) throw cleanupError;
   }
+  if (testFailed) throw testError;
 });
