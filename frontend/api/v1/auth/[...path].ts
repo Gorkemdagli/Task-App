@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -109,24 +111,36 @@ async function readRequestBody(req: ProxyRequest): Promise<Buffer | undefined> {
     return body;
   }
 
-  if (!req.on) return undefined;
+  const on = req.on;
+  if (!on) return undefined;
 
   return new Promise<Buffer | undefined>((resolve, reject) => {
     const chunks: Uint8Array[] = [];
     let total = 0;
-    req
-      .on('data', (chunk) => {
-        if (chunk instanceof Error || chunk === undefined) return;
-        const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk);
-        total += buffer.byteLength;
-        if (total > MAX_REQUEST_BYTES) {
-          reject(new ProxyError(413, { error: 'Auth request body too large' }));
-          return;
-        }
-        chunks.push(buffer);
-      })
-      .on('end', () => resolve(total ? Buffer.concat(chunks) : undefined))
-      .on('error', (error) => reject(error));
+    let finished = false;
+    on.call(req, 'data', (chunk) => {
+      if (finished || chunk instanceof Error || chunk === undefined) return;
+      const byteLength = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.byteLength;
+      if (total + byteLength > MAX_REQUEST_BYTES) {
+        finished = true;
+        chunks.length = 0;
+        reject(new ProxyError(413, { error: 'Auth request body too large' }));
+        return;
+      }
+      total += byteLength;
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk));
+    });
+    on.call(req, 'end', () => {
+      if (finished) return;
+      finished = true;
+      resolve(total ? Buffer.concat(chunks) : undefined);
+    });
+    on.call(req, 'error', (error) => {
+      if (finished) return;
+      finished = true;
+      chunks.length = 0;
+      reject(error);
+    });
   });
 }
 
@@ -213,7 +227,7 @@ export function createAuthProxyHandler(options: AuthProxyOptions = {}) {
         upstream = await fetchImpl(`${apiOrigin}/api/v1/auth/${path}`, {
           method,
           headers,
-          body,
+          body: body && new Uint8Array(body),
           signal: controller.signal,
         });
       } finally {

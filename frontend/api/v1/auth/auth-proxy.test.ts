@@ -17,7 +17,11 @@ function createRequest(overrides: Partial<ProxyRequest> = {}): ProxyRequest {
 }
 
 function createResponse() {
-  const response = {
+  const response: ProxyResponse & {
+    statusCode: number;
+    headers: Record<string, string | string[]>;
+    body: unknown;
+  } = {
     statusCode: 200,
     headers: {} as Record<string, string | string[]>,
     body: undefined as unknown,
@@ -41,7 +45,7 @@ function createResponse() {
       response.body = body;
       return response;
     },
-  } satisfies ProxyResponse & { body: unknown };
+  };
   return response;
 }
 
@@ -72,7 +76,7 @@ describe('auth proxy', () => {
       }),
     );
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(Buffer.from(init.body as Uint8Array).toString()).toBe(
+    expect(new TextDecoder().decode(init.body as Uint8Array)).toBe(
       JSON.stringify({ email: 'user@example.com', password: 'password' }),
     );
     expect(new Headers(init.headers).get('content-type')).toBe('application/json');
@@ -132,6 +136,40 @@ describe('auth proxy', () => {
 
     expect(response.statusCode).toBe(413);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized streamed auth bodies before upstream call', async () => {
+    const listeners = new Map<string, (chunk?: string | Uint8Array | Error) => void>();
+    const request = createRequest({ body: undefined, headers: {} });
+    request.on = (event, listener) => {
+      listeners.set(event, listener);
+      return request;
+    };
+    const fetchImpl = vi.fn();
+    const response = createResponse();
+    const fromSpy = vi.spyOn(Buffer, 'from');
+    const concatSpy = vi.spyOn(Buffer, 'concat');
+
+    try {
+      const pending = createAuthProxyHandler({ apiOrigin: 'https://api.example.test', fetchImpl })(
+        request,
+        response,
+      );
+      listeners.get('data')?.('x'.repeat(32 * 1024));
+      listeners.get('data')?.('y'.repeat(32 * 1024 + 1));
+      listeners.get('data')?.('z'.repeat(1024 * 1024));
+      listeners.get('end')?.();
+      listeners.get('error')?.(new Error('late stream error'));
+      await pending;
+
+      expect(response.statusCode).toBe(413);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(fromSpy).toHaveBeenCalledTimes(1);
+      expect(concatSpy).not.toHaveBeenCalled();
+    } finally {
+      fromSpy.mockRestore();
+      concatSpy.mockRestore();
+    }
   });
 
   it('returns safe gateway errors for upstream failure and timeout', async () => {
