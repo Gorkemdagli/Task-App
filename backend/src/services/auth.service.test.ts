@@ -125,6 +125,31 @@ describe('refresh', () => {
     await expect(refresh(reg.refreshToken)).rejects.toMatchObject({ statusCode: 401 });
   });
 
+  it('allows only one successor when the same refresh token is used concurrently', async () => {
+    const registered = await register({
+      fullName: 'Concurrent',
+      email: 'concurrent-refresh@example.com',
+      password: 'hunter22',
+    });
+
+    const attempts = await Promise.allSettled([
+      refresh(registered.refreshToken),
+      refresh(registered.refreshToken),
+    ]);
+    const successes = attempts.filter((attempt) => attempt.status === 'fulfilled');
+    const failures = attempts.filter((attempt) => attempt.status === 'rejected');
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    if (failures[0].status === 'rejected') {
+      expect(failures[0].reason).toMatchObject({ statusCode: 401 });
+    }
+    if (successes[0].status === 'fulfilled') {
+      const successor = verifyRefreshToken(successes[0].value.refreshToken);
+      expect(await redis.exists(`session:${successor.jti}`)).toBe(1);
+      expect(await redis.sismember(`user-sessions:${registered.user.id}`, `session:${successor.jti}`)).toBe(1);
+    }
+  });
+
   it('rotates the refresh session and rejects replay of the old token', async () => {
     const registered = await register({
       fullName: 'Rotate',

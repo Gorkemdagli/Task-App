@@ -21,6 +21,7 @@ import {
   registerIssuedTokens,
   removeSessionKeys,
   getRefreshSession,
+  rotateSessionTokens,
 } from '../lib/sessionStore';
 
 const DISPLAY_ID_RETRIES = 5;
@@ -164,7 +165,7 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
     throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
   const session = await getRefreshSession(p.jti);
   if (!session) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const { userId, familyId, sessionExpiresAt } = session;
+  const { userId, sessionExpiresAt } = session;
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (sessionExpiresAt <= nowSeconds) {
     throw new AppError(401, 'Oturum süresi doldu', 'SESSION_EXPIRED');
@@ -175,9 +176,6 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
     include: { tenant: { select: { name: true } } },
   });
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
-  const ttl = Math.min(p.exp, sessionExpiresAt) - nowSeconds;
-  if (ttl > 0) await redis.set(BLACKLIST_KEY(p.jti), '1', 'EX', ttl);
-  await removeSessionKeys(userId, [refreshSessionKey(p.jti)]);
   const accessToken = signAccessToken(user.id, user.tenantId);
   const refreshLifetimeSeconds = Math.min(
     REFRESH_TOKEN_IDLE_TTL_SECONDS,
@@ -185,7 +183,14 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   );
   const newRefreshToken = signRefreshToken(user.id, user.tenantId, refreshLifetimeSeconds);
   const refreshExpiresAt = verifyRefreshToken(newRefreshToken).exp;
-  await registerIssuedTokens(accessToken, newRefreshToken, user.id, familyId, sessionExpiresAt);
+  const rotated = await rotateSessionTokens(
+    p.jti,
+    session,
+    Math.min(p.exp, sessionExpiresAt) - nowSeconds,
+    accessToken,
+    newRefreshToken,
+  );
+  if (!rotated) throw new AppError(401, 'Oturum sonlandÄ±rÄ±lmÄ±ÅŸ', 'TOKEN_REVOKED');
   return {
     user: {
       id: user.id,

@@ -1,4 +1,5 @@
 import { ListTodo, MessageCircle, Moon, Sun, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import usFlag from '@/assets/flags/us.png';
@@ -39,10 +40,12 @@ export function BrandPanel() {
               {t('auth.brand.footer')}
             </p>
             <h1 className="mt-1 text-4xl font-bold leading-none tracking-tight text-foreground">
-              <span aria-hidden="true">
-                Task<span className="text-primary">Flow</span>
-              </span>
-              <span className="sr-only">TaskFlow</span>
+              <Link to="/">
+                <span aria-hidden="true">
+                  Task<span className="text-primary">Flow</span>
+                </span>
+                <span className="sr-only">TaskFlow</span>
+              </Link>
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">

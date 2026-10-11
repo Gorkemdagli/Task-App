@@ -123,6 +123,36 @@ function toQuery(filters: ListTasksFilters | undefined): string {
   return qs ? `?${qs}` : '';
 }
 
+interface TaskMutationSession {
+  userId: string | null;
+  tenantId: string | null;
+  generation: number;
+}
+
+type TaskMutationContext = TaskMutationSession | { session: TaskMutationSession };
+
+function captureTaskMutationSession(): TaskMutationSession {
+  const { user, sessionGeneration } = useAuthStore.getState();
+  return { userId: user?.id ?? null, tenantId: user?.tenantId ?? null, generation: sessionGeneration };
+}
+
+function currentTaskMutationSession(context?: TaskMutationContext): TaskMutationSession | undefined {
+  const session = context && 'session' in context ? context.session : context;
+  if (!session) return undefined;
+  const { user, sessionGeneration } = useAuthStore.getState();
+  return (
+    session.userId === (user?.id ?? null) &&
+    session.tenantId === (user?.tenantId ?? null) &&
+    session.generation === sessionGeneration
+  )
+    ? session
+    : undefined;
+}
+
+function taskMutationTenant(session: TaskMutationSession): string {
+  return session.tenantId ?? 'tenantless';
+}
+
 // ─── Hooks ────────────────────────────────────────────────────────────
 
 export function useTasks(filters?: ListTasksFilters) {
@@ -216,7 +246,6 @@ export function useTaskHistory(taskId: string | undefined) {
 
 export function useUploadTaskFile() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: {
       taskId: string;
@@ -230,8 +259,11 @@ export function useUploadTaskFile() {
       });
       return r.data;
     },
-    onSuccess: (_data, vars) => {
-      if (tenantId) invalidateTaskFilesAndHistoryQueries(qc, tenantId, vars.taskId);
+    onMutate: captureTaskMutationSession,
+    onSuccess: (_data, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId)
+        invalidateTaskFilesAndHistoryQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
@@ -249,21 +281,22 @@ export function useDownloadTaskFile() {
 
 export function useDeleteTaskFile() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; fileId: string }) => {
       await api.delete(`/tasks/${vars.taskId}/files/${vars.fileId}`);
       return vars;
     },
-    onSuccess: (_data, vars) => {
-      if (tenantId) invalidateTaskFilesAndHistoryQueries(qc, tenantId, vars.taskId);
+    onMutate: captureTaskMutationSession,
+    onSuccess: (_data, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId)
+        invalidateTaskFilesAndHistoryQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
 
 export function useCreateTask() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (input: {
       title: string;
@@ -279,8 +312,11 @@ export function useCreateTask() {
       const r = await api.post<Task>('/tasks', input);
       return r.data;
     },
-    onSuccess: () => {
-      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.tenant(tenantId) });
+    onMutate: captureTaskMutationSession,
+    onSuccess: (_data, _vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId)
+        qc.invalidateQueries({ queryKey: queryKeys.tenant(currentSession.tenantId) });
     },
   });
 }
@@ -289,26 +325,30 @@ export function useCreateTask() {
  *  geçici state'ten çağrılan yerlerde hook re-mount riskini önler. */
 export function useUpdateTaskStatus() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
       const r = await api.patch<Task>(`/tasks/${vars.taskId}/status`, { status: vars.status });
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
-      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
+      const session = captureTaskMutationSession();
+      const tenantId = taskMutationTenant(session);
+      const snapshot = await snapshotTaskCaches(qc, tenantId, vars.taskId);
+      if (!currentTaskMutationSession(session)) throw new Error('Task mutation session changed');
+      patchTaskCaches(qc, tenantId, vars.taskId, (task) => ({
         ...task,
         status: vars.status,
       }));
-      return { snapshot, taskId: vars.taskId };
+      return { session, snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.snapshot && ctx.taskId)
-        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
+      const currentSession = currentTaskMutationSession(ctx?.session);
+      if (ctx?.snapshot && ctx.taskId && currentSession)
+        restoreTaskCaches(qc, taskMutationTenant(currentSession), ctx.taskId, ctx.snapshot);
     },
-    onSettled: (_d, _e, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onSettled: (_d, _e, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
@@ -316,7 +356,6 @@ export function useUpdateTaskStatus() {
 /** Multi-assignee task için status teklifi. Backend admin ise direkt apply, değilse pending oluşturur. */
 export function useProposeTaskStatus() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; status: TaskStatus }) => {
       const r = await api.post<Task>(`/tasks/${vars.taskId}/status/propose`, {
@@ -325,10 +364,12 @@ export function useProposeTaskStatus() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
-      const actorId = useAuthStore.getState().user?.id ?? null;
+      const session = captureTaskMutationSession();
+      const tenantId = taskMutationTenant(session);
+      const snapshot = await snapshotTaskCaches(qc, tenantId, vars.taskId);
+      if (!currentTaskMutationSession(session)) throw new Error('Task mutation session changed');
       const actor = useAuthStore.getState().user;
-      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => {
+      patchTaskCaches(qc, tenantId, vars.taskId, (task) => {
         if (task.assignees.length === 1) {
           return {
             ...task,
@@ -343,7 +384,7 @@ export function useProposeTaskStatus() {
         return {
           ...task,
           pendingStatus: vars.status,
-          pendingProposedBy: actorId,
+          pendingProposedBy: session.userId,
           pendingProposedAt: new Date().toISOString(),
           pendingProposer: actor
             ? {
@@ -355,14 +396,16 @@ export function useProposeTaskStatus() {
             : task.pendingProposer,
         };
       });
-      return { snapshot, taskId: vars.taskId };
+      return { session, snapshot, taskId: vars.taskId };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.snapshot && ctx.taskId)
-        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
+      const currentSession = currentTaskMutationSession(ctx?.session);
+      if (ctx?.snapshot && ctx.taskId && currentSession)
+        restoreTaskCaches(qc, taskMutationTenant(currentSession), ctx.taskId, ctx.snapshot);
     },
-    onSettled: (_d, _e, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onSettled: (_d, _e, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
@@ -370,7 +413,6 @@ export function useProposeTaskStatus() {
 /** Pending status teklifini ack'le. Tüm assignees ack edince DB status güncellenir. */
 export function useAckTaskStatus() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; pendingVersion: number }) => {
       const r = await api.post<{ task: Task; applied: boolean }>(
@@ -379,8 +421,10 @@ export function useAckTaskStatus() {
       );
       return r.data;
     },
-    onSettled: (_d, _e, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onMutate: captureTaskMutationSession,
+    onSettled: (_d, _e, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
@@ -388,21 +432,21 @@ export function useAckTaskStatus() {
 /** Pending status teklifini iptal et. Proposer veya admin. */
 export function useCancelTaskStatus() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (taskId: string) => {
       const r = await api.post<Task>(`/tasks/${taskId}/status/cancel`);
       return r.data;
     },
-    onSettled: (_d, _e, taskId) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, taskId);
+    onMutate: captureTaskMutationSession,
+    onSettled: (_d, _e, taskId, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, taskId);
     },
   });
 }
 
 export function useUpdateTaskPriority() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; priority: TaskPriority }) => {
       const r = await api.patch<Task>(`/tasks/${vars.taskId}/priority`, {
@@ -411,26 +455,30 @@ export function useUpdateTaskPriority() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
-      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
+      const session = captureTaskMutationSession();
+      const tenantId = taskMutationTenant(session);
+      const snapshot = await snapshotTaskCaches(qc, tenantId, vars.taskId);
+      if (!currentTaskMutationSession(session)) throw new Error('Task mutation session changed');
+      patchTaskCaches(qc, tenantId, vars.taskId, (task) => ({
         ...task,
         priority: vars.priority,
       }));
-      return { snapshot, taskId: vars.taskId };
+      return { session, snapshot, taskId: vars.taskId };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.snapshot && ctx.taskId)
-        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
+      const currentSession = currentTaskMutationSession(ctx?.session);
+      if (ctx?.snapshot && ctx.taskId && currentSession)
+        restoreTaskCaches(qc, taskMutationTenant(currentSession), ctx.taskId, ctx.snapshot);
     },
-    onSettled: (_d, _e, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onSettled: (_d, _e, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
 
 export function useUpdateTaskBlocked() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: {
       taskId: string;
@@ -441,15 +489,16 @@ export function useUpdateTaskBlocked() {
       const r = await api.patch<Task>(`/tasks/${taskId}/block`, body);
       return r.data;
     },
-    onSettled: (_data, _error, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onMutate: captureTaskMutationSession,
+    onSettled: (_data, _error, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
 
 export function useUpdateTaskFields() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: {
       taskId: string;
@@ -468,8 +517,11 @@ export function useUpdateTaskFields() {
       return r.data;
     },
     onMutate: async (vars) => {
-      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId);
-      patchTaskCaches(qc, tenantId ?? 'tenantless', vars.taskId, (task) => ({
+      const session = captureTaskMutationSession();
+      const tenantId = taskMutationTenant(session);
+      const snapshot = await snapshotTaskCaches(qc, tenantId, vars.taskId);
+      if (!currentTaskMutationSession(session)) throw new Error('Task mutation session changed');
+      patchTaskCaches(qc, tenantId, vars.taskId, (task) => ({
         ...task,
         ...(vars.title !== undefined && { title: vars.title }),
         ...(vars.description !== undefined && { description: vars.description }),
@@ -485,21 +537,22 @@ export function useUpdateTaskFields() {
           ),
         }),
       }));
-      return { snapshot, taskId: vars.taskId };
+      return { session, snapshot, taskId: vars.taskId };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.snapshot && ctx.taskId)
-        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
+      const currentSession = currentTaskMutationSession(ctx?.session);
+      if (ctx?.snapshot && ctx.taskId && currentSession)
+        restoreTaskCaches(qc, taskMutationTenant(currentSession), ctx.taskId, ctx.snapshot);
     },
-    onSettled: (_d, _e, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onSettled: (_d, _e, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
 
 export function useRestoreTask() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { taskId: string; deadline: string }) => {
       const r = await api.post<Task>(`/tasks/${vars.taskId}/restore`, {
@@ -507,45 +560,53 @@ export function useRestoreTask() {
       });
       return r.data;
     },
-    onSettled: (_data, _error, vars) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, vars.taskId);
+    onMutate: captureTaskMutationSession,
+    onSettled: (_data, _error, vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, vars.taskId);
     },
   });
 }
 
 export function useDeleteTask() {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (taskId: string) => {
       await api.delete(`/tasks/${taskId}`);
       return taskId;
     },
     onMutate: async (taskId) => {
-      const snapshot = await snapshotTaskCaches(qc, tenantId ?? 'tenantless', taskId);
-      patchTaskCaches(qc, tenantId ?? 'tenantless', taskId, () => null);
-      return { snapshot, taskId };
+      const session = captureTaskMutationSession();
+      const tenantId = taskMutationTenant(session);
+      const snapshot = await snapshotTaskCaches(qc, tenantId, taskId);
+      if (!currentTaskMutationSession(session)) throw new Error('Task mutation session changed');
+      patchTaskCaches(qc, tenantId, taskId, () => null);
+      return { session, snapshot, taskId };
     },
     onError: (_e, _taskId, ctx) => {
-      if (ctx?.snapshot && ctx.taskId)
-        restoreTaskCaches(qc, tenantId ?? 'tenantless', ctx.taskId, ctx.snapshot);
+      const currentSession = currentTaskMutationSession(ctx?.session);
+      if (ctx?.snapshot && ctx.taskId && currentSession)
+        restoreTaskCaches(qc, taskMutationTenant(currentSession), ctx.taskId, ctx.snapshot);
     },
-    onSettled: (_d, _e, taskId) => {
-      if (tenantId) invalidateTaskQueries(qc, tenantId, taskId);
+    onSettled: (_d, _e, taskId, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId) invalidateTaskQueries(qc, currentSession.tenantId, taskId);
     },
   });
 }
 
 export function useCreateComment(taskId: string) {
   const qc = useQueryClient();
-  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useMutation({
     mutationFn: async (vars: { body: string }) => {
       const r = await api.post<Comment>(`/tasks/${taskId}/comments`, vars);
       return r.data;
     },
-    onSuccess: () => {
-      if (tenantId) qc.invalidateQueries({ queryKey: queryKeys.task.comments(tenantId, taskId) });
+    onMutate: captureTaskMutationSession,
+    onSuccess: (_data, _vars, session) => {
+      const currentSession = currentTaskMutationSession(session);
+      if (currentSession?.tenantId)
+        qc.invalidateQueries({ queryKey: queryKeys.task.comments(currentSession.tenantId, taskId) });
     },
   });
 }

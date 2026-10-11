@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
-import { assertCanManageTeam, getTeamRole, type Actor } from './permissions';
+import { assertCanAssignTask, assertCanManageTeam, getTeamRole, type Actor } from './permissions';
 
 const actor: Actor = { id: 'user-a', role: 'member', tenantId: 'tenant-a' };
 
@@ -33,5 +33,21 @@ describe('tenant-scoped permissions', () => {
       code: 'NOT_FOUND',
     });
     expect(db.teamMember.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not let a former task assigner assign after demotion', async () => {
+    const db = mockDb();
+    vi.mocked(db.teamMember.findUnique).mockResolvedValue({ role: 'member' } as never);
+
+    await expect(
+      assertCanAssignTask(db, actor, {
+        id: 'task-a',
+        teamId: 'team-a',
+        assignerId: actor.id,
+        assignees: [],
+        pendingStatus: null,
+        pendingProposedBy: null,
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
   });
 });

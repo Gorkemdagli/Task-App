@@ -23,19 +23,19 @@ function wrapper(queryClient: QueryClient) {
   );
 }
 
-function setAuthenticatedUser(tenant: string | null = tenantId) {
-  useAuthStore.setState({
-    accessToken: 'token',
-    user: tenant
-      ? {
-          id: 'user-1',
-          displayId: 'AAAAA',
-          email: 'user@example.com',
-          fullName: 'User',
-          role: 'member',
-          tenantId: tenant,
-        }
-      : null,
+function setAuthenticatedUser(tenant: string | null = tenantId, userId = 'user-1') {
+  if (!tenant) {
+    useAuthStore.getState().clearAuth();
+    return;
+  }
+  useAuthStore.getState().setAccessToken('token');
+  useAuthStore.getState().setUser({
+    id: userId,
+    displayId: 'AAAAA',
+    email: 'user@example.com',
+    fullName: 'User',
+    role: 'member',
+    tenantId: tenant,
   });
 }
 
@@ -211,5 +211,132 @@ describe('task query and mutation hooks', () => {
       tasks: [task()],
       total: 1,
     });
+  });
+
+  const sessionScenarios = [
+    { name: 'logout only', kind: 'logout' },
+    { name: 'same-user logout/login', kind: 'same-user' },
+    { name: 'same-tenant account switch', kind: 'same-tenant-user' },
+    { name: 'different-tenant login', kind: 'different-tenant' },
+  ] as const;
+
+  it.each(
+    sessionScenarios.flatMap((scenario) =>
+      (['success', 'failure'] as const).map((outcome) => [scenario.name, scenario.kind, outcome] as const),
+    ),
+  )('does not invalidate or restore cache after %s delayed %s', async (_name, kind, outcome) => {
+      let finishRequest!: (value: { data: Task }) => void;
+      let failRequest!: (error: Error) => void;
+      vi.spyOn(api, 'patch').mockReturnValue(
+        new Promise((resolve, reject) => {
+          finishRequest = resolve;
+          failRequest = reject;
+        }) as never,
+      );
+      const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
+      const detailKey = queryKeys.task.detail(tenantId, taskId);
+      const listKey = queryKeys.tasks.list(tenantId, {});
+      queryClient.setQueryData(detailKey, task());
+      queryClient.setQueryData(listKey, { tasks: [task()], total: 1 });
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+      const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper: wrapper(queryClient) });
+
+      let mutation!: Promise<Task>;
+      act(() => {
+        mutation = result.current.mutateAsync({ taskId, status: 'done' });
+      });
+      await waitFor(() => expect(queryClient.getQueryData<Task>(detailKey)?.status).toBe('done'));
+
+      useAuthStore.getState().clearAuth();
+      if (kind === 'logout') {
+        queryClient.clear();
+      } else {
+        const currentTenant = kind === 'different-tenant' ? 'tenant-b' : tenantId;
+        const currentUser = kind === 'same-user' ? 'user-1' : 'user-2';
+        setAuthenticatedUser(currentTenant, currentUser);
+        const currentDetailKey = queryKeys.task.detail(currentTenant, taskId);
+        const currentListKey = queryKeys.tasks.list(currentTenant, {});
+        const userTwoTask = {
+          ...task('in_progress'),
+          team: { id: 'team-a', name: 'Team', tenantId: currentTenant },
+        };
+        queryClient.setQueryData(currentDetailKey, userTwoTask);
+        queryClient.setQueryData(currentListKey, { tasks: [userTwoTask], total: 1 });
+      }
+
+      await act(async () => {
+        if (outcome === 'success') {
+          finishRequest({ data: task('done') });
+          await mutation;
+        } else {
+          failRequest(new Error('request failed'));
+          await expect(mutation).rejects.toThrow('request failed');
+        }
+      });
+
+      if (kind === 'logout') {
+        expect(queryClient.getQueryData(detailKey)).toBeUndefined();
+        expect(queryClient.getQueryData(listKey)).toBeUndefined();
+      } else if (kind === 'different-tenant') {
+        const userTwoTask = {
+          ...task('in_progress'),
+          team: { id: 'team-a', name: 'Team', tenantId: 'tenant-b' },
+        };
+        expect(queryClient.getQueryData(queryKeys.task.detail('tenant-b', taskId))).toEqual(userTwoTask);
+        expect(queryClient.getQueryData(queryKeys.tasks.list('tenant-b', {}))).toEqual({
+          tasks: [userTwoTask],
+          total: 1,
+        });
+        expect(queryClient.getQueryData<Task>(detailKey)?.status).toBe('done');
+        expect(queryClient.getQueryData<{ tasks: Task[] }>(listKey)?.tasks[0].status).toBe('done');
+      } else {
+        const userTwoTask = task('in_progress');
+        expect(queryClient.getQueryData(detailKey)).toEqual(userTwoTask);
+        expect(queryClient.getQueryData(listKey)).toEqual({ tasks: [userTwoTask], total: 1 });
+      }
+      expect(invalidate).not.toHaveBeenCalled();
+    });
+
+  it('invalidates task queries after a successful current-session optimistic mutation', async () => {
+    vi.spyOn(api, 'patch').mockResolvedValue({ data: task('done') } as never);
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
+    const detailKey = queryKeys.task.detail(tenantId, taskId);
+    queryClient.setQueryData(detailKey, task());
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper: wrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ taskId, status: 'done' });
+    });
+
+    expect(invalidate).toHaveBeenCalled();
+  });
+
+  it('checks the session again after awaited snapshot work before optimistic patching', async () => {
+    let continueSnapshot!: () => void;
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
+    const detailKey = queryKeys.task.detail(tenantId, taskId);
+    queryClient.setQueryData(detailKey, task());
+    const cancelQueries = vi.spyOn(queryClient, 'cancelQueries').mockImplementationOnce(
+      () => new Promise<void>((resolve) => { continueSnapshot = () => resolve(); }) as never,
+    );
+    const patch = vi.spyOn(api, 'patch').mockResolvedValue({ data: task('done') } as never);
+    const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper: wrapper(queryClient) });
+
+    let mutation!: Promise<Task>;
+    act(() => {
+      mutation = result.current.mutateAsync({ taskId, status: 'done' });
+    });
+    await waitFor(() => expect(cancelQueries).toHaveBeenCalled());
+    useAuthStore.getState().clearAuth();
+    setAuthenticatedUser(tenantId, 'user-2');
+    continueSnapshot();
+
+    await act(async () => {
+      await expect(mutation).rejects.toThrow('Task mutation session changed');
+    });
+
+    expect(queryClient.getQueryData<Task>(detailKey)?.status).toBe('todo');
+    expect(patch).not.toHaveBeenCalled();
   });
 });

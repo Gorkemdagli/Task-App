@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { useThemeStore } from '@/stores/themeStore';
 import { BrandPanel } from './BrandPanel';
 
 describe('BrandPanel', () => {
   it('logo + tagline + bullets', () => {
-    render(<BrandPanel />);
+    render(
+      <MemoryRouter>
+        <BrandPanel />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole('heading', { name: 'TaskFlow' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dili İngilizce yap' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aydınlık temaya geç' })).toBeInTheDocument();
@@ -26,7 +31,11 @@ describe('BrandPanel', () => {
   it('toggles and persists the theme', async () => {
     const user = userEvent.setup();
     useThemeStore.setState({ mode: 'dark', _hasHydrated: true });
-    render(<BrandPanel />);
+    render(
+      <MemoryRouter>
+        <BrandPanel />
+      </MemoryRouter>,
+    );
 
     await user.click(screen.getByRole('button', { name: 'Aydınlık temaya geç' }));
 
