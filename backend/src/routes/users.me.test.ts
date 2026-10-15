@@ -7,6 +7,7 @@ import { createApp } from '../app';
 import { env } from '../env';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import type * as MediaStorage from '../lib/mediaStorage';
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -50,7 +51,7 @@ async function withRestrictedRuntimeApp<T>(run: (app: ReturnType<typeof createAp
   };
   vi.doMock('../lib/prisma', () => ({ prisma: runtimePrisma }));
   vi.doMock('../lib/mediaStorage', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../lib/mediaStorage')>();
+    const actual = await importOriginal<typeof MediaStorage>();
     return { ...actual, createMediaStorage: () => actual.createMediaStorage(mediaAdapter) };
   });
   vi.resetModules();
