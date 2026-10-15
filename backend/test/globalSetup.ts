@@ -1,6 +1,55 @@
 import * as fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import * as dotenv from 'dotenv';
 import { execFileSync, execSync } from 'node:child_process';
+
+type GlobalSetupProject = { provide(key: string, value: unknown): void };
+
+const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+const postgresTargetOverrides = new Set([
+  'host',
+  'hostaddr',
+  'port',
+  'dbname',
+  'database',
+  'db',
+  'service',
+  'servicefile',
+  'options',
+  'target_session_attrs',
+]);
+
+export function isLocalTestDatabaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'postgres:' || url.protocol === 'postgresql:') &&
+      loopbackHosts.has(url.hostname.toLowerCase()) &&
+      url.port === '5433' &&
+      url.pathname === '/taskflow_test' &&
+      !url.hash &&
+      ![...url.searchParams.keys()].some((key) => postgresTargetOverrides.has(key.toLowerCase()))
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isLocalTestRedisUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'redis:' &&
+      loopbackHosts.has(url.hostname.toLowerCase()) &&
+      url.port === '6380' &&
+      (url.pathname === '' || url.pathname === '/') &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
 
 function fail(msg: string): never {
   // eslint-disable-next-line no-console
@@ -8,7 +57,36 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-export default async function setup() {
+function removeTaskflowAppRole() {
+  const exists = execFileSync(
+    'docker',
+    [
+      'exec',
+      'taskflow-postgres-test',
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      'postgres',
+      '-Atc',
+      "SELECT 1 FROM pg_roles WHERE rolname='taskflow_app'",
+    ],
+    { encoding: 'utf8' },
+  ).trim();
+  if (exists !== '1') return;
+  execFileSync(
+    'docker',
+    ['exec', '-i', 'taskflow-postgres-test', 'psql', '-U', 'postgres', '-d', 'taskflow_test', '-v', 'ON_ERROR_STOP=1'],
+    { input: 'DROP OWNED BY taskflow_app;' },
+  );
+  execFileSync(
+    'docker',
+    ['exec', '-i', 'taskflow-postgres-test', 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1'],
+    { input: 'REVOKE authenticated FROM taskflow_app; DROP ROLE taskflow_app;' },
+  );
+}
+
+export default async function setup(project: GlobalSetupProject) {
   // Vitest globalSetup: tüm testlerden ÖNCE bir kez çalışır.
   // Görevi: ortam değişkenlerini yükle, test DB'ye bağlantıyı doğrula,
   // aksi halde süreci çökert. cleanDb() vb. ana DB'yi silemesin diye son savunma.
@@ -21,21 +99,14 @@ export default async function setup() {
   const rawEnv = fs.readFileSync('.env.test', 'utf8');
   const parsed = dotenv.parse(rawEnv);
   const dbUrl = parsed.DATABASE_URL ?? '';
+  const directUrl = parsed.DIRECT_URL ?? dbUrl;
   const redisUrl = parsed.REDIS_URL ?? '';
 
-  if (!dbUrl.includes('taskflow_test')) {
-    fail(
-      `\n❌ REFUSE TO RUN: backend/.env.test DATABASE_URL does not point at the test DB.\n` +
-        `   Current: ${dbUrl || '(unset)'}\n` +
-        `   Expected substring: taskflow_test (port 5433, isolated via docker-compose).\n`,
-    );
+  if (!isLocalTestDatabaseUrl(dbUrl) || !isLocalTestDatabaseUrl(directUrl)) {
+    fail('\nREFUSE TO RUN: DATABASE_URL and DIRECT_URL must target local taskflow_test on port 5433.\n');
   }
-  if (!redisUrl.includes('6380')) {
-    fail(
-      `\n❌ REFUSE TO RUN: backend/.env.test REDIS_URL does not point at the test Redis.\n` +
-        `   Current: ${redisUrl || '(unset)'}\n` +
-        `   Expected: redis://localhost:6380 (docker-compose: redis-test).\n`,
-    );
+  if (!isLocalTestRedisUrl(redisUrl)) {
+    fail('\nREFUSE TO RUN: REDIS_URL must target the local test Redis on port 6380.\n');
   }
 
   // Guard geçti → .env.test'i sürece yükle (override: outer shell DATABASE_URL
@@ -43,9 +114,7 @@ export default async function setup() {
   dotenv.config({ path: '.env.test', override: true, quiet: true });
 
   // eslint-disable-next-line no-console
-  console.log(
-    `✓ test DB guard ok — DATABASE_URL=${process.env.DATABASE_URL} REDIS_URL=${process.env.REDIS_URL}`,
-  );
+  console.log('test DB and Redis guards ok');
 
   // Test container'ları ayakta mı? docker compose up -d ile idempotent start.
   // compose up zaten ayakta olan container'ı atlar; sadece düşmüş olanları kaldırır.
@@ -128,12 +197,34 @@ export default async function setup() {
     fail('\n❌ Could not reset test DB / bootstrap Supabase roles. Is taskflow-postgres-test up?');
   }
 
+  const taskflowAppPassword = randomBytes(32).toString('base64url');
+  const taskflowAppRoleSql = `DO $$ BEGIN IF EXISTS (SELECT FROM pg_roles WHERE rolname='taskflow_app') THEN REVOKE authenticated FROM taskflow_app; DROP ROLE taskflow_app; END IF; END $$;
+CREATE ROLE taskflow_app LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${taskflowAppPassword}';
+GRANT authenticated TO taskflow_app;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='taskflow_app' AND rolcanlogin AND NOT rolinherit AND NOT rolbypassrls AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication) THEN RAISE EXCEPTION 'taskflow_app has unsafe attributes'; END IF; IF NOT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid JOIN pg_roles u ON u.oid=m.member WHERE r.rolname='authenticated' AND u.rolname='taskflow_app' AND COALESCE((to_jsonb(m)->>'set_option')::boolean, true)) THEN RAISE EXCEPTION 'taskflow_app cannot SET ROLE authenticated'; END IF; END $$;`;
+  try {
+    execFileSync(
+      'docker',
+      ['exec', '-i', 'taskflow-postgres-test', 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1'],
+      { input: taskflowAppRoleSql },
+    );
+    project.provide('taskflowAppPassword', taskflowAppPassword);
+  } catch (err) {
+    removeTaskflowAppRole();
+    fail('\nCould not create restricted taskflow_app test role.');
+  }
+
   try {
     execSync('npx prisma migrate deploy', {
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
+      env: { ...process.env, DATABASE_URL: dbUrl, DIRECT_URL: directUrl },
     });
   } catch (err) {
+    removeTaskflowAppRole();
     fail('\n❌ prisma migrate deploy failed against test DB');
   }
+
+  return async () => {
+    removeTaskflowAppRole();
+  };
 }
