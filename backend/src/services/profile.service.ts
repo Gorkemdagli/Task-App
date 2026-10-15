@@ -6,6 +6,8 @@ import { revokeAllUserSessions } from '../lib/sessionStore';
 import { transformAvatar } from '../lib/media';
 import { createMediaStorage, deleteOwnedAvatar, type MediaStorage } from '../lib/mediaStorage';
 import type { UpdateCurrentUserInput } from '../schemas/users.schema';
+import { withTenantContext } from '../db/withTenant';
+import { withUserContext } from '../db/withUser';
 
 const profileSelect = {
   id: true,
@@ -20,8 +22,10 @@ const profileSelect = {
   notifyMessageReceived: true,
   tenant: { select: { name: true, logoUrl: true } },
 } satisfies Prisma.UserSelect;
+const userProfileSelect = { ...profileSelect, tenant: false } satisfies Prisma.UserSelect;
 
 type ProfileRow = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
+type UserProfileRow = Prisma.UserGetPayload<{ select: typeof userProfileSelect }>;
 
 export type CurrentUserProfile = {
   id: string;
@@ -38,12 +42,12 @@ export type CurrentUserProfile = {
   notifyMessageReceived: boolean;
 };
 
-function toProfile(user: ProfileRow): CurrentUserProfile {
+function toProfile(user: UserProfileRow, tenant: ProfileRow['tenant'] = null): CurrentUserProfile {
   return {
     id: user.id,
     tenantId: user.tenantId,
-    tenantName: user.tenant?.name ?? null,
-    tenantLogoUrl: user.tenant?.logoUrl ?? null,
+    tenantName: tenant?.name ?? null,
+    tenantLogoUrl: tenant?.logoUrl ?? null,
     email: user.email,
     fullName: user.fullName,
     displayId: user.displayId,
@@ -56,9 +60,17 @@ function toProfile(user: ProfileRow): CurrentUserProfile {
 }
 
 export async function getCurrentProfile(userId: string): Promise<CurrentUserProfile> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: profileSelect });
+  const user = await withUserContext(userId, (tx) =>
+    tx.user.findUnique({ where: { id: userId }, select: userProfileSelect }),
+  );
   if (!user) throw new AppError(404, 'User not found', 'NOT_FOUND');
-  return toProfile(user);
+  const tenantId = user.tenantId;
+  const tenant = tenantId
+    ? await withTenantContext(userId, tenantId, (tx) =>
+        tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true, logoUrl: true } }),
+      )
+    : null;
+  return toProfile(user, tenant);
 }
 
 export async function updateCurrentProfile(
@@ -162,5 +174,5 @@ export async function replaceAvatar(
   }
 
   await deleteOwnedAvatar(mediaStorage, current.avatarUrl, userId);
-  return toProfile(updated);
+  return toProfile(updated, updated.tenant);
 }
