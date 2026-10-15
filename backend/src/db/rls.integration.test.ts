@@ -2,6 +2,7 @@ import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma';
 import { withTenantContext } from './withTenant';
+import { withUserContext } from './withUser';
 import type { TenantDb } from './types';
 
 const tenantAId = randomUUID();
@@ -9,6 +10,7 @@ const tenantBId = randomUUID();
 const userAId = randomUUID();
 const userBId = randomUUID();
 const tenantlessUserId = randomUUID();
+const otherTenantlessUserId = randomUUID();
 const teamAId = randomUUID();
 const teamBId = randomUUID();
 const taskAId = randomUUID();
@@ -69,6 +71,15 @@ describe('RLS tenant isolation for task relations', () => {
           displayId: `R1TL${tenantlessUserId.slice(0, 6)}`,
           role: 'member',
         },
+        {
+          id: otherTenantlessUserId,
+          tenantId: null,
+          email: `r1-other-tenantless-${otherTenantlessUserId}@test.com`,
+          fullName: 'R1 Other Tenantless',
+          passwordHash: 'test',
+          displayId: `R1OT${otherTenantlessUserId.slice(0, 6)}`,
+          role: 'member',
+        },
       ],
     });
     await prisma.team.createMany({
@@ -105,6 +116,7 @@ describe('RLS tenant isolation for task relations', () => {
 
   afterAll(async () => {
     await prisma.tenant.deleteMany({ where: { id: { in: [tenantAId, tenantBId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [tenantlessUserId, otherTenantlessUserId] } } });
   });
 
   it('tenant A child reads exclude B and cross-tenant writes cannot pass policy', async () => {
@@ -281,7 +293,78 @@ describe('RLS tenant isolation for task relations', () => {
     expect(tenantBFiles).toEqual([]);
   });
 
+  it('allows only tenantless members to update their own profile under user context', async () => {
+    const updated = await withUserContext(tenantlessUserId, (db) =>
+      db.user.update({
+        where: { id: tenantlessUserId },
+        data: { fullName: 'Updated Tenantless' },
+      }),
+    );
+    expect(updated.fullName).toBe('Updated Tenantless');
+
+    await expect(
+      withUserContext(tenantlessUserId, (db) =>
+        db.user.update({
+          where: { id: otherTenantlessUserId },
+          data: { fullName: 'Changed by another user' },
+        }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      withUserContext(userAId, (db) =>
+        db.user.update({ where: { id: userAId }, data: { fullName: 'Changed without tenant' } }),
+      ),
+    ).rejects.toBeDefined();
+
+    await expect(
+      withUserContext(tenantlessUserId, (db) =>
+        db.user.update({ where: { id: tenantlessUserId }, data: { id: randomUUID() } }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      withUserContext(tenantlessUserId, (db) =>
+        db.user.update({ where: { id: tenantlessUserId }, data: { tenantId: tenantAId } }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      withUserContext(tenantlessUserId, (db) =>
+        db.user.update({ where: { id: tenantlessUserId }, data: { role: 'companyAdmin' } }),
+      ),
+    ).rejects.toBeDefined();
+
+    const forbiddenForeignWrite = await asTenant(tenantAId, userAId, (db) =>
+      db.user.updateMany({ where: { id: userBId }, data: { fullName: 'Changed cross-tenant' } }),
+    );
+    expect(forbiddenForeignWrite.count).toBe(0);
+    await expect(
+      withUserContext(tenantlessUserId, (db) =>
+        db.user.findUnique({ where: { id: userBId } }),
+      ),
+    ).resolves.toBeNull();
+
+    const unchangedOther = await prisma.user.findUniqueOrThrow({ where: { id: otherTenantlessUserId } });
+    const unchangedTenantUser = await prisma.user.findUniqueOrThrow({ where: { id: userAId } });
+    expect(unchangedOther.fullName).toBe('R1 Other Tenantless');
+    expect(unchangedTenantUser.fullName).toBe('R1 A');
+    const current = await prisma.user.findUniqueOrThrow({ where: { id: tenantlessUserId } });
+    expect(current).toMatchObject({
+      id: tenantlessUserId,
+      tenantId: null,
+      role: 'member',
+      fullName: 'Updated Tenantless',
+    });
+  });
+
   it('tenantless users can be claimed by the current tenant', async () => {
+    await expect(
+      asTenant(tenantAId, userAId, (db) =>
+        db.user.updateMany({
+          where: { id: tenantlessUserId, tenantId: null },
+          data: { tenantId: tenantBId, role: 'member' },
+        }),
+      ),
+    ).rejects.toBeDefined();
+
     const result = await asTenant(tenantAId, userAId, (db) =>
       db.user.updateMany({
         where: { id: tenantlessUserId, tenantId: null },

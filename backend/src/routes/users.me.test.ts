@@ -34,6 +34,37 @@ async function registerUser(overrides: Record<string, string> = {}) {
     .send({ fullName: 'Ali', email: 'ali-me@example.com', password: 'hunter22', ...overrides });
 }
 
+async function withRestrictedRuntimeApp<T>(run: (app: ReturnType<typeof createApp>) => Promise<T>) {
+  const appUrl = new URL(env.DATABASE_URL);
+  appUrl.username = 'taskflow_app';
+  appUrl.password = inject('taskflowAppPassword');
+  const runtimePrisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: appUrl.toString(), max: 1 }),
+  });
+  const mediaAdapter = {
+    upload: vi.fn().mockResolvedValue(undefined),
+    getPublicUrl: vi.fn(
+      (path: string) => `https://storage.test/storage/v1/object/public/taskflow-media/${path}`,
+    ),
+    remove: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.doMock('../lib/prisma', () => ({ prisma: runtimePrisma }));
+  vi.doMock('../lib/mediaStorage', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../lib/mediaStorage')>();
+    return { ...actual, createMediaStorage: () => actual.createMediaStorage(mediaAdapter) };
+  });
+  vi.resetModules();
+  try {
+    const { createApp: createRestrictedApp } = await import('../app');
+    return await run(createRestrictedApp());
+  } finally {
+    vi.doUnmock('../lib/prisma');
+    vi.doUnmock('../lib/mediaStorage');
+    vi.resetModules();
+    await runtimePrisma.$disconnect();
+  }
+}
+
 describe('GET /api/v1/users/me', () => {
   beforeEach(cleanDb);
 
@@ -61,7 +92,7 @@ describe('GET /api/v1/users/me', () => {
     });
   });
 
-  it('reads the current user and own tenant fields under the restricted runtime role', async () => {
+  it('serves /users/me under the restricted runtime role', async () => {
     const current = await registerUser({
       fullName: 'RLS Profile User',
       email: 'rls-profile@example.com',
@@ -97,7 +128,7 @@ describe('GET /api/v1/users/me', () => {
     vi.resetModules();
     try {
       const { getCurrentProfile } = await import('../services/profile.service');
-
+      const { createApp: createRestrictedApp } = await import('../app');
       await expect(getCurrentProfile(current.body.user.id)).resolves.toMatchObject({
         id: current.body.user.id,
         fullName: 'RLS Profile User',
@@ -111,6 +142,29 @@ describe('GET /api/v1/users/me', () => {
       });
       await expect(getCurrentProfile(tenantless.body.user.id)).resolves.toMatchObject({
         id: tenantless.body.user.id,
+        tenantId: null,
+        tenantName: null,
+        tenantLogoUrl: null,
+      });
+
+      const currentResponse = await request(createRestrictedApp())
+        .get('/api/v1/users/me')
+        .set('Authorization', `Bearer ${current.body.accessToken}`);
+      const tenantlessResponse = await request(createRestrictedApp())
+        .get('/api/v1/users/me')
+        .set('Authorization', `Bearer ${tenantless.body.accessToken}`);
+
+      expect(currentResponse.status).toBe(200);
+      expect(currentResponse.body).toMatchObject({
+        id: current.body.user.id,
+        fullName: 'RLS Profile User',
+        tenantName: 'RLS Profile Tenant',
+        tenantLogoUrl: currentLogo,
+      });
+      expect(tenantlessResponse.status).toBe(200);
+      expect(tenantlessResponse.body).toMatchObject({
+        id: tenantless.body.user.id,
+        fullName: 'Tenantless RLS User',
         tenantId: null,
         tenantName: null,
         tenantLogoUrl: null,
@@ -202,6 +256,60 @@ describe('GET /api/v1/users/me', () => {
 describe('PATCH /api/v1/users/me', () => {
   beforeEach(cleanDb);
 
+  it('updates the authenticated profile under the restricted runtime role', async () => {
+    const company = await registerUser({
+      fullName: 'Before Company User',
+      email: 'restricted-update-company@example.com',
+      companyName: 'Restricted Update Tenant',
+    });
+    const tenantless = await registerUser({
+      fullName: 'Before Personal User',
+      email: 'restricted-update-personal@example.com',
+    });
+    const other = await registerUser({
+      fullName: 'Unchanged Other User',
+      email: 'restricted-update-other@example.com',
+      companyName: 'Other Update Tenant',
+    });
+    const companyLogo = 'https://storage.test/logos/restricted-update.webp';
+    await prisma.tenant.update({
+      where: { id: company.body.user.tenantId },
+      data: { logoUrl: companyLogo },
+    });
+
+    await withRestrictedRuntimeApp(async (app) => {
+      const companyResponse = await request(app)
+        .patch('/api/v1/users/me')
+        .set('Authorization', `Bearer ${company.body.accessToken}`)
+        .send({ fullName: 'Updated Company User', notifyTaskAssigned: false });
+      const tenantlessResponse = await request(app)
+        .patch('/api/v1/users/me')
+        .set('Authorization', `Bearer ${tenantless.body.accessToken}`)
+        .send({ fullName: 'Updated Personal User' });
+
+      expect(companyResponse.status).toBe(200);
+      expect(companyResponse.body).toMatchObject({
+        id: company.body.user.id,
+        fullName: 'Updated Company User',
+        tenantId: company.body.user.tenantId,
+        tenantName: 'Restricted Update Tenant',
+        tenantLogoUrl: companyLogo,
+      });
+      expect(tenantlessResponse.status).toBe(200);
+      expect(tenantlessResponse.body).toMatchObject({
+        id: tenantless.body.user.id,
+        fullName: 'Updated Personal User',
+        tenantId: null,
+        tenantName: null,
+        tenantLogoUrl: null,
+      });
+    });
+
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: other.body.user.id } })).toMatchObject({
+      fullName: 'Unchanged Other User',
+    });
+  });
+
   it('updates profile fields and returns canonical data', async () => {
     const registerResponse = await registerUser({ email: 'update-me@example.com' });
 
@@ -275,6 +383,59 @@ describe('PATCH /api/v1/users/me', () => {
 
 describe('POST /api/v1/users/me/avatar', () => {
   beforeEach(cleanDb);
+
+  it('updates only the authenticated avatar under the restricted runtime role', async () => {
+    const company = await registerUser({
+      fullName: 'Restricted Avatar Company',
+      email: 'restricted-avatar-company@example.com',
+      companyName: 'Restricted Avatar Tenant',
+    });
+    const tenantless = await registerUser({
+      fullName: 'Restricted Avatar Personal',
+      email: 'restricted-avatar-personal@example.com',
+    });
+    const other = await registerUser({
+      fullName: 'Unchanged Avatar User',
+      email: 'restricted-avatar-other@example.com',
+    });
+    const image = await sharp({
+      create: { width: 20, height: 20, channels: 3, background: 'red' },
+    })
+      .png()
+      .toBuffer();
+
+    await withRestrictedRuntimeApp(async (app) => {
+      const companyResponse = await request(app)
+        .post('/api/v1/users/me/avatar')
+        .set('Authorization', `Bearer ${company.body.accessToken}`)
+        .attach('avatar', image, 'avatar.png');
+      const tenantlessResponse = await request(app)
+        .post('/api/v1/users/me/avatar')
+        .set('Authorization', `Bearer ${tenantless.body.accessToken}`)
+        .attach('avatar', image, 'avatar.png');
+
+      expect(companyResponse.status).toBe(200);
+      expect(companyResponse.body).toMatchObject({
+        id: company.body.user.id,
+        tenantId: company.body.user.tenantId,
+        tenantName: 'Restricted Avatar Tenant',
+      });
+      expect(companyResponse.body.avatarUrl).toMatch(/\/avatars\/.*\.webp$/);
+      expect(tenantlessResponse.status).toBe(200);
+      expect(tenantlessResponse.body).toMatchObject({
+        id: tenantless.body.user.id,
+        tenantId: null,
+        tenantName: null,
+        tenantLogoUrl: null,
+      });
+      expect(tenantlessResponse.body.avatarUrl).toMatch(/\/avatars\/.*\.webp$/);
+    });
+
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: other.body.user.id } })).toMatchObject({
+      fullName: 'Unchanged Avatar User',
+      avatarUrl: null,
+    });
+  });
 
   it('rejects a declared MIME mismatch before storage', async () => {
     const registerResponse = await registerUser({ email: 'avatar-route@example.com' });
