@@ -1,9 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../lib/jwt';
-import { prisma } from '../lib/prisma';
 import { isTokenBlacklisted } from '../services/auth.service';
 import { hasAccessSession } from '../lib/sessionStore';
 import { AppError } from '../lib/appError';
+import { withUserContext } from '../db/withUser';
+import { withTenantContext } from '../db/withTenant';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -39,19 +40,26 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
     if (!(await hasAccessSession(p.jti)))
       throw new AppError(401, 'Session revoked', 'TOKEN_REVOKED');
-    const user = await prisma.user.findUnique({
-      where: { id: p.sub },
-      select: {
-        id: true,
-        displayId: true,
-        email: true,
-        fullName: true,
-        role: true,
-        tenantId: true,
-        tenant: { select: { name: true } },
-      },
-    });
+    const user = await withUserContext(p.sub, (tx) =>
+      tx.user.findUnique({
+        where: { id: p.sub },
+        select: {
+          id: true,
+          displayId: true,
+          email: true,
+          fullName: true,
+          role: true,
+          tenantId: true,
+        },
+      }),
+    );
     if (!user) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
+    const tenantId = user.tenantId;
+    const tenant = tenantId
+      ? await withTenantContext(p.sub, tenantId, (tx) =>
+          tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+        )
+      : null;
     req.user = {
       id: user.id,
       displayId: user.displayId,
@@ -59,7 +67,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       fullName: user.fullName,
       role: user.role,
       tenantId: user.tenantId,
-      tenantName: user.tenant?.name ?? null,
+      tenantName: tenant?.name ?? null,
     };
     next();
   } catch (err) {

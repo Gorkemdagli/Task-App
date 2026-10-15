@@ -1,5 +1,4 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { AppError } from '../lib/appError';
 import { revokeAllUserSessions } from '../lib/sessionStore';
@@ -77,10 +76,12 @@ export async function updateCurrentProfile(
   userId: string,
   input: UpdateCurrentUserInput,
 ): Promise<{ profile?: CurrentUserProfile; sessionRevoked: boolean }> {
-  const current = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { passwordHash: true, email: true },
-  });
+  const current = await withUserContext(userId, (tx) =>
+    tx.user.findUnique({
+      where: { id: userId },
+      select: { tenantId: true, passwordHash: true, email: true },
+    }),
+  );
   if (!current) throw new AppError(404, 'User not found', 'NOT_FOUND');
 
   const credentialFieldPresent = input.email !== undefined || input.newPassword !== undefined;
@@ -100,16 +101,6 @@ export async function updateCurrentProfile(
     throw new AppError(400, 'New password must differ from current password', 'PASSWORD_UNCHANGED');
   }
 
-  if (input.email !== undefined && input.email !== current.email) {
-    const existingEmail = await prisma.user.findUnique({
-      where: { email: input.email },
-      select: { id: true },
-    });
-    if (existingEmail && existingEmail.id !== userId) {
-      throw new AppError(409, 'Email already in use', 'EMAIL_ALREADY_IN_USE');
-    }
-  }
-
   const data: Prisma.UserUpdateInput = {};
   if (input.fullName !== undefined) data.fullName = input.fullName;
   if (input.email !== undefined) data.email = input.email;
@@ -123,10 +114,12 @@ export async function updateCurrentProfile(
     input.newPassword !== undefined || (input.email !== undefined && input.email !== current.email);
 
   try {
-    await prisma.$transaction(async (transaction) => {
+    const update = async (transaction: Prisma.TransactionClient) => {
       await transaction.user.update({ where: { id: userId }, data });
       if (sessionRevoked) await revokeAllUserSessions(userId);
-    });
+    };
+    if (current.tenantId) await withTenantContext(userId, current.tenantId, update);
+    else await withUserContext(userId, update);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new AppError(409, 'Email already in use', 'EMAIL_ALREADY_IN_USE');
@@ -147,23 +140,24 @@ export async function replaceAvatar(
     throw new AppError(400, 'Invalid image', 'INVALID_IMAGE');
   }
 
-  const current = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { avatarUrl: true },
-  });
+  const current = await withUserContext(userId, (tx) =>
+    tx.user.findUnique({ where: { id: userId }, select: { avatarUrl: true, tenantId: true } }),
+  );
   if (!current) throw new AppError(404, 'User not found', 'NOT_FOUND');
 
   const transformed = await transformAvatar(file.buffer, file.mimetype);
   const mediaStorage = storage ?? createMediaStorage();
   const uploaded = await mediaStorage.uploadAvatar(userId, transformed);
 
-  let updated: ProfileRow;
   try {
-    updated = await prisma.user.update({
-      where: { id: userId },
-      data: { avatarUrl: uploaded.url },
-      select: profileSelect,
-    });
+    const update = (tx: Prisma.TransactionClient) =>
+      tx.user.update({
+        where: { id: userId },
+        data: { avatarUrl: uploaded.url },
+        select: userProfileSelect,
+      });
+    if (current.tenantId) await withTenantContext(userId, current.tenantId, update);
+    else await withUserContext(userId, update);
   } catch (error) {
     try {
       await mediaStorage.deletePath(uploaded.path);
@@ -173,6 +167,7 @@ export async function replaceAvatar(
     throw error;
   }
 
+  const profile = await getCurrentProfile(userId);
   await deleteOwnedAvatar(mediaStorage, current.avatarUrl, userId);
-  return toProfile(updated, updated.tenant);
+  return profile;
 }
