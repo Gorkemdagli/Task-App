@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, inject, it, vi } from 'vitest';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import sharp from 'sharp';
 import request from 'supertest';
 import { createApp } from '../app';
+import { env } from '../env';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    taskflowAppPassword: string;
+  }
+}
 
 async function cleanDb() {
   await prisma.taskComment.deleteMany();
@@ -50,6 +59,67 @@ describe('GET /api/v1/users/me', () => {
       notifyTaskCommented: true,
       notifyMessageReceived: true,
     });
+  });
+
+  it('reads the current user and own tenant fields under the restricted runtime role', async () => {
+    const current = await registerUser({
+      fullName: 'RLS Profile User',
+      email: 'rls-profile@example.com',
+      companyName: 'RLS Profile Tenant',
+    });
+    const other = await registerUser({
+      fullName: 'Other RLS User',
+      email: 'other-rls-profile@example.com',
+      companyName: 'Other RLS Tenant',
+    });
+    const tenantless = await registerUser({
+      fullName: 'Tenantless RLS User',
+      email: 'tenantless-rls-profile@example.com',
+    });
+    const currentLogo = 'https://storage.test/logos/current-rls.webp';
+    const otherLogo = 'https://storage.test/logos/other-rls.webp';
+    await prisma.tenant.update({
+      where: { id: current.body.user.tenantId },
+      data: { logoUrl: currentLogo },
+    });
+    await prisma.tenant.update({
+      where: { id: other.body.user.tenantId },
+      data: { logoUrl: otherLogo },
+    });
+
+    const appUrl = new URL(env.DATABASE_URL);
+    appUrl.username = 'taskflow_app';
+    appUrl.password = inject('taskflowAppPassword');
+    const runtimePrisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: appUrl.toString(), max: 1 }),
+    });
+    vi.doMock('../lib/prisma', () => ({ prisma: runtimePrisma }));
+    vi.resetModules();
+    try {
+      const { getCurrentProfile } = await import('../services/profile.service');
+
+      await expect(getCurrentProfile(current.body.user.id)).resolves.toMatchObject({
+        id: current.body.user.id,
+        fullName: 'RLS Profile User',
+        tenantName: 'RLS Profile Tenant',
+        tenantLogoUrl: currentLogo,
+      });
+      await expect(getCurrentProfile(other.body.user.id)).resolves.toMatchObject({
+        id: other.body.user.id,
+        tenantName: 'Other RLS Tenant',
+        tenantLogoUrl: otherLogo,
+      });
+      await expect(getCurrentProfile(tenantless.body.user.id)).resolves.toMatchObject({
+        id: tenantless.body.user.id,
+        tenantId: null,
+        tenantName: null,
+        tenantLogoUrl: null,
+      });
+    } finally {
+      vi.doUnmock('../lib/prisma');
+      vi.resetModules();
+      await runtimePrisma.$disconnect();
+    }
   });
 
   it('creates users with all notification preferences enabled', async () => {
