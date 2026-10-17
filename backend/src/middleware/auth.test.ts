@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { prisma } from '../lib/prisma';
@@ -6,6 +6,8 @@ import { redis } from '../lib/redis';
 import { requireAuth } from './auth';
 import { errorHandler } from './errorHandler';
 import { register } from '../services/auth.service';
+import * as userDb from '../db/withUser';
+import * as tenantDb from '../db/withTenant';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -36,6 +38,7 @@ function buildApp(handler: express.RequestHandler) {
 
 describe('requireAuth', () => {
   beforeEach(cleanDb);
+  afterEach(() => vi.restoreAllMocks());
   it('401 without header', async () => {
     const app = buildApp(requireAuth);
     expect((await request(app).get('/p')).status).toBe(401);
@@ -60,10 +63,17 @@ describe('requireAuth', () => {
       401,
     );
   });
-  it('populates req.user for valid token', async () => {
-    const registered = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
+  it('populates req.user without a redundant tenant lookup', async () => {
+    const registered = await register({
+      fullName: 'A',
+      email: 'a@x.com',
+      password: 'hunter22',
+      companyName: 'Acme',
+    });
+    const userLookup = vi.spyOn(userDb, 'withUserContext');
+    const tenantLookup = vi.spyOn(tenantDb, 'withTenantContext');
     const app = express();
-    let captured: { email?: string } | null = null;
+    let captured: express.Request['user'] | undefined;
     app.get('/p', requireAuth, (req, r) => {
       captured = req.user;
       r.json({});
@@ -72,7 +82,15 @@ describe('requireAuth', () => {
       (await request(app).get('/p').set('Authorization', `Bearer ${registered.accessToken}`))
         .status,
     ).toBe(200);
-    expect(captured.email).toBe('a@x.com');
+    expect(captured).toMatchObject({
+      id: registered.user.id,
+      email: 'a@x.com',
+      role: 'companyAdmin',
+      tenantId: registered.user.tenantId,
+    });
+    expect(captured).not.toHaveProperty('tenantName');
+    expect(userLookup).toHaveBeenCalledTimes(1);
+    expect(tenantLookup).not.toHaveBeenCalled();
   });
   it('401 blacklisted jti', async () => {
     const reg = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });

@@ -4,7 +4,6 @@ import { isTokenBlacklisted } from '../services/auth.service';
 import { hasAccessSession } from '../lib/sessionStore';
 import { AppError } from '../lib/appError';
 import { withUserContext } from '../db/withUser';
-import { withTenantContext } from '../db/withTenant';
 import { measureRequestStage } from '../http/requestTiming';
 
 declare global {
@@ -18,7 +17,6 @@ declare global {
         fullName: string;
         role: 'companyAdmin' | 'member';
         tenantId: string | null;
-        tenantName: string | null;
       };
     }
   }
@@ -65,14 +63,6 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       ),
     );
     if (!user) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
-    const tenantId = user.tenantId;
-    const tenant = tenantId
-      ? await measureRequestStage(req.requestTiming, 'auth_db_ms', () =>
-          withTenantContext(p.sub, tenantId, (tx) =>
-            tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
-          ),
-        )
-      : null;
     req.user = {
       id: user.id,
       displayId: user.displayId,
@@ -80,7 +70,6 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       fullName: user.fullName,
       role: user.role,
       tenantId: user.tenantId,
-      tenantName: tenant?.name ?? null,
     };
     next();
   } catch (err) {
