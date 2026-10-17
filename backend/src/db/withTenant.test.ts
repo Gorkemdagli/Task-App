@@ -31,24 +31,20 @@ describe('withTenantContext', () => {
       phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
     });
 
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(3);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
     expect(mockExecuteRaw.mock.calls[0][0]).toEqual(['SET LOCAL ROLE authenticated']);
     expect(mockExecuteRaw.mock.calls[1][0]).toEqual([
       "SELECT set_config('app.user_id', ",
+      ", true), set_config('app.tenant_id', ",
       ', true)',
     ]);
     expect(mockExecuteRaw.mock.calls[1][1]).toBe('user-uuid-123');
-    expect(mockExecuteRaw.mock.calls[2][0]).toEqual([
-      "SELECT set_config('app.tenant_id', ",
-      ', true)',
-    ]);
-    expect(mockExecuteRaw.mock.calls[2][1]).toBe('tenant-uuid-456');
+    expect(mockExecuteRaw.mock.calls[1][2]).toBe('tenant-uuid-456');
     expect(work).toHaveBeenCalledWith(tx);
     expect(phases.map(([phase]) => phase)).toEqual([
       'tx_open_ms',
       'role_ms',
-      'user_context_ms',
-      'tenant_context_ms',
+      'context_ms',
       'callback_ms',
       'tx_finish_ms',
     ]);
@@ -70,18 +66,17 @@ describe('withTenantContext', () => {
     expect(phases.map(([phase]) => phase)).toEqual([
       'tx_open_ms',
       'role_ms',
-      'user_context_ms',
-      'tenant_context_ms',
+      'context_ms',
       'callback_ms',
       'tx_finish_ms',
     ]);
   });
 
-  it('records a failed tenant context phase without entering the callback', async () => {
-    const failure = new Error('tenant context');
+  it('records a failed combined context phase without entering the callback', async () => {
+    const failure = new Error('combined context');
     const phases: TransactionPhase[] = [];
     const work = vi.fn().mockResolvedValue('unused');
-    mockExecuteRaw.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockRejectedValueOnce(failure);
+    mockExecuteRaw.mockResolvedValueOnce(0).mockRejectedValueOnce(failure);
 
     await expect(
       withTenantContext('u', 't', work, { phaseRecorder: (phase) => phases.push(phase) }),
@@ -89,18 +84,17 @@ describe('withTenantContext', () => {
     expect(phases).toEqual([
       'tx_open_ms',
       'role_ms',
-      'user_context_ms',
-      'tenant_context_ms',
+      'context_ms',
       'tx_finish_ms',
     ]);
     expect(work).not.toHaveBeenCalled();
   });
 
-  it('records a failed tenant context phase without entering the callback', async () => {
-    const failure = new Error('tenant context');
+  it('records role setup failure without entering the context or callback', async () => {
+    const failure = new Error('role setup');
     const phases: TransactionPhase[] = [];
     const work = vi.fn().mockResolvedValue('unused');
-    mockExecuteRaw.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockRejectedValueOnce(failure);
+    mockExecuteRaw.mockRejectedValueOnce(failure);
 
     await expect(
       withTenantContext('u', 't', work, { phaseRecorder: (phase) => phases.push(phase) }),
@@ -108,8 +102,6 @@ describe('withTenantContext', () => {
     expect(phases).toEqual([
       'tx_open_ms',
       'role_ms',
-      'user_context_ms',
-      'tenant_context_ms',
       'tx_finish_ms',
     ]);
     expect(work).not.toHaveBeenCalled();
@@ -142,10 +134,11 @@ describe('withTenantContext', () => {
       }),
     ).resolves.toBe('ok');
     expect(mockTransaction).toHaveBeenCalledTimes(3);
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(9);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(6);
     expect(phases.filter((phase) => phase === 'tx_open_ms')).toHaveLength(3);
     expect(phases.filter((phase) => phase === 'tx_finish_ms')).toHaveLength(3);
     expect(phases.filter((phase) => phase === 'callback_ms')).toHaveLength(3);
+    expect(phases.filter((phase) => phase === 'context_ms')).toHaveLength(3);
   });
 
   it('retry sonrası P2034 için 409 döner', async () => {

@@ -11,6 +11,7 @@ export type TransactionPhase =
   | 'role_ms'
   | 'user_context_ms'
   | 'tenant_context_ms'
+  | 'context_ms'
   | 'callback_ms'
   | 'tx_finish_ms';
 
@@ -83,30 +84,20 @@ export async function withTenantContext<T>(
               } finally {
                 recordTransactionPhase(phaseRecorder, 'role_ms', performance.now() - startedAt);
               }
+              // The two GUCs are independent; batch them only after activating the restricted role.
               startedAt = performance.now();
               try {
-                await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
+                await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true), set_config('app.tenant_id', ${tenantId}, true)`;
               } finally {
                 recordTransactionPhase(
                   phaseRecorder,
-                  'user_context_ms',
-                  performance.now() - startedAt,
-                );
-              }
-              startedAt = performance.now();
-              try {
-                await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-              } finally {
-                recordTransactionPhase(
-                  phaseRecorder,
-                  'tenant_context_ms',
+                  'context_ms',
                   performance.now() - startedAt,
                 );
               }
             } else {
               await tx.$executeRaw`SET LOCAL ROLE authenticated`;
-              await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`;
-              await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+              await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true), set_config('app.tenant_id', ${tenantId}, true)`;
             }
 
             try {

@@ -1,5 +1,8 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import { env } from '../env';
 import { prisma } from '../lib/prisma';
 import { withTenantContext } from './withTenant';
 import { withUserContext } from './withUser';
@@ -16,12 +19,43 @@ const teamBId = randomUUID();
 const taskAId = randomUUID();
 const taskBId = randomUUID();
 
+type TransactionContextState = {
+  backendPid: number;
+  currentUser: string;
+  sessionUser: string;
+  userId: string | null;
+  tenantId: string | null;
+};
+
 async function asTenant<T>(
   tenantId: string,
   userId: string,
   work: (db: TenantDb) => Promise<T>,
 ): Promise<T> {
   return withTenantContext(userId, tenantId, work);
+}
+
+async function setAuthenticatedTenantContext(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  tenantId: string,
+): Promise<void> {
+  await tx.$executeRaw`SET LOCAL ROLE authenticated`;
+  await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true), set_config('app.tenant_id', ${tenantId}, true)`;
+}
+
+async function readConnectionState(client: PrismaClient): Promise<TransactionContextState> {
+  return client.$transaction(async (tx) => {
+    const [state] = await tx.$queryRaw<TransactionContextState[]>`
+      SELECT
+        pg_backend_pid() AS "backendPid",
+        current_user AS "currentUser",
+        session_user AS "sessionUser",
+        current_setting('app.user_id', true) AS "userId",
+        current_setting('app.tenant_id', true) AS "tenantId"
+    `;
+    return state;
+  });
 }
 
 describe('RLS tenant isolation for task relations', () => {
@@ -117,6 +151,139 @@ describe('RLS tenant isolation for task relations', () => {
   afterAll(async () => {
     await prisma.tenant.deleteMany({ where: { id: { in: [tenantAId, tenantBId] } } });
     await prisma.user.deleteMany({ where: { id: { in: [tenantlessUserId, otherTenantlessUserId] } } });
+  });
+
+  it('applies RLS as a non-superuser and clears local context after commit and rollback', async () => {
+    const adminConnectionString = env.DATABASE_URL ?? env.APP_DATABASE_URL;
+    if (!adminConnectionString || env.NODE_ENV === 'production') {
+      throw new Error('RLS test role fixture requires a non-production test datasource');
+    }
+    const adminUrl = new URL(adminConnectionString);
+    if (
+      adminUrl.pathname !== '/taskflow_test' ||
+      adminUrl.port !== '5433' ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(adminUrl.hostname)
+    ) {
+      throw new Error('RLS test role fixture is restricted to local taskflow_test on port 5433');
+    }
+
+    const roleName = `taskflow_test_runtime_${randomUUID().replaceAll('-', '')}`;
+    const quotedRoleName = `"${roleName}"`;
+    const password = randomBytes(32).toString('hex');
+    const adminClient = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: adminUrl.toString() }),
+      log: [],
+    });
+    let runtimeClient: PrismaClient | undefined;
+    let roleCreated = false;
+
+    try {
+      try {
+        await adminClient.$executeRawUnsafe(
+          `CREATE ROLE ${quotedRoleName} WITH LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT PASSWORD '${password}'`,
+        );
+        roleCreated = true;
+        await adminClient.$executeRawUnsafe(`GRANT authenticated TO ${quotedRoleName}`);
+      } catch {
+        throw new Error('could not provision an isolated non-superuser RLS test role');
+      }
+
+      const runtimeUrl = new URL(adminUrl);
+      runtimeUrl.username = roleName;
+      runtimeUrl.password = password;
+      runtimeClient = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: runtimeUrl.toString() }),
+        log: [],
+      });
+
+      let runtimeRole: { sessionUser: string; isSuperuser: boolean; bypassesRls: boolean };
+      try {
+        [runtimeRole] = await runtimeClient.$queryRaw<
+          Array<{ sessionUser: string; isSuperuser: boolean; bypassesRls: boolean }>
+        >`
+          SELECT
+            session_user AS "sessionUser",
+            db_role.rolsuper AS "isSuperuser",
+            db_role.rolbypassrls AS "bypassesRls"
+          FROM pg_roles AS db_role
+          WHERE db_role.rolname = session_user
+        `;
+      } catch {
+        throw new Error('could not connect with the isolated RLS test role');
+      }
+      expect(runtimeRole).toEqual({
+        sessionUser: roleName,
+        isSuperuser: false,
+        bypassesRls: false,
+      });
+
+      const scoped = await runtimeClient.$transaction(async (tx) => {
+        await setAuthenticatedTenantContext(tx, userAId, tenantAId);
+        const [context] = await tx.$queryRaw<TransactionContextState[]>`
+          SELECT
+            pg_backend_pid() AS "backendPid",
+            current_user AS "currentUser",
+            session_user AS "sessionUser",
+            current_setting('app.user_id', true) AS "userId",
+            current_setting('app.tenant_id', true) AS "tenantId"
+        `;
+        const visibleAssignees = await tx.taskAssignee.findMany({
+          where: { taskId: { in: [taskAId, taskBId] } },
+        });
+        const crossTenantUpdate = await tx.taskAssignee.updateMany({
+          where: { taskId: taskBId },
+          data: { userId: userAId },
+        });
+        return {
+          context,
+          visibleTaskIds: visibleAssignees.map((row) => row.taskId),
+          crossTenantUpdate,
+        };
+      });
+      expect(scoped.context).toMatchObject({
+        currentUser: 'authenticated',
+        sessionUser: roleName,
+        userId: userAId,
+        tenantId: tenantAId,
+      });
+      expect(scoped.visibleTaskIds).toEqual([taskAId]);
+      expect(scoped.crossTenantUpdate.count).toBe(0);
+
+      const expectContextCleared = (state: TransactionContextState) => {
+        expect(state.backendPid).toBe(scoped.context.backendPid);
+        expect(state.currentUser).toBe(roleName);
+        expect(state.sessionUser).toBe(roleName);
+        expect(state.userId).not.toBe(userAId);
+        expect(state.tenantId).not.toBe(tenantAId);
+      };
+      expectContextCleared(await readConnectionState(runtimeClient));
+
+      const rollbackUserId = randomUUID();
+      const rollbackTenantId = randomUUID();
+      const rollbackError = new Error('expected rollback');
+      await expect(
+        runtimeClient.$transaction(async (tx) => {
+          await setAuthenticatedTenantContext(tx, rollbackUserId, rollbackTenantId);
+          throw rollbackError;
+        }),
+      ).rejects.toBe(rollbackError);
+      const afterRollback = await readConnectionState(runtimeClient);
+      expectContextCleared(afterRollback);
+      expect(afterRollback.userId).not.toBe(rollbackUserId);
+      expect(afterRollback.tenantId).not.toBe(rollbackTenantId);
+    } finally {
+      try {
+        await runtimeClient?.$disconnect();
+      } finally {
+        try {
+          if (roleCreated) {
+            await adminClient.$executeRawUnsafe(`DROP ROLE IF EXISTS ${quotedRoleName}`);
+          }
+        } finally {
+          await adminClient.$disconnect();
+        }
+      }
+    }
   });
 
   it('tenant A child reads exclude B and cross-tenant writes cannot pass policy', async () => {
