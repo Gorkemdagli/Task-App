@@ -13,10 +13,20 @@ export type RequestTimingStage =
   | `auth_${TransactionPhase}`
   | `handler_${TransactionPhase}`;
 
+export type ProcessPoolSnapshot = {
+  totalCount: number;
+  idleCount: number;
+  waitingCount: number;
+  connectCount: number;
+  acquireCount: number;
+  removeCount: number;
+};
+
 export type RequestTimingRecorder = {
   measure<T>(stage: RequestTimingStage, work: () => T | Promise<T>): Promise<T>;
   record(stage: RequestTimingStage, elapsedMs: number): void;
   snapshot(): Partial<Record<RequestTimingStage, number>>;
+  processPoolStart?: ProcessPoolSnapshot;
 };
 
 declare global {
@@ -81,12 +91,21 @@ export function createTransactionPhaseRecorder(
   return timing ? (phase, elapsedMs) => timing.record(`${prefix}_${phase}`, elapsedMs) : undefined;
 }
 
-export function createRequestTimingMiddleware(enabled: boolean): RequestHandler {
+export function createRequestTimingMiddleware(
+  enabled: boolean,
+  getPoolSnapshot?: () => ProcessPoolSnapshot,
+): RequestHandler {
   if (!enabled) return (_req, _res, next) => next();
 
   return (req: Request, _res, next) => {
     if (timedRoutes.has(`${req.method} ${req.path}`)) {
-      req.requestTiming = createRequestTiming();
+      const timing = createRequestTiming();
+      try {
+        timing.processPoolStart = getPoolSnapshot?.();
+      } catch {
+        // Pool telemetry must not alter request behavior.
+      }
+      req.requestTiming = timing;
     }
     next();
   };

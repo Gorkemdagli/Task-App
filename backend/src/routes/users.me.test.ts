@@ -49,7 +49,17 @@ async function withRestrictedRuntimeApp<T>(run: (app: ReturnType<typeof createAp
     ),
     remove: vi.fn().mockResolvedValue(undefined),
   };
-  vi.doMock('../lib/prisma', () => ({ prisma: runtimePrisma }));
+  vi.doMock('../lib/prisma', () => ({
+    prisma: runtimePrisma,
+    getRuntimePoolSnapshot: () => ({
+      totalCount: 0,
+      idleCount: 0,
+      waitingCount: 0,
+      connectCount: 0,
+      acquireCount: 0,
+      removeCount: 0,
+    }),
+  }));
   vi.doMock('../lib/mediaStorage', async (importOriginal) => {
     const actual = await importOriginal<typeof MediaStorage>();
     return { ...actual, createMediaStorage: () => actual.createMediaStorage(mediaAdapter) };
@@ -125,7 +135,17 @@ describe('GET /api/v1/users/me', () => {
     const runtimePrisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: appUrl.toString(), max: 1 }),
     });
-    vi.doMock('../lib/prisma', () => ({ prisma: runtimePrisma }));
+    vi.doMock('../lib/prisma', () => ({
+      prisma: runtimePrisma,
+      getRuntimePoolSnapshot: () => ({
+        totalCount: 0,
+        idleCount: 0,
+        waitingCount: 0,
+        connectCount: 0,
+        acquireCount: 0,
+        removeCount: 0,
+      }),
+    }));
     vi.resetModules();
     try {
       const { getCurrentProfile } = await import('../services/profile.service');

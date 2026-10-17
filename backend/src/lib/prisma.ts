@@ -1,13 +1,28 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, type Prisma } from '@prisma/client';
+import { Pool } from 'pg';
 import { env } from '../env';
 import { logger } from './logger';
+
+type RuntimePoolCounters = {
+  connectCount: number;
+  acquireCount: number;
+  removeCount: number;
+};
+
+type RuntimePrismaState = {
+  pool: Pool;
+  counters?: RuntimePoolCounters;
+  client?: PrismaClient;
+};
 
 declare global {
   // eslint-disable-next-line no-var
   var prismaClient: PrismaClient | undefined;
   // eslint-disable-next-line no-var
   var prismaLoggingClient: PrismaClient | undefined;
+  // eslint-disable-next-line no-var
+  var prismaRuntime: RuntimePrismaState | undefined;
 }
 
 // Runtime Prisma client APP_DATABASE_URL kullanır (no BYPASSRLS).
@@ -19,20 +34,34 @@ if (!datasourceUrl) {
   throw new Error('APP_DATABASE_URL is required for the production runtime');
 }
 
-// Event mode → stdout'a yazmak yerine $on ile logger'a yönlendir.
-// LOG_LEVEL filtresi pino üzerinden geçerli olur.
-const adapter = new PrismaPg({ connectionString: datasourceUrl });
+function createRuntimeState(): RuntimePrismaState {
+  const pool = new Pool({ connectionString: datasourceUrl });
+  const counters = env.REQUEST_STAGE_TIMING
+    ? { connectCount: 0, acquireCount: 0, removeCount: 0 }
+    : undefined;
 
+  if (counters) {
+    pool.on('connect', () => counters.connectCount++);
+    pool.on('acquire', () => counters.acquireCount++);
+    pool.on('remove', () => counters.removeCount++);
+  }
+
+  return { pool, counters };
+}
+
+const runtimeState =
+  env.NODE_ENV !== 'production' ? (global.prismaRuntime ?? createRuntimeState()) : createRuntimeState();
 const client =
-  global.prismaClient ??
+  runtimeState.client ??
   new PrismaClient({
-    adapter,
+    adapter: new PrismaPg(runtimeState.pool, { disposeExternalPool: true }),
     log: [
       { emit: 'event', level: 'query' },
       { emit: 'event', level: 'warn' },
       { emit: 'event', level: 'error' },
     ],
   });
+runtimeState.client = client;
 
 // $on overload'ları generated client'ın literal log config'inden çıkar.
 // global cache literal type'ı ezdiği için açıkça aynı şekilde typed instance üret.
@@ -43,7 +72,22 @@ type EventClient = Omit<typeof client, '$on'> & {
 
 export const prisma = client as EventClient;
 
-if (env.NODE_ENV !== 'production') global.prismaClient = prisma;
+if (env.NODE_ENV !== 'production') {
+  global.prismaRuntime = runtimeState;
+  global.prismaClient = prisma;
+}
+
+// Event counts are cumulative process totals; do not interpret their change as request-owned.
+export function getRuntimePoolSnapshot() {
+  return {
+    totalCount: runtimeState.pool.totalCount,
+    idleCount: runtimeState.pool.idleCount,
+    waitingCount: runtimeState.pool.waitingCount,
+    connectCount: runtimeState.counters?.connectCount ?? 0,
+    acquireCount: runtimeState.counters?.acquireCount ?? 0,
+    removeCount: runtimeState.counters?.removeCount ?? 0,
+  };
+}
 
 if (global.prismaLoggingClient !== prisma) {
   prisma.$on('query', (e: Prisma.QueryEvent) => {
