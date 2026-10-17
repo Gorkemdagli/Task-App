@@ -14,6 +14,8 @@ vi.mock('../lib/prisma', () => {
 
 import { commitThenThrow, withTenantContext } from './withTenant';
 import { mockExecuteRaw, mockTransaction, tx } from '../lib/prisma';
+import type { TransactionPhase } from './withTenant';
+import { createRequestTiming, createTransactionPhaseRecorder } from '../http/requestTiming';
 
 describe('withTenantContext', () => {
   beforeEach(() => {
@@ -23,8 +25,11 @@ describe('withTenantContext', () => {
 
   it('parametreli context SQL sırasını transaction içinde uygular', async () => {
     const work = vi.fn().mockResolvedValue('ok');
+    const phases: Array<[TransactionPhase, number]> = [];
 
-    await withTenantContext('user-uuid-123', 'tenant-uuid-456', work);
+    await withTenantContext('user-uuid-123', 'tenant-uuid-456', work, {
+      phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+    });
 
     expect(mockExecuteRaw).toHaveBeenCalledTimes(3);
     expect(mockExecuteRaw.mock.calls[0][0]).toEqual(['SET LOCAL ROLE authenticated']);
@@ -39,13 +44,75 @@ describe('withTenantContext', () => {
     ]);
     expect(mockExecuteRaw.mock.calls[2][1]).toBe('tenant-uuid-456');
     expect(work).toHaveBeenCalledWith(tx);
+    expect(phases.map(([phase]) => phase)).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'tenant_context_ms',
+      'callback_ms',
+      'tx_finish_ms',
+    ]);
+    expect(phases.every(([, elapsedMs]) => Number.isFinite(elapsedMs) && elapsedMs >= 0)).toBe(
+      true,
+    );
   });
 
   it('callback hatasını transaction dışına taşır', async () => {
     const failure = new Error('rollback');
     const work = vi.fn().mockRejectedValue(failure);
+    const phases: Array<[TransactionPhase, number]> = [];
 
-    await expect(withTenantContext('u', 't', work)).rejects.toBe(failure);
+    await expect(
+      withTenantContext('u', 't', work, {
+        phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+      }),
+    ).rejects.toBe(failure);
+    expect(phases.map(([phase]) => phase)).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'tenant_context_ms',
+      'callback_ms',
+      'tx_finish_ms',
+    ]);
+  });
+
+  it('records a failed tenant context phase without entering the callback', async () => {
+    const failure = new Error('tenant context');
+    const phases: TransactionPhase[] = [];
+    const work = vi.fn().mockResolvedValue('unused');
+    mockExecuteRaw.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockRejectedValueOnce(failure);
+
+    await expect(
+      withTenantContext('u', 't', work, { phaseRecorder: (phase) => phases.push(phase) }),
+    ).rejects.toBe(failure);
+    expect(phases).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'tenant_context_ms',
+      'tx_finish_ms',
+    ]);
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it('records a failed tenant context phase without entering the callback', async () => {
+    const failure = new Error('tenant context');
+    const phases: TransactionPhase[] = [];
+    const work = vi.fn().mockResolvedValue('unused');
+    mockExecuteRaw.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockRejectedValueOnce(failure);
+
+    await expect(
+      withTenantContext('u', 't', work, { phaseRecorder: (phase) => phases.push(phase) }),
+    ).rejects.toBe(failure);
+    expect(phases).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'tenant_context_ms',
+      'tx_finish_ms',
+    ]);
+    expect(work).not.toHaveBeenCalled();
   });
 
   it('transaction sonucunu döner', async () => {
@@ -56,6 +123,7 @@ describe('withTenantContext', () => {
 
   it('P2034 için yeni transaction ile retry yapar', async () => {
     const conflict = Object.assign(new Error('serialization'), { code: 'P2034' });
+    const phases: TransactionPhase[] = [];
     mockTransaction
       .mockImplementationOnce(async (cb) => {
         await cb(tx);
@@ -67,11 +135,17 @@ describe('withTenantContext', () => {
       })
       .mockImplementationOnce(async (cb) => cb(tx));
 
-    await expect(withTenantContext('u', 't', async () => 'ok', { maxRetries: 3 })).resolves.toBe(
-      'ok',
-    );
+    await expect(
+      withTenantContext('u', 't', async () => 'ok', {
+        maxRetries: 3,
+        phaseRecorder: (phase) => phases.push(phase),
+      }),
+    ).resolves.toBe('ok');
     expect(mockTransaction).toHaveBeenCalledTimes(3);
     expect(mockExecuteRaw).toHaveBeenCalledTimes(9);
+    expect(phases.filter((phase) => phase === 'tx_open_ms')).toHaveLength(3);
+    expect(phases.filter((phase) => phase === 'tx_finish_ms')).toHaveLength(3);
+    expect(phases.filter((phase) => phase === 'callback_ms')).toHaveLength(3);
   });
 
   it('retry sonrası P2034 için 409 döner', async () => {
@@ -113,5 +187,28 @@ describe('withTenantContext', () => {
     );
     expect(committed).toBe(true);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps concurrent transaction phases on their own request recorders', async () => {
+    const slowTiming = createRequestTiming();
+    const fastTiming = createRequestTiming();
+    const slowRecorder = createTransactionPhaseRecorder(slowTiming, 'handler');
+    const fastRecorder = createTransactionPhaseRecorder(fastTiming, 'handler');
+    mockTransaction.mockImplementation(async (callback) => callback(tx));
+
+    await Promise.all([
+      withTenantContext('u1', 't1', () => new Promise((resolve) => setTimeout(resolve, 60)), {
+        phaseRecorder: slowRecorder,
+      }),
+      withTenantContext('u2', 't2', () => new Promise((resolve) => setTimeout(resolve, 5)), {
+        phaseRecorder: fastRecorder,
+      }),
+    ]);
+
+    const slow = slowTiming.snapshot();
+    const fast = fastTiming.snapshot();
+    expect(slow.handler_callback_ms).toBeGreaterThan(fast.handler_callback_ms ?? 0);
+    expect(slow).not.toHaveProperty('auth_callback_ms');
+    expect(fast).not.toHaveProperty('auth_callback_ms');
   });
 });

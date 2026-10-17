@@ -8,6 +8,7 @@ import { errorHandler } from './errorHandler';
 import { register } from '../services/auth.service';
 import * as userDb from '../db/withUser';
 import * as tenantDb from '../db/withTenant';
+import { createRequestTiming, type RequestTimingStage } from '../http/requestTiming';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -72,10 +73,17 @@ describe('requireAuth', () => {
     });
     const userLookup = vi.spyOn(userDb, 'withUserContext');
     const tenantLookup = vi.spyOn(tenantDb, 'withTenantContext');
+    const timing = createRequestTiming();
     const app = express();
     let captured: express.Request['user'] | undefined;
+    let capturedTiming: Partial<Record<RequestTimingStage, number>> | undefined;
+    app.use((req, _res, next) => {
+      req.requestTiming = timing;
+      next();
+    });
     app.get('/p', requireAuth, (req, r) => {
       captured = req.user;
+      capturedTiming = req.requestTiming?.snapshot();
       r.json({});
     });
     expect(
@@ -91,6 +99,14 @@ describe('requireAuth', () => {
     expect(captured).not.toHaveProperty('tenantName');
     expect(userLookup).toHaveBeenCalledTimes(1);
     expect(tenantLookup).not.toHaveBeenCalled();
+    expect(capturedTiming).toMatchObject({
+      auth_db_ms: expect.any(Number),
+      auth_tx_open_ms: expect.any(Number),
+      auth_role_ms: expect.any(Number),
+      auth_user_context_ms: expect.any(Number),
+      auth_callback_ms: expect.any(Number),
+      auth_tx_finish_ms: expect.any(Number),
+    });
   });
   it('401 blacklisted jti', async () => {
     const reg = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });

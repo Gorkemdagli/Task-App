@@ -3,7 +3,7 @@ import { withTenantContext, type TenantTransactionOptions } from '../db/withTena
 import type { TenantDb } from '../db/types';
 import { type Actor, requireTenant } from '../lib/permissions';
 import { AppError } from '../lib/appError';
-import { measureRequestStage } from './requestTiming';
+import { createTransactionPhaseRecorder, measureRequestStage } from './requestTiming';
 
 export async function runTenantRequest<T>(
   req: Request,
@@ -17,9 +17,11 @@ export async function runTenantRequest<T>(
 
   const tenantId = requireTenant(actor);
   const callback = (db: TenantDb) => work(db, actor);
+  const phaseRecorder = createTransactionPhaseRecorder(req.requestTiming, 'handler');
+  const transactionOptions = phaseRecorder ? { ...options, phaseRecorder } : options;
   return measureRequestStage(req.requestTiming, 'handler_db_ms', () =>
-    options
-      ? withTenantContext(actor.id, tenantId, callback, options)
+    transactionOptions
+      ? withTenantContext(actor.id, tenantId, callback, transactionOptions)
       : withTenantContext(actor.id, tenantId, callback),
   );
 }

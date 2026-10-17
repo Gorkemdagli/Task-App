@@ -6,6 +6,7 @@ const { withTenantContext } = vi.hoisted(() => ({ withTenantContext: vi.fn() }))
 vi.mock('../db/withTenant', () => ({ withTenantContext }));
 
 import { runTenantRequest } from './runTenantRequest';
+import { createRequestTiming } from './requestTiming';
 
 const actor = {
   id: 'user-id',
@@ -62,6 +63,23 @@ describe('runTenantRequest', () => {
 
     expect(withTenantContext).toHaveBeenCalledWith('user-id', 'tenant-id', expect.any(Function), {
       maxRetries: 3,
+    });
+  });
+
+  it('passes request-local handler transaction phase recording', async () => {
+    const tx = {};
+    const work = vi.fn().mockResolvedValue('done');
+    const timing = createRequestTiming();
+    withTenantContext.mockImplementation(async (_userId, _tenantId, callback) => callback(tx));
+
+    await runTenantRequest({ ...reqWith(actor), requestTiming: timing } as Request, work);
+
+    const options = withTenantContext.mock.calls[0][3];
+    expect(options.phaseRecorder).toEqual(expect.any(Function));
+    options.phaseRecorder('callback_ms', 12);
+    expect(timing.snapshot()).toMatchObject({
+      handler_callback_ms: 12,
+      handler_db_ms: expect.any(Number),
     });
   });
 });
