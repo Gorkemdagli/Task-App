@@ -4,6 +4,7 @@ import { RouteFallback } from './components/layout/RouteFallback';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
+import { queryKeys } from './lib/queryKeys';
 import { useTranslation } from './i18n';
 import {
   classifyGlobalError,
@@ -86,6 +87,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         const data = response.data as { accessToken: string };
         setAccessToken(data.accessToken);
         const canonicalUser = await getMe();
+        queryClient.setQueryData(queryKeys.profile(canonicalUser.id), canonicalUser);
         setUser(canonicalUser);
       } catch (error) {
         const kind = classifyGlobalError(error);

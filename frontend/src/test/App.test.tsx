@@ -7,13 +7,15 @@ import { queryClient } from '../lib/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { RouteFallback } from '../components/layout/RouteFallback';
 import { clearGlobalError, getGlobalError } from '../lib/globalError';
+import { queryKeys } from '../lib/queryKeys';
+import type { CurrentUserProfile } from '../services/profile';
 
 vi.mock('../lib/api', async () => {
   const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
   return { ...actual, getMe: vi.fn() };
 });
 
-const canonicalUser = {
+const canonicalUser: CurrentUserProfile = {
   id: 'u1',
   displayId: 'ABCDE',
   email: 'u@example.com',
@@ -21,6 +23,11 @@ const canonicalUser = {
   role: 'member' as const,
   tenantId: null,
   tenantName: null,
+  tenantLogoUrl: null,
+  avatarUrl: null,
+  notifyTaskAssigned: true,
+  notifyTaskCommented: true,
+  notifyMessageReceived: true,
 };
 
 let refreshSpy: MockInstance;
@@ -76,12 +83,34 @@ describe('AuthBootstrap canonical flow', () => {
     expect(getMe).toHaveBeenCalledTimes(1);
   });
 
+  it('seeds the complete profile query so the sidebar reuses bootstrap /users/me', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    const previousUser = { ...canonicalUser, id: 'previous-user' };
+    useAuthStore.setState({ accessToken: 'stale', user: previousUser });
+    queryClient.setQueryData(queryKeys.profile(previousUser.id), previousUser);
+    refreshSpy.mockResolvedValue({ status: 200, data: { accessToken: 'fresh' } } as never);
+    vi.mocked(getMe).mockResolvedValue(canonicalUser);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(getMe).toHaveBeenCalledTimes(1);
+    expect(apiGet.mock.calls.filter(([url]) => url === '/users/me')).toHaveLength(0);
+    expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toEqual(canonicalUser);
+  });
+
   it('keeps auth empty when refresh returns 204', async () => {
     render(<App />);
 
     await waitFor(() => expect(screen.queryByText(/yÃ¼kleniyor/i)).not.toBeInTheDocument());
     expect(getMe).not.toHaveBeenCalled();
     expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toBeUndefined();
   });
 
   it('preserves auth and reports a network error when refresh cannot reach the server', async () => {
@@ -129,6 +158,7 @@ describe('AuthBootstrap canonical flow', () => {
     await waitFor(() => expect(getGlobalError()).toBe('generic'));
     expect(useAuthStore.getState()).toMatchObject({ accessToken: 'fresh', user: null });
     expect(clearSpy).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toBeUndefined();
   });
 
   it('ends a stale session and offers login when bootstrap confirms 401', async () => {
