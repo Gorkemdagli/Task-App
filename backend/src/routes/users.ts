@@ -13,6 +13,7 @@ import { createMediaStorage, deleteOwnedLogo } from '../lib/mediaStorage';
 import { requireTenant } from '../lib/permissions';
 import { AppError } from '../lib/appError';
 import { runTenantRequest } from '../http/runTenantRequest';
+import { measureRequestStage } from '../http/requestTiming';
 import {
   updateCompanyPermissionsSchema,
   updateCurrentUserSchema,
@@ -27,7 +28,11 @@ export const usersRouter = Router();
 
 usersRouter.get('/users/me', requireAuth, authenticatedReadLimiter, async (req, res, next) => {
   try {
-    res.json(await profileService.getCurrentProfile(req.user!.id));
+    res.json(
+      await measureRequestStage(req.requestTiming, 'handler_db_ms', () =>
+        profileService.getCurrentProfile(req.user!.id),
+      ),
+    );
   } catch (error) {
     next(error);
   }

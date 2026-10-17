@@ -5,6 +5,7 @@ import { hasAccessSession } from '../lib/sessionStore';
 import { AppError } from '../lib/appError';
 import { withUserContext } from '../db/withUser';
 import { withTenantContext } from '../db/withTenant';
+import { measureRequestStage } from '../http/requestTiming';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -36,28 +37,40 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     } catch {
       throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
     }
-    if (await isTokenBlacklisted(p.jti))
+    if (
+      await measureRequestStage(req.requestTiming, 'session_redis_ms', () =>
+        isTokenBlacklisted(p.jti),
+      )
+    )
       throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-    if (!(await hasAccessSession(p.jti)))
+    if (
+      !(await measureRequestStage(req.requestTiming, 'session_redis_ms', () =>
+        hasAccessSession(p.jti),
+      ))
+    )
       throw new AppError(401, 'Session revoked', 'TOKEN_REVOKED');
-    const user = await withUserContext(p.sub, (tx) =>
-      tx.user.findUnique({
-        where: { id: p.sub },
-        select: {
-          id: true,
-          displayId: true,
-          email: true,
-          fullName: true,
-          role: true,
-          tenantId: true,
-        },
-      }),
+    const user = await measureRequestStage(req.requestTiming, 'auth_db_ms', () =>
+      withUserContext(p.sub, (tx) =>
+        tx.user.findUnique({
+          where: { id: p.sub },
+          select: {
+            id: true,
+            displayId: true,
+            email: true,
+            fullName: true,
+            role: true,
+            tenantId: true,
+          },
+        }),
+      ),
     );
     if (!user) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
     const tenantId = user.tenantId;
     const tenant = tenantId
-      ? await withTenantContext(p.sub, tenantId, (tx) =>
-          tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      ? await measureRequestStage(req.requestTiming, 'auth_db_ms', () =>
+          withTenantContext(p.sub, tenantId, (tx) =>
+            tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+          ),
         )
       : null;
     req.user = {

@@ -30,7 +30,7 @@ authRouter.post(
 
 authRouter.post('/login', loginLimiter, validateBody(loginSchema), async (req, res, next) => {
   try {
-    const r = await authService.login(req.body);
+    const r = await authService.login(req.body, req.requestTiming);
     setRefreshCookie(res, r.refreshToken, r.refreshExpiresAt * 1000 - Date.now());
     res.json({ user: r.user, accessToken: r.accessToken });
   } catch (e) {

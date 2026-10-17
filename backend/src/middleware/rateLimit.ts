@@ -1,6 +1,9 @@
 import rateLimit, { type Options } from 'express-rate-limit';
+import type { RequestHandler } from 'express';
+import { performance } from 'node:perf_hooks';
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import { redis } from '../lib/redis';
+import type { RequestTimingRecorder } from '../http/requestTiming';
 
 interface CreateRateLimitOptions {
   windowMs: number;
@@ -10,7 +13,7 @@ interface CreateRateLimitOptions {
 }
 
 export function createRateLimit(opts: CreateRateLimitOptions) {
-  return rateLimit({
+  const limiter = rateLimit({
     windowMs: opts.windowMs,
     max: opts.max,
     keyGenerator: opts.keyGenerator,
@@ -33,4 +36,33 @@ export function createRateLimit(opts: CreateRateLimitOptions) {
       });
     },
   });
+
+  return ((req, res, next) => {
+    const timing = req.requestTiming as RequestTimingRecorder | undefined;
+    if (!timing) return limiter(req, res, next);
+
+    const started = performance.now();
+    let recorded = false;
+    const finish = () => {
+      if (recorded) return;
+      recorded = true;
+      res.off('prefinish', finish);
+      res.off('finish', finish);
+      res.off('close', finish);
+      timing.record('rate_limit_ms', performance.now() - started);
+    };
+    res.once('prefinish', finish);
+    res.once('finish', finish);
+    res.once('close', finish);
+
+    try {
+      return limiter(req, res, (error) => {
+        finish();
+        next(error);
+      });
+    } catch (error) {
+      finish();
+      return next(error);
+    }
+  }) as RequestHandler;
 }
