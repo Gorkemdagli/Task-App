@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as Pg from 'pg';
+import type * as PrismaAdapterPg from '@prisma/adapter-pg';
+import type * as PrismaClientModule from '@prisma/client';
 
 const state = vi.hoisted(() => ({
   env: {
@@ -176,9 +179,9 @@ describe('production Prisma logging', () => {
 
   it('ends an externally supplied pool once when Prisma disconnects', async () => {
     const [{ Pool }, { PrismaPg }, { PrismaClient }] = await Promise.all([
-      vi.importActual<typeof import('pg')>('pg'),
-      vi.importActual<typeof import('@prisma/adapter-pg')>('@prisma/adapter-pg'),
-      vi.importActual<typeof import('@prisma/client')>('@prisma/client'),
+      vi.importActual<typeof Pg>('pg'),
+      vi.importActual<typeof PrismaAdapterPg>('@prisma/adapter-pg'),
+      vi.importActual<typeof PrismaClientModule>('@prisma/client'),
     ]);
     const pool = new Pool({ connectionString: 'postgresql://127.0.0.1/not-used' });
     const end = vi.spyOn(pool, 'end');
