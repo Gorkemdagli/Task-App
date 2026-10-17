@@ -9,6 +9,14 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../lib/prisma', () => ({
   prisma: { $queryRaw: state.database },
+  getRuntimePoolSnapshot: () => ({
+    totalCount: 0,
+    idleCount: 0,
+    waitingCount: 0,
+    connectCount: 0,
+    acquireCount: 0,
+    removeCount: 0,
+  }),
 }));
 vi.mock('../lib/redis', () => ({
   redis: { ping: state.redis, call: state.redisCall },
