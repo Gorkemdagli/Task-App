@@ -17,6 +17,7 @@ import { AppError } from '../lib/appError';
 import { withTenantContext } from '../db/withTenant';
 import { withUserContext } from '../db/withUser';
 import type { RegisterInput, LoginInput } from '../schemas/auth.schema';
+import { measureRequestStage, type RequestTimingRecorder } from '../http/requestTiming';
 import {
   accessSessionKey,
   refreshSessionKey,
@@ -163,13 +164,22 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
 
 const DUMMY_HASH = '$2b$12$0000000000000000000000000000000000000000000000000000000';
 
-export async function login(input: LoginInput): Promise<AuthResult> {
-  const userId = await findUserIdByEmail(input.email);
-  const user = userId ? await findUserById(userId) : null;
+export async function login(
+  input: LoginInput,
+  timing?: RequestTimingRecorder,
+): Promise<AuthResult> {
+  const user = await measureRequestStage(timing, 'auth_db_ms', async () => {
+    const userId = await findUserIdByEmail(input.email);
+    return userId ? findUserById(userId) : null;
+  });
   const hash = user?.passwordHash ?? DUMMY_HASH;
-  const valid = await verifyPassword(input.password, hash);
+  const valid = await measureRequestStage(timing, 'password_verify_ms', () =>
+    verifyPassword(input.password, hash),
+  );
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
-  const tenantName = await findTenantName(user.id, user.tenantId);
+  const tenantName = await measureRequestStage(timing, 'auth_db_ms', () =>
+    findTenantName(user.id, user.tenantId),
+  );
   const result = issueTokens({
     id: user.id,
     displayId: user.displayId,
@@ -179,12 +189,14 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     tenantId: user.tenantId,
     tenantName,
   });
-  await registerIssuedTokens(
-    result.accessToken,
-    result.refreshToken,
-    user.id,
-    randomUUID(),
-    result.sessionExpiresAt,
+  await measureRequestStage(timing, 'session_redis_ms', () =>
+    registerIssuedTokens(
+      result.accessToken,
+      result.refreshToken,
+      user.id,
+      randomUUID(),
+      result.sessionExpiresAt,
+    ),
   );
   return result;
 }

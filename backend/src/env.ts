@@ -26,6 +26,10 @@ export const envSchema = z
     QSTASH_CURRENT_SIGNING_KEY: z.string().min(1).optional(),
     QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    REQUEST_STAGE_TIMING: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SUPABASE_TASK_FILES_BUCKET: z.string().min(1).optional(),
