@@ -63,15 +63,22 @@ describe('request stage timing', () => {
     await request(app).get('/api/v1/teams');
     await request(app).get('/api/v1/tasks');
     await request(app).get('/api/v1/company/dashboard');
+    await request(app).get('/api/v1/notifications?limit=10');
+    await request(app).get('/api/v1/company/invitations?status=pending');
+    await request(app).get('/api/v1/users/me/company-invitations?status=pending');
     await request(app).get('/api/v1/tasks/task-id');
     await request(app).post('/api/v1/tasks');
+    await request(app).get('/api/v1/notifications/notification-id');
+    await request(app).get('/api/v1/company/invitations/invitation-id');
+    await request(app).post('/api/v1/notifications');
+    await request(app).post('/api/v1/users/me/company-invitations/invitation-id/accept');
 
-    expect(logs).toHaveLength(7);
-    for (const log of logs.slice(0, 5)) {
+    expect(logs).toHaveLength(14);
+    for (const log of logs.slice(0, 8)) {
       expect(log.request_timing_ms).toEqual({ handler_db_ms: 12.3 });
       expect(Object.values(log.request_timing_ms ?? {}).every(Number.isFinite)).toBe(true);
     }
-    for (const log of logs.slice(5)) {
+    for (const log of logs.slice(8)) {
       expect(log).not.toHaveProperty('request_timing_ms');
     }
   });

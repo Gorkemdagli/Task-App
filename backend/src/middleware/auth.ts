@@ -4,7 +4,7 @@ import { isTokenBlacklisted } from '../services/auth.service';
 import { hasAccessSession } from '../lib/sessionStore';
 import { AppError } from '../lib/appError';
 import { withUserContext } from '../db/withUser';
-import { measureRequestStage } from '../http/requestTiming';
+import { createTransactionPhaseRecorder, measureRequestStage } from '../http/requestTiming';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -47,19 +47,23 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       ))
     )
       throw new AppError(401, 'Session revoked', 'TOKEN_REVOKED');
+    const phaseRecorder = createTransactionPhaseRecorder(req.requestTiming, 'auth');
     const user = await measureRequestStage(req.requestTiming, 'auth_db_ms', () =>
-      withUserContext(p.sub, (tx) =>
-        tx.user.findUnique({
-          where: { id: p.sub },
-          select: {
-            id: true,
-            displayId: true,
-            email: true,
-            fullName: true,
-            role: true,
-            tenantId: true,
-          },
-        }),
+      withUserContext(
+        p.sub,
+        (tx) =>
+          tx.user.findUnique({
+            where: { id: p.sub },
+            select: {
+              id: true,
+              displayId: true,
+              email: true,
+              fullName: true,
+              role: true,
+              tenantId: true,
+            },
+          }),
+        phaseRecorder ? { phaseRecorder } : undefined,
       ),
     );
     if (!user) throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');

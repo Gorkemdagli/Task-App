@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseQuery } from '../http/parseQuery';
 import { runTenantRequest } from '../http/runTenantRequest';
 import { runUserRequest } from '../http/runUserRequest';
+import { measureRequestStage } from '../http/requestTiming';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { authenticatedReadLimiter, writeLimiter } from '../middleware/rateLimitProfiles';
@@ -73,8 +74,8 @@ companyInvitationsRouter.get(
   authenticatedReadLimiter,
   async (req, res, next) => {
     try {
-      const invitations = await runUserRequest(req, (db, actor) =>
-        companyInvitationsService.listMyInvitations(db, actor),
+      const invitations = await measureRequestStage(req.requestTiming, 'handler_db_ms', () =>
+        runUserRequest(req, (db, actor) => companyInvitationsService.listMyInvitations(db, actor)),
       );
       res.json({ invitations, pendingCount: invitations.length });
     } catch (error) {

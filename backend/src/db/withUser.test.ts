@@ -16,6 +16,7 @@ vi.mock('../lib/prisma', () => {
 
 import { commitThenThrow, withUserContext } from './withUser';
 import { mockExecuteRaw, mockTransaction, tx } from '../lib/prisma';
+import type { TransactionPhase } from './withTenant';
 
 describe('withUserContext', () => {
   beforeEach(() => {
@@ -25,8 +26,11 @@ describe('withUserContext', () => {
 
   it('sets authenticated role and identity context before callback', async () => {
     const work = vi.fn().mockResolvedValue('ok');
+    const phases: Array<[TransactionPhase, number]> = [];
 
-    await withUserContext('user-uuid-123', work);
+    await withUserContext('user-uuid-123', work, {
+      phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+    });
 
     expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
     expect(mockExecuteRaw.mock.calls[0][0]).toEqual(['SET LOCAL ROLE authenticated']);
@@ -36,12 +40,60 @@ describe('withUserContext', () => {
     ]);
     expect(mockExecuteRaw.mock.calls[1][1]).toBe('user-uuid-123');
     expect(work).toHaveBeenCalledWith(tx);
+    expect(phases.map(([phase]) => phase)).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'callback_ms',
+      'tx_finish_ms',
+    ]);
+    expect(phases.every(([, elapsedMs]) => Number.isFinite(elapsedMs) && elapsedMs >= 0)).toBe(
+      true,
+    );
   });
 
   it('rolls callback error out of transaction', async () => {
     const failure = new Error('rollback');
+    const phases: Array<[TransactionPhase, number]> = [];
 
-    await expect(withUserContext('u', async () => Promise.reject(failure))).rejects.toBe(failure);
+    await expect(
+      withUserContext('u', async () => Promise.reject(failure), {
+        phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+      }),
+    ).rejects.toBe(failure);
+    expect(phases.map(([phase]) => phase)).toEqual([
+      'tx_open_ms',
+      'role_ms',
+      'user_context_ms',
+      'callback_ms',
+      'tx_finish_ms',
+    ]);
+  });
+
+  it('records failed transaction setup without fabricating later phases', async () => {
+    const failure = new Error('role setup');
+    const phases: Array<[TransactionPhase, number]> = [];
+    mockExecuteRaw.mockRejectedValueOnce(failure);
+
+    await expect(
+      withUserContext('u', async () => 'unused', {
+        phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+      }),
+    ).rejects.toBe(failure);
+    expect(phases.map(([phase]) => phase)).toEqual(['tx_open_ms', 'role_ms', 'tx_finish_ms']);
+  });
+
+  it('records transaction open failure without a finish phase', async () => {
+    const failure = new Error('transaction open');
+    const phases: Array<[TransactionPhase, number]> = [];
+    mockTransaction.mockRejectedValueOnce(failure);
+
+    await expect(
+      withUserContext('u', async () => 'unused', {
+        phaseRecorder: (phase, elapsedMs) => phases.push([phase, elapsedMs]),
+      }),
+    ).rejects.toBe(failure);
+    expect(phases.map(([phase]) => phase)).toEqual(['tx_open_ms']);
   });
 
   it('commits the transaction before throwing a deferred domain error', async () => {
