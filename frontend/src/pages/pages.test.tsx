@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LogoutCoordinatorProvider } from '@/components/auth/LogoutCoordinator';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { DashboardPage } from './Dashboard';
 import { TeamsPage } from './Teams';
@@ -148,19 +149,21 @@ function renderAt(path: string) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/teams" element={<TeamsPage />} />
-          <Route path="/teams/:id" element={<TeamDetailPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/tasks/:id" element={<TaskDetailPage />} />
-          <Route path="/chat/:id" element={<ChatPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/permissions" element={<PermissionsPage />} />
-          <Route path="/company" element={<CompanyManagementPage />} />
-          <Route path="/company/settings" element={<Navigate to="/company" replace />} />
-          <Route path="*" element={<div>404</div>} />
-        </Routes>
+        <LogoutCoordinatorProvider>
+          <Routes>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
+            <Route path="/teams/:id" element={<TeamDetailPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            <Route path="/chat/:id" element={<ChatPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/permissions" element={<PermissionsPage />} />
+            <Route path="/company" element={<CompanyManagementPage />} />
+            <Route path="/company/settings" element={<Navigate to="/company" replace />} />
+            <Route path="*" element={<div>404</div>} />
+          </Routes>
+        </LogoutCoordinatorProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );

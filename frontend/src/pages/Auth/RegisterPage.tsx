@@ -17,8 +17,7 @@ import { FormError } from '../../components/auth/FormError';
 export function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const setUser = useAuthStore((s) => s.setUser);
+  const establishSession = useAuthStore((s) => s.establishSession);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -39,8 +38,7 @@ export function RegisterPage() {
     const payload = data.companyName?.trim() ? data : { ...data, companyName: undefined };
     try {
       const res = await authApi.post('/register', payload);
-      setAccessToken(res.data.accessToken);
-      setUser(res.data.user);
+      establishSession(res.data.accessToken, res.data.user);
       navigate('/dashboard');
     } catch (err: unknown) {
       setFormError(getApiErrorMessage(err, t('auth.error.unexpected')));

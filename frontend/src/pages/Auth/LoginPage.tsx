@@ -17,8 +17,7 @@ import { Input } from '../../components/ui/input';
 export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const setUser = useAuthStore((s) => s.setUser);
+  const establishSession = useAuthStore((s) => s.establishSession);
   const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -32,8 +31,7 @@ export function LoginPage() {
     setFormError(null);
     try {
       const res = await authApi.post('/login', data);
-      setAccessToken(res.data.accessToken);
-      setUser(res.data.user);
+      establishSession(res.data.accessToken, res.data.user);
       clearActiveTeam();
       queryClient.clear();
       navigate('/dashboard');

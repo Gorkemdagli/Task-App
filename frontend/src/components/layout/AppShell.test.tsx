@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LogoutCoordinatorProvider } from '@/components/auth/LogoutCoordinator';
 import { AppShell } from './AppShell';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { api } from '@/lib/api';
@@ -26,11 +27,13 @@ function renderWithRouter(initialPath = '/dashboard') {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="/dashboard" element={<div data-testid="child">içerik</div>} />
-          </Route>
-        </Routes>
+        <LogoutCoordinatorProvider>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="/dashboard" element={<div data-testid="child">içerik</div>} />
+            </Route>
+          </Routes>
+        </LogoutCoordinatorProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );

@@ -14,12 +14,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useLogout } from '@/components/auth/LogoutCoordinator';
 import { useProfile, useUpdateProfile, useUploadAvatar } from '@/hooks/queries/useProfile';
-import { authApi } from '@/lib/api';
-import { queryClient } from '@/lib/react-query';
 import type { CurrentUserProfile, UpdateProfileInput } from '@/services/profile';
-import { useAuthStore } from '@/stores/authStore';
-import { useTeamStore } from '@/stores/teamStore';
 import { useTranslation } from '@/i18n';
 
 const MAX_AVATAR_BYTES = 25 * 1024 * 1024;
@@ -108,6 +105,7 @@ function ProfileLoading() {
 export function ProfilePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const logout = useLogout();
   const profileQuery = useProfile();
   const updateMutation = useUpdateProfile();
   const uploadMutation = useUploadAvatar();
@@ -198,14 +196,9 @@ export function ProfilePage() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      await authApi.post('/logout');
-    } catch {
-      // Local cleanup still completes when the server session is already expired.
+      await logout();
     } finally {
-      queryClient.clear();
-      useAuthStore.getState().clearAuth();
-      useTeamStore.getState().clearActiveTeam();
-      navigate('/login', { replace: true });
+      setIsLoggingOut(false);
     }
   };
 

@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { render, screen, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Topbar } from './Topbar';
+import { LogoutCoordinatorProvider } from '@/components/auth/LogoutCoordinator';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUiStore } from '@/stores/uiStore';
 import { api, authApi } from '@/lib/api';
+import { queryClient } from '@/lib/react-query';
 import i18n, { LANGUAGE_STORAGE_KEY } from '@/i18n';
 import * as companyInvitationsService from '@/services/companyInvitations';
 
@@ -52,10 +56,43 @@ function renderTopbar(initialUser: AuthUser | null, qc?: QueryClient) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <Topbar />
-        <LocationProbe />
+        <LogoutCoordinatorProvider>
+          <Topbar />
+          <LocationProbe />
+        </LogoutCoordinatorProvider>
       </MemoryRouter>
     </QueryClientProvider>,
+  );
+}
+
+function renderProtectedTopbar(initialUser: AuthUser) {
+  useAuthStore.setState({ accessToken: 't', user: initialUser });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/protected']}>
+        <LogoutCoordinatorProvider>
+          <Routes>
+            <Route element={<ProtectedRoute />}>
+            <Route path="/protected" element={<Topbar />} />
+              <Route path="/protected-other" element={<p>Other protected page</p>} />
+            </Route>
+            <Route path="/login" element={<p>Giriş</p>} />
+          </Routes>
+          <TopbarTestNavigation />
+          <LocationProbe />
+        </LogoutCoordinatorProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function TopbarTestNavigation() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate('/protected-other')}>
+      Navigate away from topbar
+    </button>
   );
 }
 
@@ -67,6 +104,22 @@ async function closeMenu(user: ReturnType<typeof userEvent.setup>) {
 function LocationProbe() {
   const location = useLocation();
   return <output data-testid="location">{location.pathname}</output>;
+}
+
+function observeSignInRequired(container: HTMLElement) {
+  const signInRequiredInsertions: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        const text = node.textContent ?? '';
+        if (text.includes('Bu sayfaya erişmek için giriş yapın')) {
+          signInRequiredInsertions.push(text);
+        }
+      }
+    }
+  });
+  observer.observe(container, { childList: true, subtree: true });
+  return { signInRequiredInsertions, disconnect: () => observer.disconnect() };
 }
 
 describe('Topbar', () => {
@@ -191,18 +244,64 @@ describe('Topbar', () => {
     expect(useUiStore.getState().mobileSheetOpen).toBe(true);
   });
 
-  it('revokes the server session before clearing local auth on logout', async () => {
+  it('does not render the protected-route sign-in page while logging out', async () => {
     const user = userEvent.setup();
     postSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ data: null } as never);
-    renderTopbar(member);
+    useTeamStore.getState().setActiveTeamId('team-1');
+    queryClient.setQueryData(['logout-private-data'], { value: 'cached' });
+    const { container } = renderProtectedTopbar(member);
+    const observer = observeSignInRequired(container);
 
     await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
     await user.click(screen.getByText('Oturumu Kapat'));
 
     await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
-    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    observer.disconnect();
+
+    expect(observer.signInRequiredInsertions).toEqual([]);
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(useTeamStore.getState().activeTeamId).toBeNull();
+    expect(localStorage.getItem('taskflow-active-team')).toBeNull();
+    expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined();
   });
+
+  it.each(['resolves', 'rejects'] as const)(
+    'completes logout after Topbar unmounts while the request %s',
+    async (outcome) => {
+      let resolveLogout!: (response: { data: null }) => void;
+      let rejectLogout!: (error: Error) => void;
+      const request = new Promise<{ data: null }>((resolve, reject) => {
+        resolveLogout = resolve;
+        rejectLogout = reject;
+      });
+      const user = userEvent.setup();
+      postSpy = vi.spyOn(authApi, 'post').mockReturnValue(request as never);
+      useTeamStore.getState().setActiveTeamId('team-1');
+      queryClient.setQueryData(['logout-private-data'], { value: 'cached' });
+      const { container } = renderProtectedTopbar(member);
+      const observer = observeSignInRequired(container);
+
+      await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+      await user.click(screen.getByText('Oturumu Kapat'));
+      await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
+      await user.click(screen.getByRole('button', { name: 'Navigate away from topbar' }));
+      await waitFor(() => expect(screen.getByText('Other protected page')).toBeInTheDocument());
+
+      if (outcome === 'resolves') resolveLogout({ data: null });
+      else rejectLogout(new Error('session already expired'));
+
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'));
+      await waitFor(() => expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null }));
+      await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBeNull());
+      await waitFor(() => expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined());
+      await waitFor(() => expect(observer.signInRequiredInsertions).toEqual([]));
+      observer.disconnect();
+    },
+  );
 });
 
 describe('Topbar notification bell', () => {
@@ -417,7 +516,9 @@ describe('Topbar notification bell', () => {
     view.rerender(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <Topbar />
+          <LogoutCoordinatorProvider>
+            <Topbar />
+          </LogoutCoordinatorProvider>
         </MemoryRouter>
       </QueryClientProvider>,
     );

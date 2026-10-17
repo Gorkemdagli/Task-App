@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RouteFallback } from './components/layout/RouteFallback';
+import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
@@ -169,7 +170,9 @@ export default function App() {
   return (
     <AuthBootstrap>
       <BrowserRouter>
-        <AppRoutes />
+        <LogoutCoordinatorProvider>
+          <AppRoutes />
+        </LogoutCoordinatorProvider>
       </BrowserRouter>
     </AuthBootstrap>
   );
