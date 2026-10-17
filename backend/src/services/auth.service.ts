@@ -46,6 +46,15 @@ export interface AuthResult {
   refreshExpiresAt: number;
   sessionExpiresAt: number;
 }
+interface LoginUser extends AuthUser {
+  tenantName: string | null;
+  avatarUrl: string | null;
+  tenantLogoUrl: string | null;
+  notifyTaskAssigned: boolean;
+  notifyTaskCommented: boolean;
+  notifyMessageReceived: boolean;
+}
+type LoginResult = Omit<AuthResult, 'user'> & { user: LoginUser };
 
 function issueTokens(user: AuthUser): AuthResult {
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -167,7 +176,7 @@ const DUMMY_HASH = '$2b$12$00000000000000000000000000000000000000000000000000000
 export async function login(
   input: LoginInput,
   timing?: RequestTimingRecorder,
-): Promise<AuthResult> {
+): Promise<LoginResult> {
   const user = await measureRequestStage(timing, 'auth_db_ms', async () => {
     const userId = await findUserIdByEmail(input.email);
     return userId ? findUserById(userId) : null;
@@ -177,18 +186,32 @@ export async function login(
     verifyPassword(input.password, hash),
   );
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
-  const tenantName = await measureRequestStage(timing, 'auth_db_ms', () =>
-    findTenantName(user.id, user.tenantId),
+  const tenantId = user.tenantId;
+  const tenant = await measureRequestStage(timing, 'auth_db_ms', () =>
+    tenantId
+      ? withTenantContext(user.id, tenantId, (tx) =>
+          tx.tenant.findUnique({
+            where: { id: tenantId },
+            select: { name: true, logoUrl: true },
+          }),
+        )
+      : Promise.resolve(null),
   );
-  const result = issueTokens({
+  const loginUser: LoginUser = {
     id: user.id,
     displayId: user.displayId,
     email: user.email,
     fullName: user.fullName,
     role: user.role,
     tenantId: user.tenantId,
-    tenantName,
-  });
+    tenantName: tenant?.name ?? null,
+    avatarUrl: user.avatarUrl,
+    tenantLogoUrl: tenant?.logoUrl ?? null,
+    notifyTaskAssigned: user.notifyTaskAssigned,
+    notifyTaskCommented: user.notifyTaskCommented,
+    notifyMessageReceived: user.notifyMessageReceived,
+  };
+  const result = issueTokens(loginUser);
   await measureRequestStage(timing, 'session_redis_ms', () =>
     registerIssuedTokens(
       result.accessToken,
@@ -198,7 +221,7 @@ export async function login(
       result.sessionExpiresAt,
     ),
   );
-  return result;
+  return { ...result, user: loginUser };
 }
 
 export async function refresh(refreshToken: string): Promise<AuthResult> {

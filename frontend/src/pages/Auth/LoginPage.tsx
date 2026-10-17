@@ -5,8 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { loginSchema, type LoginInput } from '../../lib/schemas';
-import { authApi } from '../../lib/api';
+import { authApi, type LoginResponse } from '../../lib/api';
 import { queryClient } from '../../lib/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
@@ -30,10 +31,11 @@ export function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     setFormError(null);
     try {
-      const res = await authApi.post('/login', data);
+      const res = await authApi.post<LoginResponse>('/login', data);
+      queryClient.clear();
       establishSession(res.data.accessToken, res.data.user);
       clearActiveTeam();
-      queryClient.clear();
+      queryClient.setQueryData(queryKeys.profile(res.data.user.id), res.data.user);
       navigate('/dashboard');
     } catch (err: unknown) {
       setFormError(getApiErrorMessage(err, t('auth.error.unexpected')));

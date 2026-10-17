@@ -18,6 +18,7 @@ export const envSchema = z
     // Production'da Supabase authenticator pattern'iyle aynı: uygulama policy'lere tabi.
     APP_DATABASE_URL: z.string().url().optional(),
     MAINTENANCE_DATABASE_URL: z.string().url().optional(),
+    RUNTIME_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
     REDIS_URL: z.string().url(),
     JWT_ACCESS_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),

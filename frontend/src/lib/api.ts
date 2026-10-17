@@ -9,6 +9,11 @@ const API_PREFIX = '/api/v1';
 const apiOrigin = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
 const directApiBaseURL = apiOrigin ? `${apiOrigin}${API_PREFIX}` : API_PREFIX;
 
+export type LoginResponse = {
+  user: CurrentUserProfile & { tenantName: string | null };
+  accessToken: string;
+};
+
 export const authApi: AxiosInstance = axios.create({
   baseURL: `${API_PREFIX}/auth`,
   withCredentials: true,

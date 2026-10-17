@@ -35,7 +35,10 @@ if (!datasourceUrl) {
 }
 
 function createRuntimeState(): RuntimePrismaState {
-  const pool = new Pool({ connectionString: datasourceUrl });
+  const pool = new Pool({
+    connectionString: datasourceUrl,
+    idleTimeoutMillis: env.RUNTIME_POOL_IDLE_TIMEOUT_MS,
+  });
   const counters = env.REQUEST_STAGE_TIMING
     ? { connectCount: 0, acquireCount: 0, removeCount: 0 }
     : undefined;
