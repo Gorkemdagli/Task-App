@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { queryClient } from './react-query';
-import { useAuthStore, type AuthUser } from '../stores/authStore';
+import type { CurrentUserProfile } from '../services/profile';
+import { useAuthStore } from '../stores/authStore';
 import { classifyGlobalError, setGlobalError } from './globalError';
 
 const API_PREFIX = '/api/v1';
@@ -70,7 +71,7 @@ api.interceptors.response.use(
 );
 
 // Auth routes use same-origin authApi. All other API and upload routes use direct Render api.
-export async function getMe(): Promise<AuthUser> {
-  const response = await api.get<AuthUser>('/users/me');
+export async function getMe(): Promise<CurrentUserProfile> {
+  const response = await api.get<CurrentUserProfile>('/users/me');
   return response.data;
 }
