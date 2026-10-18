@@ -14,6 +14,8 @@ import type { CurrentUserProfile } from '../../services/profile';
 import { useAuthStore } from '../../stores/authStore';
 
 vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() }, api: { get: vi.fn() } }));
+vi.mock('../../lib/dashboardRouteModules', () => ({ preloadDashboardRoute: vi.fn().mockResolvedValue(undefined) }));
+import { preloadDashboardRoute } from '../../lib/dashboardRouteModules';
 
 const loginProfile: CurrentUserProfile = {
   id: 'login-user',
@@ -97,6 +99,20 @@ describe('LoginPage', () => {
     await u.click(screen.getByRole('button', { name: /giriş yap/i }));
     expect(await screen.findByText(/e-posta veya şifre hatalı/i)).toBeInTheDocument();
   });
+  it('starts dashboard preload before waiting for the login response', async () => {
+    let resolveLogin!: (value: unknown) => void;
+    vi.mocked(authApi.post).mockImplementationOnce(() => {
+      expect(preloadDashboardRoute).toHaveBeenCalledOnce();
+      return new Promise((resolve) => { resolveLogin = resolve; });
+    });
+    const u = userEvent.setup();
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await u.type(screen.getByLabelText(/e-?posta/i), 'a@x.com');
+    await u.type(screen.getByLabelText(/ifre$/i), 'hunter22');
+    await u.click(screen.getByRole('button', { name: /Giri.*Yap/i }));
+    resolveLogin({ data: { accessToken: 'token', user: loginProfile }, status: 200 });
+  });
+
   it('seeds the complete login profile so profile observers skip the GET', async () => {
     queryClient.setQueryData(queryKeys.profile('previous-user'), loginProfile);
     vi.mocked(authApi.post).mockResolvedValueOnce({

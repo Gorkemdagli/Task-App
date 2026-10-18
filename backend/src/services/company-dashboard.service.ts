@@ -3,6 +3,7 @@ import type { TenantDb } from '../db/types';
 import { AppError } from '../lib/appError';
 import { getTeamRole, isCompanyAdmin, requireTenant, type Actor } from '../lib/permissions';
 import { formatCalendarDate, startOfUtcToday } from '../lib/calendarDate';
+import { measureRequestStage, type RequestTimingRecorder } from '../http/requestTiming';
 
 const MEMBER_LIMIT = 100;
 const RISK_TASK_LIMIT = 100;
@@ -623,21 +624,6 @@ function inProgressSince(task: FlowTask): Date | null {
   return startedAt;
 }
 
-function flowStatusAt(task: FlowTask, boundary: Date): FlowStatus | null {
-  if (task.createdAt >= boundary || (task.archivedAt && task.archivedAt <= boundary)) return null;
-  let status: FlowStatus = 'todo';
-  for (const event of task.events) {
-    if (event.createdAt >= boundary) break;
-    if (
-      (event.type === 'status_changed' || event.type === 'task_reopened') &&
-      event.toStatus
-    ) {
-      status = event.toStatus;
-    }
-  }
-  return status;
-}
-
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
@@ -701,11 +687,29 @@ export function deriveCumulativeFlow(
 ): CumulativeFlow {
   const tasks = flowTasks(rows);
   const samples: CumulativeFlowSample[] = [];
+  const eventIndexes = tasks.map(() => 0);
+  const statuses: FlowStatus[] = tasks.map(() => 'todo');
   for (let boundary = new Date(periodStart); boundary < periodEnd; boundary = new Date(boundary.getTime() + DAY_MS)) {
     const counts = { todo: 0, inProgress: 0, done: 0 };
     const sampleBoundary = new Date(boundary.getTime() + DAY_MS);
-    for (const task of tasks) {
-      const status = flowStatusAt(task, sampleBoundary);
+    for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
+      const task = tasks[taskIndex];
+      if (task.createdAt >= sampleBoundary || (task.archivedAt && task.archivedAt <= sampleBoundary)) continue;
+      const events = task.events;
+      let eventIndex = eventIndexes[taskIndex];
+      let status = statuses[taskIndex];
+      while (eventIndex < events.length && events[eventIndex].createdAt < sampleBoundary) {
+        const event = events[eventIndex];
+        if (
+          (event.type === 'status_changed' || event.type === 'task_reopened') &&
+          event.toStatus
+        ) {
+          status = event.toStatus;
+        }
+        eventIndex += 1;
+      }
+      eventIndexes[taskIndex] = eventIndex;
+      statuses[taskIndex] = status;
       if (status === 'todo') counts.todo += 1;
       if (status === 'in_progress') counts.inProgress += 1;
       if (status === 'done') counts.done += 1;
@@ -1195,6 +1199,7 @@ async function getDashboardData(
   actor: Actor,
   filters: CompanyDashboardFilters,
   now = new Date(),
+  timing?: RequestTimingRecorder,
 ): Promise<CompanyDashboard> {
   const tenantId = requireTenant(actor);
 
@@ -1220,26 +1225,46 @@ async function getDashboardData(
   const previousPeriodStart = new Date(periodStart.getTime() - selectedRange.days * DAY_MS);
   const bucketDays = selectedRange.range === '90d' ? 7 : 1;
 
-  const [summaryRows, memberRows, riskTaskRows, trendRows] = await Promise.all([
-    db.$queryRaw<SummaryRow[]>(
-      summaryQuery(
-        tenantId,
-        taskScope,
-        archiveCutoff,
-        today,
-        now,
-        dueSoonExclusiveEnd,
-        periodStart,
-        periodEnd,
-        previousPeriodStart,
+  const summaryRows = await measureRequestStage(
+    timing,
+    'company_dashboard_summary_query_elapsed_ms',
+    () =>
+      db.$queryRaw<SummaryRow[]>(
+        summaryQuery(
+          tenantId,
+          taskScope,
+          archiveCutoff,
+          today,
+          now,
+          dueSoonExclusiveEnd,
+          periodStart,
+          periodEnd,
+          previousPeriodStart,
+        ),
       ),
-    ),
-    db.$queryRaw<MemberRow[]>(memberQuery(tenantId, teamId, archiveCutoff)),
-    db.$queryRaw<RiskTaskRow[]>(
-      riskTaskQuery(tenantId, teamId, archiveCutoff, today, dueSoonExclusiveEnd),
-    ),
-    db.$queryRaw<TrendRow[]>(trendQuery(tenantId, taskScope, periodStart, periodEnd, bucketDays)),
-  ]);
+  );
+  const memberRows = await measureRequestStage(
+    timing,
+    'company_dashboard_members_query_elapsed_ms',
+    () =>
+      db.$queryRaw<MemberRow[]>(memberQuery(tenantId, teamId, archiveCutoff)),
+  );
+  const riskTaskRows = await measureRequestStage(
+    timing,
+    'company_dashboard_risk_tasks_query_elapsed_ms',
+    () =>
+      db.$queryRaw<RiskTaskRow[]>(
+        riskTaskQuery(tenantId, teamId, archiveCutoff, today, dueSoonExclusiveEnd),
+      ),
+  );
+  const trendRows = await measureRequestStage(
+    timing,
+    'company_dashboard_trend_query_elapsed_ms',
+    () =>
+      db.$queryRaw<TrendRow[]>(
+        trendQuery(tenantId, taskScope, periodStart, periodEnd, bucketDays),
+      ),
+  );
 
   const summary = summaryRows[0];
   if (!summary) {
@@ -1320,7 +1345,11 @@ async function getDashboardData(
 
   let teams: CompanyDashboard['teams'] = [];
   if (!filters.teamId) {
-    const teamRows = await db.$queryRaw<TeamRow[]>(teamQuery(tenantId, archiveCutoff));
+    const teamRows = await measureRequestStage(
+      timing,
+      'company_dashboard_teams_query_elapsed_ms',
+      () => db.$queryRaw<TeamRow[]>(teamQuery(tenantId, archiveCutoff)),
+    );
     teams = teamRows.map((row) => {
       const total = asNumber(row.total_task_count);
       const completed = asNumber(row.completed_task_count);
@@ -1337,7 +1366,11 @@ async function getDashboardData(
   }
 
   const cumulativeFlowRows =
-    (await db.$queryRaw<CumulativeFlowRow[]>(cumulativeFlowQuery(tenantId, taskScope))) ?? [];
+    (await measureRequestStage(
+      timing,
+      'company_dashboard_cumulative_flow_query_elapsed_ms',
+      () => db.$queryRaw<CumulativeFlowRow[]>(cumulativeFlowQuery(tenantId, taskScope)),
+    )) ?? [];
 
   const period: DashboardPeriod = {
     range: selectedRange.range,
@@ -1346,7 +1379,11 @@ async function getDashboardData(
   };
   const scope: DashboardScope = { teamId: team?.id ?? null, teamName: team?.name ?? null };
   const blockedRate = percentage(blockedTaskCount, statusTotal);
-  const cumulativeFlow = deriveCumulativeFlow(cumulativeFlowRows, periodStart, periodEnd, now);
+  const cumulativeFlow = await measureRequestStage(
+    timing,
+    'company_dashboard_cumulative_flow_compute_elapsed_ms',
+    () => deriveCumulativeFlow(cumulativeFlowRows, periodStart, periodEnd, now),
+  );
 
   return {
     period,
@@ -1438,11 +1475,12 @@ export async function getCompanyDashboard(
   actor: Actor,
   filters: CompanyDashboardFilters,
   now = new Date(),
+  timing?: RequestTimingRecorder,
 ): Promise<CompanyDashboard> {
   if (!isCompanyAdmin(actor)) {
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }
-  return getDashboardData(db, actor, filters, now);
+  return getDashboardData(db, actor, filters, now, timing);
 }
 
 export async function getTeamDashboard(

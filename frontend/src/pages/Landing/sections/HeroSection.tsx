@@ -3,13 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { ListTodo, MessageCircle, Users } from 'lucide-react';
 import { HeroIllustration } from '@/components/landing/HeroIllustration';
 import { buttonVariants } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
 
-export function HeroSection() {
+export function HeroSection({ hasConfirmedSession }: { hasConfirmedSession: boolean }) {
   const { t } = useTranslation();
-  const { isAuthenticated } = useAuth();
-  const primaryHref = isAuthenticated ? '/dashboard' : '/register';
-  const primaryLabel = isAuthenticated ? t('landing.cta.dashboard') : t('landing.cta.register');
+  const primaryHref = hasConfirmedSession ? '/dashboard' : '/register';
+  const primaryLabel = hasConfirmedSession ? t('landing.cta.dashboard') : t('landing.cta.register');
 
   return (
     <section id="hero" aria-labelledby="hero-title" className="landing-hero">

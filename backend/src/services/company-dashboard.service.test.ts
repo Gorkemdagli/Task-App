@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
+import { createRequestTiming } from '../http/requestTiming';
 import type { Actor } from '../lib/permissions';
 import { getCompanyDashboard } from './company-dashboard.service';
 
@@ -131,6 +132,56 @@ describe('getCompanyDashboard', () => {
     expect(cumulativeQuery.text).toMatch(/team\.tenant_id = \$\d+::uuid/);
     expect(cumulativeQuery.text).toMatch(/LEFT JOIN task_events event\s+ON event\.task_id = task\.id/);
     expect(cumulativeQuery.text).toMatch(/event\.event_type IN \('status_changed', 'task_reopened'\)/);
+  });
+
+  it('records request-scoped timings for each dashboard query and cumulative-flow computation', async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const timing = createRequestTiming();
+    await getCompanyDashboard(db, admin, {}, now, timing);
+
+    expect(timing.snapshot()).toEqual({
+      company_dashboard_summary_query_elapsed_ms: expect.any(Number),
+      company_dashboard_members_query_elapsed_ms: expect.any(Number),
+      company_dashboard_risk_tasks_query_elapsed_ms: expect.any(Number),
+      company_dashboard_trend_query_elapsed_ms: expect.any(Number),
+      company_dashboard_teams_query_elapsed_ms: expect.any(Number),
+      company_dashboard_cumulative_flow_query_elapsed_ms: expect.any(Number),
+      company_dashboard_cumulative_flow_compute_elapsed_ms: expect.any(Number),
+    });
+  });
+
+  it('waits between the first four queries and stops dispatching after a failure', async () => {
+    let resolveSummary!: (rows: unknown[]) => void;
+    const summaryPromise = new Promise<unknown[]>((resolve) => {
+      resolveSummary = resolve;
+    });
+    vi.mocked(db.$queryRaw)
+      .mockReturnValueOnce(summaryPromise as never)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const dashboard = getCompanyDashboard(db, admin, {}, now);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+    resolveSummary([summaryRow]);
+    await dashboard;
+    expect(db.$queryRaw).toHaveBeenCalledTimes(6);
+
+    vi.mocked(db.$queryRaw).mockReset();
+    const queryError = new Error('summary query failed');
+    vi.mocked(db.$queryRaw).mockRejectedValueOnce(queryError);
+
+    await expect(getCompanyDashboard(db, admin, {}, now)).rejects.toBe(queryError);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('maps all-scope aggregates, rounds percentages, and caps members', async () => {

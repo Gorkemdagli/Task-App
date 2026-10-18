@@ -105,12 +105,17 @@ describe('AuthBootstrap canonical flow', () => {
   });
 
   it('keeps auth empty when refresh returns 204', async () => {
+    window.history.pushState({}, '', '/');
     render(<App />);
+    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
 
     await waitFor(() => expect(screen.queryByText(/yÃ¼kleniyor/i)).not.toBeInTheDocument());
     expect(getMe).not.toHaveBeenCalled();
     expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
     expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toBeUndefined();
+    expect(document.querySelector('a[href="/login"]')).toBeInTheDocument();
+    expect(document.querySelector('a[href="/register"]')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it('preserves auth and reports a network error when refresh cannot reach the server', async () => {
@@ -206,7 +211,105 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Giriş Yap' })).toBeInTheDocument();
   });
 
-  it('re-evaluates the root route when auth state changes', async () => {
+  it('renders the homepage during restore and waits for canonical confirmation before changing CTAs', async () => {
+    window.history.pushState({}, '', '/');
+    let resolveRefresh!: (value: unknown) => void;
+    let resolveMe!: (value: CurrentUserProfile) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    vi.mocked(getMe).mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(getMe).not.toHaveBeenCalled();
+    expect(document.querySelector('a[href="/login"]')).toBeInTheDocument();
+    expect(document.querySelector('a[href="/register"]')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Panoya git' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRefresh({ status: 200, data: { accessToken: 'fresh' } });
+    });
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('link', { name: 'Panoya git' })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/login"]')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveMe(canonicalUser);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByRole('link', { name: 'Panoya git' }).length).toBeGreaterThan(0);
+    });
+
+    expect(window.location.pathname).toBe('/');
+    expect(document.querySelector('a[href="/login"]')).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/register"]')).not.toBeInTheDocument();
+    expect(getMe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the homepage guest-facing after restore fails with stale auth state', async () => {
+    window.history.pushState({}, '', '/');
+    useAuthStore.setState({ accessToken: 'stale', user: canonicalUser });
+    refreshSpy.mockRejectedValue({ isAxiosError: true, code: 'ERR_NETWORK' });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
+    await waitFor(() => expect(getGlobalError()).toBe('network'));
+
+    expect(window.location.pathname).toBe('/');
+    expect(document.querySelector('a[href="/login"]')).toBeInTheDocument();
+    expect(document.querySelector('a[href="/register"]')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Panoya git' })).not.toBeInTheDocument();
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'stale', user: canonicalUser });
+  });
+
+  it('waits for canonical restore when navigation reaches a protected route', async () => {
+    window.history.pushState({}, '', '/');
+    let resolveRefresh!: (value: unknown) => void;
+    let resolveMe!: (value: CurrentUserProfile) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    vi.mocked(getMe).mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
+    act(() => {
+      window.history.pushState({}, '', '/dashboard');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRefresh({ status: 200, data: { accessToken: 'fresh' } });
+    });
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveMe(canonicalUser);
+    });
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalled();
+  }, 15_000);
+
+  it('keeps confirmed sessions on the landing route when auth state changes', async () => {
     window.history.pushState({}, '', '/');
     render(
       <QueryClientProvider client={queryClient}>
@@ -225,7 +328,12 @@ describe('App', () => {
       useAuthStore.setState({ accessToken: 'fresh', user: canonicalUser });
     });
 
-    await waitFor(() => expect(window.location.pathname).toBe('/dashboard'));
+    await waitFor(() => {
+      expect(screen.getAllByRole('link', { name: 'Panoya git' }).length).toBeGreaterThan(0);
+    });
+    expect(window.location.pathname).toBe('/');
+    expect(document.querySelector('a[href="/login"]')).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/register"]')).not.toBeInTheDocument();
   });
 
   it('renders the shared route fallback', () => {

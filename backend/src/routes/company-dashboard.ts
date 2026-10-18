@@ -22,7 +22,7 @@ companyDashboardRouter.get('/', async (req, res, next) => {
     const query = parseQuery<CompanyDashboardQuery>(companyDashboardQuerySchema, req.query);
     const dashboard = await runTenantRequest(
       req,
-      (db, actor) => getCompanyDashboard(db, actor, query),
+      (db, actor) => getCompanyDashboard(db, actor, query, undefined, req.requestTiming),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
     res.json(dashboard);

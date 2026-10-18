@@ -3,6 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import { signAccessToken, verifyAccessToken } from '../lib/jwt';
 import { requireAuth } from './auth';
 import { errorHandler } from './errorHandler';
 import { register } from '../services/auth.service';
@@ -71,6 +72,9 @@ describe('requireAuth', () => {
       password: 'hunter22',
       companyName: 'Acme',
     });
+    const accessJti = verifyAccessToken(registered.accessToken).jti;
+    await redis.del(`access-session:${accessJti}`);
+    await redis.sadd(`access-session:${accessJti}`, 'wrong-type');
     const userLookup = vi.spyOn(userDb, 'withUserContext');
     const tenantLookup = vi.spyOn(tenantDb, 'withTenantContext');
     const timing = createRequestTiming();
@@ -111,7 +115,7 @@ describe('requireAuth', () => {
   it('401 blacklisted jti', async () => {
     const reg = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
     const j = JSON.parse(Buffer.from(reg.accessToken.split('.')[1], 'base64').toString());
-    await redis.set(`blacklist:jti:${j.jti}`, '1', 'EX', 60);
+    await redis.sadd(`blacklist:jti:${j.jti}`, 'wrong-type');
     const app = buildApp(requireAuth);
     const r = await request(app).get('/p').set('Authorization', `Bearer ${reg.accessToken}`);
     expect(r.status).toBe(401);
@@ -134,5 +138,20 @@ describe('requireAuth', () => {
       (await request(app).get('/p').set('Authorization', `Bearer ${registered.accessToken}`))
         .status,
     ).toBe(401);
+  });
+
+  it('does not authenticate when the Redis auth snapshot is malformed', async () => {
+    const token = signAccessToken('user-id', null);
+    const transaction = redis.multi();
+    vi.spyOn(transaction, 'exec').mockResolvedValue(null as never);
+    vi.spyOn(redis, 'multi').mockReturnValue(transaction);
+
+    const req = { headers: { authorization: `Bearer ${token}` } } as express.Request;
+    const error = await new Promise<unknown>((resolve) => {
+      void requireAuth(req, {} as express.Response, resolve);
+    });
+
+    expect(error).toMatchObject({ message: 'Invalid Redis auth status response' });
+    expect(req.user).toBeUndefined();
   });
 });
