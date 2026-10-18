@@ -7,6 +7,19 @@ export default defineConfig({
   plugins: [react()],
   build: {
     manifest: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              // Keep generated interop helpers out of the API chunk that imports authStore.
+              name: 'axios-vendor',
+              test: /node_modules[\\/]axios[\\/]/,
+            },
+          ],
+        },
+      },
+    },
   },
   resolve: {
     dedupe: ['react', 'react-dom'],
