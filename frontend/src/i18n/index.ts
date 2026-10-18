@@ -1,4 +1,5 @@
-import i18n from 'i18next';
+import i18next from 'i18next';
+import type { BackendModule } from 'i18next';
 import { initReactI18next, useTranslation } from 'react-i18next';
 import { authTranslations } from './auth';
 import company from './company';
@@ -7,8 +8,11 @@ import teams from './teams';
 import tasks from './tasks';
 import permissions from './permissions';
 import { commonEnglish, commonTurkish } from './common';
+import type landingEnglish from './landing.en';
 
+const i18n = i18next.createInstance();
 export const LANGUAGE_STORAGE_KEY = 'taskflow-language';
+type EnglishLanding = typeof landingEnglish.en;
 
 function flattenTranslations(values: Record<string, unknown>, prefix = ''): Record<string, string> {
   return Object.entries(values).reduce<Record<string, string>>((flat, [key, value]) => {
@@ -23,13 +27,13 @@ function readLanguage(): 'tr' | 'en' {
   return localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'en' ? 'en' : 'tr';
 }
 
-function getTranslations(language: 'tr' | 'en') {
+function getTranslations(language: 'tr' | 'en', englishLanding?: EnglishLanding) {
   if (language === 'en') {
     return {
       ...commonEnglish,
       ...flattenTranslations(authTranslations.en),
       ...flattenTranslations(company.en),
-      ...flattenTranslations(landing.en),
+      ...(englishLanding ? flattenTranslations(englishLanding) : {}),
       ...flattenTranslations(teams.en),
       ...flattenTranslations(tasks.en),
       ...flattenTranslations(permissions.en),
@@ -47,11 +51,29 @@ function getTranslations(language: 'tr' | 'en') {
   };
 }
 
+const englishLandingBackend: BackendModule = {
+  type: 'backend',
+  init() {},
+  read(language, namespace, callback) {
+    if (language !== 'en' || namespace !== 'translation') {
+      callback(new Error('Unsupported translation resource'), false);
+      return;
+    }
+
+    void import('./landing.en').then(
+      ({ default: englishLanding }) => callback(null, getTranslations('en', englishLanding.en)),
+      (error: unknown) =>
+        callback(error instanceof Error ? error : new Error('Failed to load English translations'), false),
+    );
+  },
+};
+
 const initialLanguage = readLanguage();
 
-i18n.use(initReactI18next).init({
+export const i18nReady = i18n.use(initReactI18next).use(englishLandingBackend).init({
+  partialBundledLanguages: true,
   resources: {
-    [initialLanguage]: { translation: getTranslations(initialLanguage) },
+    tr: { translation: getTranslations('tr') },
   },
   lng: initialLanguage,
   fallbackLng: 'tr',
@@ -68,9 +90,6 @@ function persistLanguage(language: string) {
 
 i18n.on('languageChanged', (language) => {
   const supportedLanguage = language === 'en' ? 'en' : 'tr';
-  if (!i18n.hasResourceBundle(supportedLanguage, 'translation')) {
-    i18n.addResourceBundle(supportedLanguage, 'translation', getTranslations(supportedLanguage));
-  }
   persistLanguage(supportedLanguage);
 });
 document.documentElement.lang = i18n.language === 'en' ? 'en' : 'tr';
