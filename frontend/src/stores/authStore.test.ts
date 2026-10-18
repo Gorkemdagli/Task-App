@@ -41,6 +41,26 @@ describe('authStore', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 
+  it('establishSession advances generation for every successful session, including the same user', () => {
+    const user = {
+      id: '1',
+      displayId: 'A3X9K',
+      email: 'a@example.com',
+      fullName: 'A',
+      role: 'companyAdmin' as const,
+      tenantId: 't1',
+    };
+    const before = useAuthStore.getState().sessionGeneration;
+
+    useAuthStore.getState().establishSession('first-token', user);
+    const firstSessionGeneration = useAuthStore.getState().sessionGeneration;
+    useAuthStore.getState().establishSession('second-token', user);
+
+    expect(firstSessionGeneration).toBe(before + 1);
+    expect(useAuthStore.getState().sessionGeneration).toBe(firstSessionGeneration + 1);
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'second-token', user });
+  });
+
   it('advances session generation at auth boundaries but preserves token and profile refreshes', () => {
     const user = {
       id: '1',

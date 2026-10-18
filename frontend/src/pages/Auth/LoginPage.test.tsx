@@ -1,14 +1,47 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { AxiosHeaders } from 'axios';
 import { LoginPage } from './LoginPage';
 import i18n from '../../i18n';
+import { api, authApi } from '../../lib/api';
+import { queryClient } from '../../lib/react-query';
+import { queryKeys } from '../../lib/queryKeys';
+import { useProfile } from '../../hooks/queries/useProfile';
+import type { CurrentUserProfile } from '../../services/profile';
+import { useAuthStore } from '../../stores/authStore';
 
-import { authApi } from '../../lib/api';
-vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() } }));
+vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() }, api: { get: vi.fn() } }));
+
+const loginProfile: CurrentUserProfile = {
+  id: 'login-user',
+  displayId: 'AB234',
+  email: 'a@x.com',
+  fullName: 'A User',
+  role: 'member',
+  tenantId: 'tenant-1',
+  tenantName: 'Acme Corp',
+  avatarUrl: null,
+  tenantLogoUrl: 'https://cdn.taskflow.test/logo.png',
+  notifyTaskAssigned: false,
+  notifyTaskCommented: true,
+  notifyMessageReceived: false,
+};
+
+function ProfileQueryProbe() {
+  const { data } = useProfile();
+  return <span data-testid="profile-query">{data ? 'ready' : 'loading'}</span>;
+}
 
 describe('LoginPage', () => {
+  beforeEach(() => {
+    queryClient.clear();
+    useAuthStore.getState().clearAuth();
+    vi.resetAllMocks();
+  });
+
   it('renders fields', () => {
     render(
       <MemoryRouter>
@@ -64,6 +97,38 @@ describe('LoginPage', () => {
     await u.click(screen.getByRole('button', { name: /giriş yap/i }));
     expect(await screen.findByText(/e-posta veya şifre hatalı/i)).toBeInTheDocument();
   });
+  it('seeds the complete login profile so profile observers skip the GET', async () => {
+    queryClient.setQueryData(queryKeys.profile('previous-user'), loginProfile);
+    vi.mocked(authApi.post).mockResolvedValueOnce({
+      data: { accessToken: 'access-token', user: loginProfile },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    });
+    const u = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <LoginPage />
+          <ProfileQueryProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await u.type(screen.getByLabelText(/e-posta/i), 'a@x.com');
+    await u.type(screen.getByLabelText(/ifre$/i), 'hunter22');
+    const generationBeforeLogin = useAuthStore.getState().sessionGeneration;
+    await u.click(screen.getByRole('button', { name: /Giriş Yap/i }));
+
+    expect(await screen.findByTestId('profile-query')).toHaveTextContent('ready');
+    expect(queryClient.getQueryData(queryKeys.profile(loginProfile.id))).toEqual(loginProfile);
+    expect(queryClient.getQueryData(queryKeys.profile('previous-user'))).toBeUndefined();
+    expect(api.get).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().user?.id).toBe(loginProfile.id);
+    expect(useAuthStore.getState().sessionGeneration).toBe(generationBeforeLogin + 1);
+  });
+
   it('password visibility toggle is keyboard accessible', async () => {
     const u = userEvent.setup();
     render(

@@ -1,9 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentUserProfile } from '@/services/profile';
 import { ProfilePage } from './index';
+import { LogoutCoordinatorProvider } from '@/components/auth/LogoutCoordinator';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { authApi } from '@/lib/api';
+import { queryClient } from '@/lib/react-query';
+import { useAuthStore } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 
 const { useProfileMock, updateMock, uploadMock } = vi.hoisted(() => ({
   useProfileMock: vi.fn(),
@@ -37,16 +43,72 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/profile']}>
-        <Routes>
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/login" element={<p>Giriş</p>} />
-        </Routes>
+        <LogoutCoordinatorProvider>
+          <Routes>
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/login" element={<p>Giriş</p>} />
+          </Routes>
+        </LogoutCoordinatorProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
+function renderProtectedPage() {
+  useAuthStore.setState({ accessToken: 'test-token', user: profile });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/profile']}>
+        <LogoutCoordinatorProvider>
+          <Routes>
+            <Route element={<ProtectedRoute />}>
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/protected-other" element={<p>Other protected page</p>} />
+            </Route>
+            <Route path="/login" element={<p>Giriş</p>} />
+          </Routes>
+          <ProfileTestNavigation />
+          <ProfileTestLocation />
+        </LogoutCoordinatorProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function ProfileTestNavigation() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate('/protected-other')}>
+      Navigate away from profile
+    </button>
+  );
+}
+
+function ProfileTestLocation() {
+  const location = useLocation();
+  return <output data-testid="profile-location">{location.pathname}</output>;
+}
+
+function observeSignInRequired(container: HTMLElement) {
+  const signInRequiredInsertions: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        const text = node.textContent ?? '';
+        if (text.includes('Bu sayfaya erişmek için giriş yapın')) {
+          signInRequiredInsertions.push(text);
+        }
+      }
+    }
+  });
+  observer.observe(container, { childList: true, subtree: true });
+  return { signInRequiredInsertions, disconnect: () => observer.disconnect() };
+}
+
 describe('ProfilePage', () => {
+  let logoutSpy: ReturnType<typeof vi.spyOn> | undefined;
+
   beforeEach(() => {
     useProfileMock.mockReturnValue({ data: profile, isLoading: false, isError: false });
     updateMock.mockReturnValue({
@@ -65,6 +127,11 @@ describe('ProfilePage', () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+  });
+
+  afterEach(() => {
+    logoutSpy?.mockRestore();
+    logoutSpy = undefined;
   });
 
   it('renders editable profile, read-only display ID, password, and preferences', () => {
@@ -113,4 +180,56 @@ describe('ProfilePage', () => {
       newPassword: 'new-hunter22',
     });
   });
+
+  it('cleans up locally after a failed logout without flashing the protected-route sign-in page', async () => {
+    logoutSpy = vi.spyOn(authApi, 'post').mockRejectedValue(new Error('session already expired'));
+    useTeamStore.getState().setActiveTeamId('team-1');
+    queryClient.setQueryData(['logout-private-data'], { value: 'cached' });
+    const { container } = renderProtectedPage();
+    const observer = observeSignInRequired(container);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }));
+
+    await waitFor(() => expect(screen.getByText('Giriş')).toBeInTheDocument());
+    await waitFor(() => expect(logoutSpy).toHaveBeenCalledWith('/logout'));
+    await waitFor(() => expect(observer.signInRequiredInsertions).toEqual([]));
+    observer.disconnect();
+
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(useTeamStore.getState().activeTeamId).toBeNull();
+    expect(localStorage.getItem('taskflow-active-team')).toBeNull();
+    expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined();
+  });
+
+  it.each(['resolves', 'rejects'] as const)(
+    'finishes logout after Profile unmounts while the request %s',
+    async (outcome) => {
+      let resolveLogout!: (response: { data: null }) => void;
+      let rejectLogout!: (error: Error) => void;
+      const logoutRequest = new Promise<{ data: null }>((resolve, reject) => {
+        resolveLogout = resolve;
+        rejectLogout = reject;
+      });
+      logoutSpy = vi.spyOn(authApi, 'post').mockReturnValue(logoutRequest as never);
+      useTeamStore.getState().setActiveTeamId('team-1');
+      queryClient.setQueryData(['logout-private-data'], { value: 'cached' });
+      const { container } = renderProtectedPage();
+      const observer = observeSignInRequired(container);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }));
+      await waitFor(() => expect(logoutSpy).toHaveBeenCalledWith('/logout'));
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate away from profile' }));
+      await waitFor(() => expect(screen.getByText('Other protected page')).toBeInTheDocument());
+
+      if (outcome === 'resolves') resolveLogout({ data: null });
+      else rejectLogout(new Error('session already expired'));
+
+      await waitFor(() => expect(screen.getByTestId('profile-location')).toHaveTextContent('/login'));
+      await waitFor(() => expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null }));
+      await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBeNull());
+      await waitFor(() => expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined());
+      await waitFor(() => expect(observer.signInRequiredInsertions).toEqual([]));
+      observer.disconnect();
+    },
+  );
 });

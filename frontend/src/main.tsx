@@ -5,7 +5,7 @@ import App from './App';
 import { bootstrapTheme } from './stores/themeStore';
 import { bootstrapTeamStore } from './stores/teamStore';
 import { queryClient } from './lib/react-query';
-import './i18n';
+import { i18nReady } from './i18n';
 import '@fontsource-variable/geist/wght.css';
 import './index.css';
 
@@ -13,10 +13,12 @@ import './index.css';
 bootstrapTheme();
 bootstrapTeamStore();
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+void i18nReady.then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+});

@@ -23,6 +23,39 @@ const baseProductionEnv = {
 };
 
 describe('environment contract', () => {
+  it('defaults runtime pool idle retention to 60 seconds', () => {
+    const result = envSchema.safeParse(baseProductionEnv);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.RUNTIME_POOL_IDLE_TIMEOUT_MS).toBe(60_000);
+    }
+  });
+
+  it('accepts the 10-second runtime pool idle rollback value', () => {
+    const result = envSchema.safeParse({
+      ...baseProductionEnv,
+      RUNTIME_POOL_IDLE_TIMEOUT_MS: '10000',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.RUNTIME_POOL_IDLE_TIMEOUT_MS).toBe(10_000);
+    }
+  });
+
+  it.each(['0', '-1', '1.5', 'not-a-number'])(
+    'rejects invalid runtime pool idle timeout %s',
+    (value) => {
+      const result = envSchema.safeParse({
+        ...baseProductionEnv,
+        RUNTIME_POOL_IDLE_TIMEOUT_MS: value,
+      });
+
+      expect(result.success).toBe(false);
+    },
+  );
+
   it('requires production deployment dependencies', () => {
     const result = envSchema.safeParse({
       ...baseProductionEnv,

@@ -4,9 +4,20 @@ import { api, authApi, getMe } from './api';
 import { queryClient } from './react-query';
 import { clearGlobalError, getGlobalError } from './globalError';
 import { useAuthStore } from '../stores/authStore';
+import { CancelledError } from '@tanstack/react-query';
 
 const apiMock = new MockAdapter(api);
 let authApiMock: MockAdapter;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('api interceptors', () => {
   beforeEach(() => {
@@ -143,6 +154,219 @@ describe('api interceptors', () => {
 
     expect(useAuthStore.getState().accessToken).toBe('still-usable');
     expect(getGlobalError()).toBe('network');
+  });
+
+  it('does not restore auth or retry a request when its refresh completes after logout', async () => {
+    useAuthStore.getState().setAccessToken('old');
+    const refresh = deferred<[number, { accessToken: string }] >();
+    const refreshStarted = deferred<void>();
+    let protectedCalls = 0;
+    apiMock.onGet('/protected').reply(() => {
+      protectedCalls += 1;
+      return [401];
+    });
+    authApiMock.onPost('/refresh').reply(() => {
+      refreshStarted.resolve();
+      return refresh.promise;
+    });
+
+    const request = queryClient.fetchQuery({
+      queryKey: ['protected', 'logout-race'],
+      queryFn: () => api.get('/protected'),
+    });
+    const settledRequest = request.catch((error: unknown) => error);
+    await refreshStarted.promise;
+    useAuthStore.getState().clearAuth();
+    queryClient.clear();
+    refresh.resolve([200, { accessToken: 'late-token' }]);
+
+    await expect(settledRequest).resolves.toBeInstanceOf(CancelledError);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(protectedCalls).toBe(1);
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(getGlobalError()).toBeNull();
+  });
+
+  it('keeps a newly established session when an old refresh completes after login clears queries', async () => {
+    const oldUser = {
+      id: 'old-user',
+      displayId: 'OLD1',
+      email: 'old@example.com',
+      fullName: 'Old User',
+      role: 'member' as const,
+      tenantId: 'old-tenant',
+    };
+    const newUser = {
+      id: 'new-user',
+      displayId: 'NEW1',
+      email: 'new@example.com',
+      fullName: 'New User',
+      role: 'member' as const,
+      tenantId: 'new-tenant',
+    };
+    useAuthStore.getState().establishSession('old-token', oldUser);
+    const refresh = deferred<[number, { accessToken: string }] >();
+    const refreshStarted = deferred<void>();
+    let protectedCalls = 0;
+    apiMock.onGet('/protected').reply(() => {
+      protectedCalls += 1;
+      return [401];
+    });
+    authApiMock.onPost('/refresh').reply(() => {
+      refreshStarted.resolve();
+      return refresh.promise;
+    });
+
+    const request = queryClient.fetchQuery({
+      queryKey: ['protected', 'login-race'],
+      queryFn: () => api.get('/protected'),
+    });
+    const settledRequest = request.catch((error: unknown) => error);
+    await refreshStarted.promise;
+
+    useAuthStore.getState().establishSession('new-token', newUser);
+    queryClient.clear();
+    queryClient.setQueryData(['new-user-data'], { secret: 'new-user-cache' });
+    refresh.resolve([200, { accessToken: 'late-old-token' }]);
+
+    await expect(settledRequest).resolves.toBeInstanceOf(CancelledError);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(protectedCalls).toBe(1);
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'new-token', user: newUser });
+    expect(queryClient.getQueryData(['new-user-data'])).toEqual({ secret: 'new-user-cache' });
+    expect(getGlobalError()).toBeNull();
+  });
+
+  it('keeps refresh flights isolated across sessions without clobbering the new flight', async () => {
+    useAuthStore.getState().setAccessToken('old');
+    const oldRefresh = deferred<[number, { accessToken: string }] >();
+    const newRefresh = deferred<[number, { accessToken: string }] >();
+    const refreshStarted = [deferred<void>(), deferred<void>()];
+    let refreshCalls = 0;
+    let oldProtectedCalls = 0;
+    apiMock.onGet('/old-protected').reply(() => {
+      oldProtectedCalls += 1;
+      return [401];
+    });
+    apiMock.onGet('/new-a').replyOnce(401).onGet('/new-a').reply((config) => {
+      expect(config.headers?.Authorization).toBe('Bearer refreshed-new');
+      return [200, { ok: 'a' }];
+    });
+    apiMock.onGet('/new-b').replyOnce(401).onGet('/new-b').reply((config) => {
+      expect(config.headers?.Authorization).toBe('Bearer refreshed-new');
+      return [200, { ok: 'b' }];
+    });
+    authApiMock.onPost('/refresh').reply(() => {
+      const currentCall = refreshCalls++;
+      refreshStarted[currentCall]?.resolve();
+      return currentCall === 0 ? oldRefresh.promise : newRefresh.promise;
+    });
+
+    const oldRequest = queryClient.fetchQuery({
+      queryKey: ['protected', 'old-session'],
+      queryFn: () => api.get('/old-protected'),
+      retry: false,
+    });
+    await refreshStarted[0].promise;
+
+    useAuthStore.getState().clearAuth();
+    useAuthStore.getState().setAccessToken('new-login-token');
+    useAuthStore.getState().setUser({
+      id: 'new-user',
+      displayId: 'NEW1',
+      email: 'new@example.com',
+      fullName: 'New User',
+      role: 'member',
+      tenantId: 'new-tenant',
+    });
+    queryClient.setQueryData(['new-user-data'], { secret: 'new-user-cache' });
+
+    const requestA = api.get('/new-a');
+    await refreshStarted[1].promise;
+    oldRefresh.resolve([200, { accessToken: 'late-old-token' }]);
+    await expect(oldRequest).rejects.toBeInstanceOf(CancelledError);
+
+    const requestB = api.get('/new-b');
+    await Promise.resolve();
+    expect(refreshCalls).toBe(2);
+    expect(useAuthStore.getState().accessToken).toBe('new-login-token');
+    expect(queryClient.getQueryData(['new-user-data'])).toEqual({ secret: 'new-user-cache' });
+    expect(getGlobalError()).toBeNull();
+
+    newRefresh.resolve([200, { accessToken: 'refreshed-new' }]);
+    await expect(Promise.all([requestA, requestB])).resolves.toHaveLength(2);
+    expect(refreshCalls).toBe(2);
+    expect(oldProtectedCalls).toBe(1);
+    expect(useAuthStore.getState().accessToken).toBe('refreshed-new');
+  });
+
+  it('ignores a stale refresh rejection after a new session starts', async () => {
+    useAuthStore.getState().setAccessToken('old');
+    const refresh = deferred<[number, { accessToken: string }] >();
+    const refreshStarted = deferred<void>();
+    let protectedCalls = 0;
+    apiMock.onGet('/protected').reply(() => {
+      protectedCalls += 1;
+      return [401];
+    });
+    authApiMock.onPost('/refresh').reply(() => {
+      refreshStarted.resolve();
+      return refresh.promise;
+    });
+
+    const request = queryClient.fetchQuery({
+      queryKey: ['protected', 'stale-rejection'],
+      queryFn: () => api.get('/protected'),
+      retry: false,
+    });
+    await refreshStarted.promise;
+
+    useAuthStore.getState().clearAuth();
+    useAuthStore.getState().setAccessToken('new-login-token');
+    useAuthStore.getState().setUser({
+      id: 'new-user',
+      displayId: 'NEW1',
+      email: 'new@example.com',
+      fullName: 'New User',
+      role: 'member',
+      tenantId: 'new-tenant',
+    });
+    queryClient.setQueryData(['new-user-data'], { secret: 'new-user-cache' });
+    refresh.reject({ response: { status: 401 }, isAxiosError: true });
+
+    await expect(request).rejects.toBeInstanceOf(CancelledError);
+    expect(protectedCalls).toBe(1);
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'new-login-token', user: { id: 'new-user' } });
+    expect(queryClient.getQueryData(['new-user-data'])).toEqual({ secret: 'new-user-cache' });
+    expect(getGlobalError()).toBeNull();
+  });
+
+  it('clears auth and user cache when refresh returns 204', async () => {
+    useAuthStore.getState().setAccessToken('old');
+    useAuthStore.getState().setUser({
+      id: 'old-user',
+      displayId: 'OLD1',
+      email: 'old@example.com',
+      fullName: 'Old User',
+      role: 'member',
+      tenantId: 'old-tenant',
+    });
+    queryClient.setQueryData(['old-user-data'], { secret: 'old-user-cache' });
+    apiMock.onGet('/protected').reply(401);
+    authApiMock.onPost('/refresh').reply(204);
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['protected', 'empty-refresh'],
+        queryFn: () => api.get('/protected'),
+        retry: false,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(queryClient.getQueryData(['old-user-data'])).toBeUndefined();
+    expect(apiMock.history.get.filter((request) => request.url === '/protected')).toHaveLength(1);
+    expect(getGlobalError()).toBe('sign-in-required');
   });
 
   it('keeps auth after a page-blocking 403 query and reports access denied', async () => {

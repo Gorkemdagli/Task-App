@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
     NODE_ENV: 'production' as 'production' | 'development',
     APP_DATABASE_URL: 'postgresql://runtime.example/app',
     DATABASE_URL: 'postgresql://admin.example/admin',
+    RUNTIME_POOL_IDLE_TIMEOUT_MS: 60_000,
     REQUEST_STAGE_TIMING: false,
   },
   handlers: {} as Record<string, (event: unknown) => void>,
@@ -91,6 +92,7 @@ describe('production Prisma logging', () => {
     runtimeGlobal.prismaLoggingClient = undefined;
     state.env.NODE_ENV = 'production';
     state.env.APP_DATABASE_URL = 'postgresql://runtime.example/app';
+    state.env.RUNTIME_POOL_IDLE_TIMEOUT_MS = 60_000;
     state.env.REQUEST_STAGE_TIMING = false;
     state.handlers = {};
     state.debug.mockReset();
@@ -117,13 +119,27 @@ describe('production Prisma logging', () => {
       expect.anything(),
     );
     expect(state.pools).toHaveLength(1);
-    expect(state.pools[0].config).toEqual({ connectionString: 'postgresql://runtime.example/app' });
+    expect(state.pools[0].config).toEqual({
+      connectionString: 'postgresql://runtime.example/app',
+      idleTimeoutMillis: 60_000,
+    });
     expect(state.adapters).toEqual([
       { pool: state.pools[0], options: { disposeExternalPool: true } },
     ]);
     expect(state.pools[0].listenerCount('connect')).toBe(0);
     expect(state.pools[0].listenerCount('acquire')).toBe(0);
     expect(state.pools[0].listenerCount('remove')).toBe(0);
+  });
+
+  it('uses the configured runtime pool idle retention value', async () => {
+    state.env.RUNTIME_POOL_IDLE_TIMEOUT_MS = 10_000;
+
+    await import('./prisma');
+
+    expect(state.pools[0].config).toEqual({
+      connectionString: 'postgresql://runtime.example/app',
+      idleTimeoutMillis: 10_000,
+    });
   });
 
   it('rejects production runtime without APP_DATABASE_URL', async () => {

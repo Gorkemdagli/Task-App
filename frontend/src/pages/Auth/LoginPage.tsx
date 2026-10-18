@@ -5,8 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { loginSchema, type LoginInput } from '../../lib/schemas';
-import { authApi } from '../../lib/api';
+import { authApi, type LoginResponse } from '../../lib/api';
 import { queryClient } from '../../lib/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
@@ -17,8 +18,7 @@ import { Input } from '../../components/ui/input';
 export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const setUser = useAuthStore((s) => s.setUser);
+  const establishSession = useAuthStore((s) => s.establishSession);
   const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -31,11 +31,11 @@ export function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     setFormError(null);
     try {
-      const res = await authApi.post('/login', data);
-      setAccessToken(res.data.accessToken);
-      setUser(res.data.user);
-      clearActiveTeam();
+      const res = await authApi.post<LoginResponse>('/login', data);
       queryClient.clear();
+      establishSession(res.data.accessToken, res.data.user);
+      clearActiveTeam();
+      queryClient.setQueryData(queryKeys.profile(res.data.user.id), res.data.user);
       navigate('/dashboard');
     } catch (err: unknown) {
       setFormError(getApiErrorMessage(err, t('auth.error.unexpected')));

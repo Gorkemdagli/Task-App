@@ -86,17 +86,38 @@ describe('login', () => {
     await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
   });
   it('success includes tenant name', async () => {
-    await prisma.tenant.create({
+    const user = await prisma.user.update({
+      where: { email: 'a@x.com' },
+      data: {
+        avatarUrl: 'https://cdn.taskflow.test/avatar.png',
+        notifyTaskAssigned: false,
+        notifyTaskCommented: true,
+        notifyMessageReceived: false,
+      },
+    });
+    const tenant = await prisma.tenant.create({
       data: {
         name: 'Acme Corp',
         slug: 'acme-corp',
         nameKey: 'acme-corp',
+        logoUrl: 'https://cdn.taskflow.test/logo.png',
         users: { connect: { email: 'a@x.com' } },
       },
     });
     const r = await login({ email: 'a@x.com', password: 'hunter22' });
     expect(r.accessToken).toBeDefined();
-    expect(r.user.tenantName).toBe('Acme Corp');
+    expect(r.user).toMatchObject({
+      id: user.id,
+      email: 'a@x.com',
+      tenantId: tenant.id,
+      tenantName: 'Acme Corp',
+      tenantLogoUrl: 'https://cdn.taskflow.test/logo.png',
+      avatarUrl: 'https://cdn.taskflow.test/avatar.png',
+      notifyTaskAssigned: false,
+      notifyTaskCommented: true,
+      notifyMessageReceived: false,
+    });
+    expect(r.user).not.toHaveProperty('passwordHash');
   });
   it('401 wrong password', async () => {
     await expect(login({ email: 'a@x.com', password: 'wrong' })).rejects.toMatchObject({

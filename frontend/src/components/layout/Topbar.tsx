@@ -14,8 +14,8 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
-import { useTeamStore } from '@/stores/teamStore';
 import { useUiStore } from '@/stores/uiStore';
+import { useLogout } from '@/components/auth/LogoutCoordinator';
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -30,8 +30,6 @@ import type { NotificationItem } from '@/hooks/useNotifications';
 import { NotificationBadge } from '@/components/notifications/NotificationBadge';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { PRIMARY_NAV, canSeeNavItem } from '@/lib/navigation';
-import { authApi } from '@/lib/api';
-import { queryClient } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import usFlag from '@/assets/flags/us.png';
@@ -54,8 +52,7 @@ function TopbarContent() {
   const { t, i18n } = useTranslation();
   const { mode, toggleMode } = useTheme();
   const { user, isCompanyAdmin } = useAuth();
-  const clearAuth = useAuthStore((s) => s.clearAuth);
-  const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
+  const logout = useLogout();
   const openMobileSheet = useUiStore((s) => s.openMobileSheet);
   const navigate = useNavigate();
 
@@ -83,17 +80,8 @@ function TopbarContent() {
     navigate(`/tasks/${item.payload.taskId}`);
   }
 
-  async function handleLogout() {
-    try {
-      await authApi.post('/logout');
-    } catch {
-      // Local cleanup still completes when the server session is already expired.
-    } finally {
-      queryClient.clear();
-      clearAuth();
-      clearActiveTeam();
-      navigate('/login', { replace: true });
-    }
+  function handleLogout() {
+    void logout();
   }
 
   function handleAcceptInvitation(id: string) {
