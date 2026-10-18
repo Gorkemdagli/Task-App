@@ -10,6 +10,14 @@ export type RequestTimingStage =
   | 'auth_db_ms'
   | 'handler_db_ms'
   | 'password_verify_ms'
+  // Dashboard elapsed stages include Prisma/driver overhead, not PostgreSQL-only execution time.
+  | 'company_dashboard_summary_query_elapsed_ms'
+  | 'company_dashboard_members_query_elapsed_ms'
+  | 'company_dashboard_risk_tasks_query_elapsed_ms'
+  | 'company_dashboard_trend_query_elapsed_ms'
+  | 'company_dashboard_teams_query_elapsed_ms'
+  | 'company_dashboard_cumulative_flow_query_elapsed_ms'
+  | 'company_dashboard_cumulative_flow_compute_elapsed_ms'
   | `auth_${TransactionPhase}`
   | `handler_${TransactionPhase}`;
 

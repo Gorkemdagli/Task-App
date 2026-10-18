@@ -1,12 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { buttonVariants } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
 import { scrollToLandingSection } from '../landingScroll';
 
-export function FooterSection() {
+export function FooterSection({ hasConfirmedSession }: { hasConfirmedSession: boolean }) {
   const { t } = useTranslation();
-  const { isAuthenticated } = useAuth();
 
   return (
     <footer className="landing-footer">
@@ -34,7 +32,7 @@ export function FooterSection() {
             </dl>
           </div>
           <div className="landing-footer__actions">
-            {isAuthenticated ? (
+            {hasConfirmedSession ? (
               <Link to="/dashboard" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
                 {t('landing.cta.dashboard')}
               </Link>

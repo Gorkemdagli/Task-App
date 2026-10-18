@@ -64,6 +64,56 @@ describe('cumulative flow reconstruction', () => {
     ]);
   });
 
+  it('preserves strict event, creation, and archive boundaries while advancing history', () => {
+    const result = deriveCumulativeFlow(
+      [
+        row('task-a', '2026-08-17T00:00:00.000Z', {
+          status: 'in_progress',
+          event_id: 'done',
+          event_created_at: new Date('2026-08-19T00:00:00.000Z'),
+          event_type: 'status_changed',
+          event_to_status: 'done',
+        }),
+        row('task-a', '2026-08-17T00:00:00.000Z', {
+          status: 'in_progress',
+          event_id: 'reopen',
+          event_created_at: new Date('2026-08-20T00:00:00.000Z'),
+          event_type: 'task_reopened',
+          event_to_status: 'in_progress',
+        }),
+        row('created-at-boundary', '2026-08-19T00:00:00.000Z', { status: 'done' }),
+        row('archived-at-boundary', '2026-08-17T00:00:00.000Z', {
+          archived_at: new Date('2026-08-20T00:00:00.000Z'),
+        }),
+        row('missing-history', '2026-08-17T00:00:00.000Z', { status: 'in_progress' }),
+      ],
+      periodStart,
+      periodEnd,
+      new Date('2026-08-20T12:00:00.000Z'),
+    );
+
+    expect(result.samples).toEqual([
+      { date: '2026-08-18', todo: 3, inProgress: 0, done: 0 },
+      { date: '2026-08-19', todo: 2, inProgress: 0, done: 1 },
+      { date: '2026-08-20', todo: 2, inProgress: 1, done: 0 },
+    ]);
+    expect(result.bottleneck.unknownStartedAtCount).toBe(1);
+  });
+
+  it('keeps empty histories valid for 7, 30, and 90 day ranges', () => {
+    for (const days of [7, 30, 90]) {
+      const result = deriveCumulativeFlow(
+        [],
+        periodStart,
+        new Date(periodStart.getTime() + days * 86_400_000),
+        new Date('2026-08-20T12:00:00.000Z'),
+      );
+
+      expect(result.samples).toHaveLength(days);
+      expect(result.samples.every(({ todo, inProgress, done }) => todo === 0 && inProgress === 0 && done === 0)).toBe(true);
+    }
+  });
+
   it('handles reopen, archived samples, and null bottleneck denominators', () => {
     const result = deriveCumulativeFlow(
       [

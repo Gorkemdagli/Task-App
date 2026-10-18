@@ -3,18 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n, { LANGUAGE_STORAGE_KEY } from '@/i18n';
-import { useAuthStore } from '@/stores/authStore';
 import { LandingPage } from './LandingPage';
 
 function renderLanding(authenticated = false) {
-  useAuthStore.setState({
-    accessToken: authenticated ? 'token' : null,
-    user: null,
-  });
-
   return render(
     <MemoryRouter>
-      <LandingPage />
+      <LandingPage hasConfirmedSession={authenticated} />
     </MemoryRouter>,
   );
 }
@@ -87,6 +81,42 @@ describe('LandingPage', () => {
       'href',
       '/dashboard',
     );
+  });
+
+  it('shows one dashboard action across desktop, mobile, hero, and footer when authenticated', async () => {
+    const user = userEvent.setup();
+    const { container } = renderLanding(true);
+    const header = container.querySelector<HTMLElement>('.landing-nav')!;
+
+    expect(within(header).getByRole('link', { name: 'Panoya git' })).toHaveAttribute(
+      'href',
+      '/dashboard',
+    );
+    expect(within(header).queryByRole('link', { name: 'Hesap oluştur' })).not.toBeInTheDocument();
+    expect(within(header).queryByRole('link', { name: 'Giriş yap' })).not.toBeInTheDocument();
+    expect(screen.getByRole('contentinfo').querySelector('a[href="/dashboard"]')).toHaveTextContent(
+      'Panoya git',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Menüyü aç' }));
+    const mobileMenu = screen.getByRole('dialog');
+    expect(within(mobileMenu).getByRole('link', { name: 'Panoya git' })).toHaveAttribute(
+      'href',
+      '/dashboard',
+    );
+    expect(within(mobileMenu).queryByRole('link', { name: 'Hesap oluştur' })).not.toBeInTheDocument();
+    expect(within(mobileMenu).queryByRole('link', { name: 'Giriş yap' })).not.toBeInTheDocument();
+  });
+
+  it('localizes the confirmed dashboard action in English', async () => {
+    try {
+      await act(() => i18n.changeLanguage('en'));
+      renderLanding(true);
+
+      expect(screen.getAllByRole('link', { name: 'Go to dashboard' }).length).toBeGreaterThan(0);
+    } finally {
+      await act(() => i18n.changeLanguage('tr'));
+    }
   });
 
   it('presents equal-weight hero actions and the approved editorial copy', () => {

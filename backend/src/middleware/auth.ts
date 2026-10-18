@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../lib/jwt';
-import { isTokenBlacklisted } from '../services/auth.service';
-import { hasAccessSession } from '../lib/sessionStore';
+import { getAccessTokenAuthState } from '../lib/sessionStore';
 import { AppError } from '../lib/appError';
 import { withUserContext } from '../db/withUser';
 import { createTransactionPhaseRecorder, measureRequestStage } from '../http/requestTiming';
@@ -35,17 +34,14 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     } catch {
       throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
     }
-    if (
-      await measureRequestStage(req.requestTiming, 'session_redis_ms', () =>
-        isTokenBlacklisted(p.jti),
-      )
-    )
+    const { blacklisted, hasSession } = await measureRequestStage(
+      req.requestTiming,
+      'session_redis_ms',
+      () => getAccessTokenAuthState(p.jti),
+    );
+    if (blacklisted)
       throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-    if (
-      !(await measureRequestStage(req.requestTiming, 'session_redis_ms', () =>
-        hasAccessSession(p.jti),
-      ))
-    )
+    if (!hasSession)
       throw new AppError(401, 'Session revoked', 'TOKEN_REVOKED');
     const phaseRecorder = createTransactionPhaseRecorder(req.requestTiming, 'auth');
     const user = await measureRequestStage(req.requestTiming, 'auth_db_ms', () =>

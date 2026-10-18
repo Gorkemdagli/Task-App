@@ -1,11 +1,12 @@
-import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createContext, lazy, Suspense, useContext, useEffect, useState, useSyncExternalStore } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
+import { loadAppShell, loadDashboardPage, loadProtectedRoute } from './lib/dashboardRouteModules';
 import { useTranslation } from './i18n';
 import {
   classifyGlobalError,
@@ -19,7 +20,7 @@ const AuthLayout = lazy(() =>
   import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
 );
 const ProtectedRoute = lazy(() =>
-  import('./components/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })),
+  loadProtectedRoute().then((module) => ({ default: module.ProtectedRoute })),
 );
 const GlobalErrorPage = lazy(() =>
   import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
@@ -34,10 +35,10 @@ const RegisterPage = lazy(() =>
   import('./pages/Auth/RegisterPage').then((module) => ({ default: module.RegisterPage })),
 );
 const AppShell = lazy(() =>
-  import('./components/layout/AppShell').then((module) => ({ default: module.AppShell })),
+  loadAppShell().then((module) => ({ default: module.AppShell })),
 );
 const DashboardPage = lazy(() =>
-  import('./pages/Dashboard').then((module) => ({ default: module.DashboardPage })),
+  loadDashboardPage().then((module) => ({ default: module.DashboardPage })),
 );
 const TeamsPage = lazy(() =>
   import('./pages/Teams').then((module) => ({ default: module.TeamsPage })),
@@ -67,7 +68,10 @@ const CompanyManagementPage = lazy(() =>
   import('./pages/Company').then((module) => ({ default: module.CompanyManagementPage })),
 );
 
+const AuthBootstrapContext = createContext(false);
+
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
   const { t } = useTranslation();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
@@ -109,7 +113,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     })();
   }, [bootstrapAttempt, clearAuth, setAccessToken, setUser]);
 
-  if (!bootstrapped) {
+  if (!bootstrapped && pathname !== '/') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-secondary-foreground">
       {t('Yükleniyor...')}
@@ -117,19 +121,21 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return <AuthBootstrapContext.Provider value={bootstrapped}>{children}</AuthBootstrapContext.Provider>;
 }
 
-function RootRoute() {
-  const accessToken = useAuthStore((s) => s.accessToken);
+function RootRoute({ hasGlobalError }: { hasGlobalError: boolean }) {
+  const bootstrapComplete = useContext(AuthBootstrapContext);
+  const user = useAuthStore((s) => s.user);
 
-  return accessToken ? <Navigate to="/dashboard" replace /> : <LandingPage />;
+  return <LandingPage hasConfirmedSession={bootstrapComplete && !hasGlobalError && Boolean(user)} />;
 }
 
 function AppRoutes() {
   const globalError = useSyncExternalStore(subscribeGlobalError, getGlobalError);
+  const { pathname } = useLocation();
 
-  if (globalError) {
+  if (globalError && pathname !== '/') {
     return (
       <Suspense fallback={<RouteFallback />}>
         <GlobalErrorPage kind={globalError} />
@@ -140,7 +146,7 @@ function AppRoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<RootRoute />} />
+        <Route path="/" element={<RootRoute hasGlobalError={Boolean(globalError)} />} />
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -168,12 +174,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthBootstrap>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthBootstrap>
         <LogoutCoordinatorProvider>
           <AppRoutes />
         </LogoutCoordinatorProvider>
-      </BrowserRouter>
-    </AuthBootstrap>
+      </AuthBootstrap>
+    </BrowserRouter>
   );
 }

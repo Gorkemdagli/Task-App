@@ -99,6 +99,34 @@ export async function hasAccessSession(jti: string): Promise<boolean> {
   return (await redis.exists(ACCESS_SESSION_KEY(jti))) === 1;
 }
 
+export async function getAccessTokenAuthState(
+  jti: string,
+): Promise<{ blacklisted: boolean; hasSession: boolean }> {
+  const result: unknown = await redis
+    .multi()
+    .exists(BLACKLIST_KEY(jti))
+    .exists(ACCESS_SESSION_KEY(jti))
+    .exec();
+
+  if (!Array.isArray(result) || result.length !== 2) {
+    throw new Error('Invalid Redis auth status response');
+  }
+
+  const parseExists = (entry: unknown): boolean => {
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      throw new Error('Invalid Redis auth status response');
+    }
+    const [error, exists] = entry as unknown[];
+    if (error instanceof Error) throw error;
+    if (error !== null || (exists !== 0 && exists !== 1)) {
+      throw new Error('Invalid Redis auth status response');
+    }
+    return exists === 1;
+  };
+
+  return { blacklisted: parseExists(result[0]), hasSession: parseExists(result[1]) };
+}
+
 export async function rotateSessionTokens(
   oldJti: string,
   expected: SessionRecord,

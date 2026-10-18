@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { redis } from './redis';
 import { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken } from './jwt';
 import {
+  getAccessTokenAuthState,
   hasAccessSession,
   registerIssuedTokens,
   removeSessionKeys,
@@ -20,6 +21,52 @@ async function cleanRedis() {
 
 describe('sessionStore', () => {
   beforeEach(cleanRedis);
+
+  it('checks blacklist and access session in one atomic EXISTS batch', async () => {
+    const jti = randomUUID();
+    const blacklistKey = `blacklist:jti:${jti}`;
+    const accessKey = `access-session:${jti}`;
+    await redis.sadd(blacklistKey, 'wrong-type');
+    await redis.sadd(accessKey, 'wrong-type');
+
+    const transaction = redis.multi();
+    const exists = vi.spyOn(transaction, 'exists');
+    const exec = vi.spyOn(transaction, 'exec');
+    const multi = vi.spyOn(redis, 'multi').mockReturnValue(transaction);
+    try {
+      expect(await getAccessTokenAuthState(jti)).toEqual({ blacklisted: true, hasSession: true });
+      expect(multi).toHaveBeenCalledTimes(1);
+      expect(exists).toHaveBeenNthCalledWith(1, blacklistKey);
+      expect(exists).toHaveBeenNthCalledWith(2, accessKey);
+      expect(exec).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    await redis.del(blacklistKey);
+    expect(await getAccessTokenAuthState(jti)).toEqual({ blacklisted: false, hasSession: true });
+    await redis.del(accessKey);
+    expect(await getAccessTokenAuthState(jti)).toEqual({ blacklisted: false, hasSession: false });
+  });
+
+  it('rejects invalid or failed auth status replies', async () => {
+    for (const reply of [null, [[null, 2], [null, 1]]]) {
+      const transaction = redis.multi();
+      vi.spyOn(transaction, 'exec').mockResolvedValue(reply as never);
+      vi.spyOn(redis, 'multi').mockReturnValue(transaction);
+      await expect(getAccessTokenAuthState(randomUUID())).rejects.toThrow(
+        'Invalid Redis auth status response',
+      );
+      vi.restoreAllMocks();
+    }
+
+    const commandError = new Error('Redis command failed');
+    const transaction = redis.multi();
+    vi.spyOn(transaction, 'exec').mockResolvedValue([[commandError, null], [null, 1]] as never);
+    vi.spyOn(redis, 'multi').mockReturnValue(transaction);
+    await expect(getAccessTokenAuthState(randomUUID())).rejects.toBe(commandError);
+    vi.restoreAllMocks();
+  });
 
   it('indexes access and refresh sessions under user ID', async () => {
     const userId = randomUUID();

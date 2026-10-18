@@ -7,7 +7,6 @@ import usFlag from '@/assets/flags/us.png';
 import trFlag from '@/assets/flags/tr.png';
 import { buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { scrollToLandingSection } from '../landingScroll';
 
@@ -18,9 +17,8 @@ const sectionLinks = [
 
 type LandingSectionId = 'hero' | 'features' | 'workflow';
 
-export function NavSection() {
+export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boolean }) {
   const { t } = useTranslation();
-  const { isAuthenticated } = useAuth();
   const { mode, toggleMode } = useTheme();
   const [open, setOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<LandingSectionId>('hero');
@@ -96,7 +94,7 @@ export function NavSection() {
             <img src={i18n.language === 'tr' ? trFlag : usFlag} alt="" aria-hidden="true" className="h-6 w-6" />
           </button>
 
-          {isAuthenticated ? (
+          {hasConfirmedSession ? (
             <Link to="/dashboard" className={buttonVariants({ variant: 'primary', size: 'md' })}>
               {t('landing.cta.dashboard')}
             </Link>
@@ -154,7 +152,7 @@ export function NavSection() {
             </button>
 
             <div className="mt-6 flex flex-col gap-3">
-              {isAuthenticated ? (
+              {hasConfirmedSession ? (
                 <SheetClose asChild>
                   <Link
                     to="/dashboard"
