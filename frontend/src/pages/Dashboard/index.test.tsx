@@ -10,7 +10,8 @@ import { RouteDataReadinessProvider, useRouteDataReadiness } from '@/components/
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import * as teamsService from '@/services/teams';
-import type { ListTasksFilters, Task } from '@/hooks/tasks';
+import type * as TaskModule from '@/hooks/tasks';
+import type * as TeamQueriesModule from '@/hooks/queries/useTeams';
 import { utcTodayCalendarDate } from '@/lib/calendarDate';
 
 const { useDroppableMock, useSensorMock, useSensorsMock, realQueries } = vi.hoisted(() => ({
@@ -40,10 +41,10 @@ const mocks = {
 void mocks; // referans korunsun (gelecek drag-drop testleri için yer tutucu)
 
 let lastTaskFilters: unknown;
-let mockSelectedTask: Task | undefined;
+let mockSelectedTask: TaskModule.Task | undefined;
 
 vi.mock('@/hooks/queries/useTeams', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/queries/useTeams')>();
+  const actual = await importOriginal<typeof TeamQueriesModule>();
   return {
     ...actual,
     useTeams: (enabled?: boolean) => realQueries.teams
@@ -56,10 +57,10 @@ vi.mock('@/hooks/queries/useTeams', async (importOriginal) => {
 });
 
 vi.mock('@/hooks/tasks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/tasks')>();
+  const actual = await importOriginal<typeof TaskModule>();
   return {
     ...actual,
-    useTasks: (filters?: ListTasksFilters, options?: { enabled?: boolean }) => {
+    useTasks: (filters?: TaskModule.ListTasksFilters, options?: { enabled?: boolean }) => {
       if (realQueries.tasks) return actual.useTasks(filters, options);
       lastTaskFilters = filters;
       return {
@@ -116,7 +117,7 @@ let mockTeamDetail: {
   }>;
 } | null = null;
 
-function makeTask(overrides: Partial<Task>): Task {
+function makeTask(overrides: Partial<TaskModule.Task>): TaskModule.Task {
   return {
     id: 't1',
     title: 'Test task',
@@ -154,7 +155,7 @@ function calendarDateOffset(offset: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-let mockTasks: Task[] = [];
+let mockTasks: TaskModule.Task[] = [];
 
 function renderDashboard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -882,7 +883,7 @@ describe('DashboardPage', () => {
       pendingVersion: 1,
       pendingProposedBy: 'u2',
       pendingProposer: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
-      ...(overrides as Partial<Task>),
+      ...(overrides as Partial<TaskModule.Task>),
     });
     mockTasks = [mockSelectedTask];
 

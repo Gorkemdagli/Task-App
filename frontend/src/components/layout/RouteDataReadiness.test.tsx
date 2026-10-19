@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -202,11 +202,9 @@ describe('route data readiness', () => {
     let staleComplete: ((phase: 'teams') => void) | undefined;
     function StaleCallbackProbe() {
       const readiness = useRouteDataReadiness();
-      const captured = useRef(false);
-      if (!captured.current) {
-        captured.current = true;
-        staleComplete = readiness.completePhase;
-      }
+      useEffect(() => {
+        if (staleComplete === undefined) staleComplete = readiness.completePhase;
+      }, [readiness.completePhase]);
       useTeams();
       return (
         <>

@@ -8,7 +8,7 @@ import { loginSchema, type LoginInput } from '../../lib/schemas';
 import { authApi, type LoginResponse } from '../../lib/api';
 import { queryClient } from '../../lib/react-query';
 import { queryKeys } from '../../lib/queryKeys';
-import { preloadDashboardRoute } from '../../lib/dashboardRouteModules';
+import { preloadDashboardRoute } from '../../lib/preloadDashboardRoute';
 import { getApiErrorMessage } from '../../lib/apiError';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';

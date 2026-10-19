@@ -6,7 +6,6 @@ import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
-import { loadAppShell, loadDashboardPage, loadProtectedRoute } from './lib/dashboardRouteModules';
 import { useTranslation } from './i18n';
 import {
   classifyGlobalError,
@@ -20,7 +19,7 @@ const AuthLayout = lazy(() =>
   import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
 );
 const ProtectedRoute = lazy(() =>
-  loadProtectedRoute().then((module) => ({ default: module.ProtectedRoute })),
+  import('./components/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })),
 );
 const GlobalErrorPage = lazy(() =>
   import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
@@ -35,10 +34,10 @@ const RegisterPage = lazy(() =>
   import('./pages/Auth/RegisterPage').then((module) => ({ default: module.RegisterPage })),
 );
 const AppShell = lazy(() =>
-  loadAppShell().then((module) => ({ default: module.AppShell })),
+  import('./components/layout/AppShell').then((module) => ({ default: module.AppShell })),
 );
 const DashboardPage = lazy(() =>
-  loadDashboardPage().then((module) => ({ default: module.DashboardPage })),
+  import('./pages/Dashboard').then((module) => ({ default: module.DashboardPage })),
 );
 const TeamsPage = lazy(() =>
   import('./pages/Teams').then((module) => ({ default: module.TeamsPage })),

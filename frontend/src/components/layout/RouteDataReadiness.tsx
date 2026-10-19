@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -58,34 +58,27 @@ export function RouteDataReadinessProvider({ children }: { children: ReactNode }
       : pathname === '/company' && tenantId && role === 'companyAdmin'
         ? 'company-page'
         : 'open';
-  const activeScope = useRef(routeKey);
-  activeScope.current = routeKey;
   const [progress, setProgress] = useState({ routeKey, index: 0 });
+  if (progress.routeKey !== routeKey) setProgress({ routeKey, index: 0 });
   const index = progress.routeKey === routeKey ? progress.index : 0;
-
-  useEffect(() => {
-    setProgress((current) => current.routeKey === routeKey ? current : { routeKey, index: 0 });
-  }, [routeKey]);
 
   const completePhase = useCallback((expectedPhase: SequencedPhase, skipToBadges = false) => {
     setProgress((current) => {
       if (
-        activeScope.current !== routeKey || current.routeKey !== routeKey ||
+        current.routeKey !== routeKey ||
         phaseAt(mode, current.index) !== expectedPhase
       ) return current;
       const lastIndex = mode === 'team-dashboard' ? 3 : 2;
-      return { routeKey, index: Math.min(lastIndex, skipToBadges ? lastIndex : current.index + 1) };
+      return {
+        routeKey,
+        index: Math.min(lastIndex, skipToBadges ? lastIndex : current.index + 1),
+      };
     });
   }, [mode, routeKey]);
 
   const completeInitialPhase = useCallback(() => {
     setProgress((current) => {
-      if (
-        mode !== 'company-page' || activeScope.current !== routeKey ||
-        current.routeKey !== routeKey || current.index !== 0
-      ) {
-        return current;
-      }
+      if (mode !== 'company-page' || current.routeKey !== routeKey || current.index !== 0) return current;
       return { routeKey, index: 1 };
     });
   }, [mode, routeKey]);
