@@ -1,4 +1,5 @@
 import { QueryCache, QueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { reportGlobalError } from './globalError';
 
 /**
@@ -11,7 +12,11 @@ import { reportGlobalError } from './globalError';
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
-      if (query.state.data === undefined) reportGlobalError(error);
+      const localTransientError =
+        query.meta?.localTransientError === true &&
+        isAxiosError(error) &&
+        (!error.response || error.response.status >= 500);
+      if (query.state.data === undefined && !localTransientError) reportGlobalError(error);
     },
   }),
   defaultOptions: {

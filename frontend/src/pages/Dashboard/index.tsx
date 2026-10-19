@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -38,6 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 
 const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: 'todo', label: 'Yapılacak', color: 'border-status-todo' },
@@ -473,6 +474,7 @@ export function DashboardPage() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
+  const readiness = useRouteDataReadiness();
   const { data: teams } = useTeams();
   const activeTeamId = useTeamStore((state) => state.activeTeamId);
   const setActiveTeamId = useTeamStore((state) => state.setActiveTeamId);
@@ -502,15 +504,27 @@ export function DashboardPage() {
     (isCompanyAdmin(user) && sortedTeams.length > 1 ? null : (sortedTeams[0]?.id ?? null));
   const isAllTeamScope = isCompanyAdmin(user) && dashboardTeamId === null;
   const selectedTeam = sortedTeams.find((t) => t.id === teamId);
-  const { data: teamDetail } = useTeam(teamId ?? undefined);
+  const teamDetailQuery = useTeam(teamId ?? undefined);
+  const teamDetail = teamDetailQuery.data?.id === teamId ? teamDetailQuery.data : undefined;
+  const currentTeamMember = teamDetail?.members.find((member) => member.userId === user?.id);
+
+  useEffect(() => {
+    if (readiness.phase !== 'team-detail') return;
+    if (!teamId) {
+      readiness.completePhase('team-detail', true);
+      return;
+    }
+    if (teamDetailQuery.data !== undefined) {
+      readiness.completePhase('team-detail', !currentTeamMember);
+    } else if (teamDetailQuery.isError) {
+      readiness.completePhase('team-detail', true);
+    }
+  }, [currentTeamMember, readiness, teamDetailQuery.data, teamDetailQuery.isError, teamId]);
+
   const teamMembers = teamDetail?.members ?? [];
 
-  const isTeamAdminOfThisTeam =
-    isCompanyAdmin(user) ||
-    teamDetail?.members.some(
-      (member) => member.userId === user?.id && member.role === 'teamAdmin',
-    ) === true;
-  const isMemberSurface = user?.role === 'member' && !isTeamAdminOfThisTeam;
+  const isTeamAdminOfThisTeam = isCompanyAdmin(user) || currentTeamMember?.role === 'teamAdmin';
+  const isMemberSurface = !isCompanyAdmin(user) && !isTeamAdminOfThisTeam;
 
   const taskFilters = isMemberSurface
     ? {
@@ -524,7 +538,16 @@ export function DashboardPage() {
         limit: MAX_RENDERED_RECORDS,
       };
 
-  const { data: tasksData, isLoading } = useTasks(taskFilters);
+  const tasksQuery = useTasks(taskFilters, {
+    enabled:
+      Boolean(user?.tenantId) && readiness.tasksEnabled &&
+      (isCompanyAdmin(user) || Boolean(teamId && currentTeamMember)),
+  });
+  const tasksData = tasksQuery.data;
+  const isLoading =
+    tasksQuery.isLoading ||
+    readiness.phase === 'teams' || readiness.phase === 'team-detail' ||
+    (readiness.phase === 'tasks' && tasksQuery.fetchStatus === 'idle' && tasksData === undefined);
   const tasks = tasksData?.tasks ?? EMPTY_TASKS;
   const activeTasks = useMemo(() => tasks.filter((task) => !task.archivedAt), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((task) => task.archivedAt), [tasks]);

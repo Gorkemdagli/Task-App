@@ -86,4 +86,31 @@ describe('NotificationPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Kabul Et' }));
     expect(onAcceptInvitation).toHaveBeenCalledWith('invitation-1');
   });
+
+  it('keeps usable notifications visible and retries a local list error', async () => {
+    const user = userEvent.setup();
+    const onRetryNotifications = vi.fn();
+    renderPanel({
+      notificationsError: 'Bildirimler yüklenemedi.',
+      onRetryNotifications,
+    });
+
+    expect(screen.getByTestId('notification-list')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Yeniden dene' }));
+    expect(onRetryNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not present unknown badge lists as an empty notification state', () => {
+    renderPanel({
+      items: [],
+      unreadCount: 0,
+      invitations: [],
+      notificationDataKnown: false,
+      invitationDataKnown: false,
+      notificationsLoading: true,
+      invitationsLoading: true,
+    });
+
+    expect(screen.queryByTestId('empty-notifications')).not.toBeInTheDocument();
+  });
 });

@@ -464,6 +464,14 @@ describe('Topbar notification bell', () => {
     await closeMenu(user);
   });
 
+  it('does not show a zero-count badge while notification data is pending', () => {
+    getSpy.mockReturnValue(new Promise(() => undefined) as never);
+    renderTopbar(member);
+
+    expect(screen.getByTestId('notification-bell')).toHaveAttribute('aria-label', 'Bildirimler');
+    expect(screen.queryByTestId('notification-badge')).not.toBeInTheDocument();
+  });
+
   it('drops previous user notifications when auth user changes', async () => {
     getSpy
       .mockResolvedValueOnce({

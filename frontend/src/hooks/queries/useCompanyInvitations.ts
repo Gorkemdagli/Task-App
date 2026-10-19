@@ -2,14 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as companyInvitationsService from '@/services/companyInvitations';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/authStore';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 
-export function useCompanyInvitations() {
+export function useCompanyInvitations(enabled?: boolean) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const userId = useAuthStore((state) => state.user?.id ?? null);
+  const readiness = useRouteDataReadiness();
   return useQuery({
     queryKey: queryKeys.companyInvitations.incoming(userId ?? 'anonymous'),
     queryFn: companyInvitationsService.listMyCompanyInvitations,
-    enabled: Boolean(accessToken && userId),
+    enabled: Boolean(accessToken && userId) && (enabled ?? readiness.badgesEnabled),
+    meta: { localTransientError: true },
   });
 }
 

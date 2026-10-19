@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { Bell } from 'lucide-react';
 import { MAX_RENDERED_RECORDS, RECORD_CAP_MESSAGE } from '@/lib/listLimits';
 import { useTranslation } from '@/i18n';
+import { useAuthStore } from '@/stores/authStore';
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -60,6 +61,7 @@ function groupByDay(items: NotificationItemType[], now: Date, language: string):
 
 export function NotificationsPage() {
   const { i18n, t } = useTranslation();
+  const hasTenant = useAuthStore((state) => Boolean(state.user?.tenantId));
   const navigate = useNavigate();
   const notifications = useNotifications();
   const companyInvitations = useCompanyInvitations();
@@ -126,18 +128,24 @@ export function NotificationsPage() {
       {notifications.isError && (
         <div
           role="alert"
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {t('Bildirimler yüklenemedi.')}
+          <Button type="button" variant="ghost" size="sm" onClick={() => void notifications.refetch()}>
+            {t('Yeniden dene')}
+          </Button>
         </div>
       )}
 
       {companyInvitations.isError && (
         <div
           role="alert"
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {t('Davetler yüklenemedi.')}
+          <Button type="button" variant="ghost" size="sm" onClick={() => void companyInvitations.refetch()}>
+            {t('Yeniden dene')}
+          </Button>
         </div>
       )}
 
@@ -215,7 +223,10 @@ export function NotificationsPage() {
             </Button>
           )}
         </>
-      ) : items.length > 0 || invitations.length === 0 ? (
+      ) : (notifications.data !== undefined || !hasTenant) &&
+        companyInvitations.data !== undefined &&
+        items.length === 0 &&
+        invitations.length === 0 ? (
         <EmptyNotifications />
       ) : null}
     </div>

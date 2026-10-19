@@ -4,6 +4,7 @@ import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { MobileSidebar } from './MobileSidebar';
 import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
+import { RouteDataReadinessProvider } from './RouteDataReadiness';
 
 /**
  * AppShell: authenticated app chrome.
@@ -29,6 +30,7 @@ export function AppShell() {
   }, []);
 
   return (
+    <RouteDataReadinessProvider>
     <div
       data-testid="app-shell"
       className="auth-theme theme-landing flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
@@ -44,5 +46,6 @@ export function AppShell() {
       </div>
       <MobileSidebar />
     </div>
+    </RouteDataReadinessProvider>
   );
 }

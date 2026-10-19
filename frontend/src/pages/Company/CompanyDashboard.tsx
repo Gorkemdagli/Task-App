@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTeams } from '@/hooks/queries/useTeams';
@@ -7,6 +7,7 @@ import type { CompanyDashboardRange, DashboardComparison } from '@/services/comp
 import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
 import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 
 function KpiCard({
   label,
@@ -94,6 +95,7 @@ function RiskCard({
 
 export function CompanyDashboard() {
   const { t } = useTranslation();
+  const readiness = useRouteDataReadiness();
   const { data: teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [range, setRange] = useState<CompanyDashboardRange>('30d');
@@ -110,6 +112,23 @@ export function CompanyDashboard() {
       ? selectedTeamId
       : null;
   const dashboard = useCompanyDashboard(activeTeamId, range);
+  const primaryMount = useRef(0);
+
+  useEffect(() => {
+    if (readiness.phase === 'summary' && dashboard.data !== undefined) {
+      readiness.completePhase('summary');
+    }
+  }, [dashboard.data, readiness]);
+
+  useEffect(() => {
+    primaryMount.current += 1;
+    const mount = primaryMount.current;
+    return () => {
+      queueMicrotask(() => {
+        if (primaryMount.current === mount) readiness.completeInitialPhase();
+      });
+    };
+  }, [readiness.completeInitialPhase]);
 
   useEffect(() => {
     if (selectedTeamId && teams && !teams.some((team) => team.id === selectedTeamId)) {

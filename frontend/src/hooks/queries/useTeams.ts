@@ -1,20 +1,31 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import * as teamsService from '../../services/teams';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/authStore';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 
 /**
  * Query keys:
  *  - ['teams'] — kullanıcının erişebildiği takım listesi
  *  - ['team', id] — tek takım detayı (üyeler + taskCount)
  */
-export function useTeams(): UseQueryResult<teamsService.Team[]> {
+export function useTeams(enabled?: boolean): UseQueryResult<teamsService.Team[]> {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  return useQuery({
+  const readiness = useRouteDataReadiness();
+  const query = useQuery({
     queryKey: queryKeys.teams.list(tenantId ?? 'tenantless'),
     queryFn: teamsService.listTeams,
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && (enabled ?? readiness.teamsEnabled),
   });
+  useEffect(() => {
+    if (readiness.phase === 'teams' && query.data !== undefined) {
+      readiness.completePhase('teams', readiness.teamTasksRequired && !query.data?.length);
+    }
+  }, [query.data, readiness]);
+  return !query.data && !(enabled ?? readiness.teamsEnabled)
+    ? { ...query, isLoading: true } as UseQueryResult<teamsService.Team[]>
+    : query;
 }
 
 export function useTeam(id: string | undefined): UseQueryResult<teamsService.TeamDetail> {

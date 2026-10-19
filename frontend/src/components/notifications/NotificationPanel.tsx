@@ -6,6 +6,7 @@ import { CompanyInvitationCard } from '@/components/company/CompanyInvitationCar
 import { EmptyNotifications } from './EmptyNotifications';
 import { NotificationItem } from './NotificationItem';
 import { useTranslation } from '@/i18n';
+import { Button } from '@/components/ui/button';
 
 interface NotificationPanelProps {
   items: NotificationItemType[];
@@ -14,6 +15,14 @@ interface NotificationPanelProps {
   onMarkAllRead: () => void;
   onViewAll: () => void;
   invitations?: CompanyInvitationDTO[];
+  notificationDataKnown?: boolean;
+  invitationDataKnown?: boolean;
+  notificationsLoading?: boolean;
+  invitationsLoading?: boolean;
+  notificationsError?: string;
+  invitationListError?: string;
+  onRetryNotifications?: () => void;
+  onRetryInvitations?: () => void;
   onAcceptInvitation?: (id: string) => void;
   onRejectInvitation?: (id: string) => void;
   isAcceptingInvitation?: boolean;
@@ -28,6 +37,14 @@ export function NotificationPanel({
   onMarkAllRead,
   onViewAll,
   invitations = [],
+  notificationDataKnown = true,
+  invitationDataKnown = true,
+  notificationsLoading = false,
+  invitationsLoading = false,
+  notificationsError,
+  invitationListError,
+  onRetryNotifications,
+  onRetryInvitations,
   onAcceptInvitation = () => undefined,
   onRejectInvitation = () => undefined,
   isAcceptingInvitation = false,
@@ -54,6 +71,35 @@ export function NotificationPanel({
         )}
       </div>
       <DropdownMenuSeparator className="bg-border" />
+
+      {notificationsError && (
+        <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-destructive">
+          <span>{notificationsError}</span>
+          {onRetryNotifications && (
+            <Button type="button" variant="ghost" size="sm" onClick={onRetryNotifications}>
+              {t('Yeniden dene')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {invitationListError && (
+        <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-destructive">
+          <span>{invitationListError}</span>
+          {onRetryInvitations && (
+            <Button type="button" variant="ghost" size="sm" onClick={onRetryInvitations}>
+              {t('Yeniden dene')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {((notificationsLoading && !notificationDataKnown) ||
+        (invitationsLoading && !invitationDataKnown)) && (
+        <p aria-busy="true" className="px-4 py-3 text-sm text-muted-foreground">
+          {t('Yükleniyor...')}
+        </p>
+      )}
 
       {hasInvitations && (
         <section data-testid="company-invitation-list" className="border-b border-border">
@@ -92,7 +138,7 @@ export function NotificationPanel({
 
         </>
       ) : !hasInvitations ? (
-        <EmptyNotifications />
+        notificationDataKnown && invitationDataKnown ? <EmptyNotifications /> : null
       ) : null}
 
       <div className="border-t border-border px-4 py-2">

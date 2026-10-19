@@ -63,7 +63,10 @@ function TopbarContent() {
   const invitations = companyInvitations.data ?? [];
   const acceptInvitation = useAcceptCompanyInvitation();
   const rejectInvitation = useRejectCompanyInvitation();
-  const notificationCount = unreadCount + invitations.length;
+  const notificationsKnown = notifications.data !== undefined || !user?.tenantId;
+  const notificationCount = notificationsKnown && companyInvitations.data
+    ? unreadCount + invitations.length
+    : undefined;
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
@@ -164,14 +167,16 @@ function TopbarContent() {
             <button
               type="button"
               aria-label={t(
-                notificationCount > 0 ? 'Bildirimler ({{count}} okunmamış)' : 'Bildirimler',
+                notificationCount !== undefined && notificationCount > 0
+                  ? 'Bildirimler ({{count}} okunmamış)'
+                  : 'Bildirimler',
                 { count: notificationCount },
               )}
               data-testid="notification-bell"
               className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
             >
               <Bell className="h-5 w-5" />
-              <NotificationBadge count={notificationCount} />
+              {notificationCount !== undefined && <NotificationBadge count={notificationCount} />}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="bg-card p-0 text-foreground">
@@ -184,6 +189,18 @@ function TopbarContent() {
                 setBellOpen(false);
               }}
               invitations={invitations}
+              notificationDataKnown={notificationsKnown}
+              invitationDataKnown={companyInvitations.data !== undefined}
+              notificationsLoading={notifications.isPending}
+              invitationsLoading={companyInvitations.isPending}
+              notificationsError={
+                notifications.isError ? t('Bildirimler yüklenemedi.') : undefined
+              }
+              invitationListError={
+                companyInvitations.isError ? t('Davetler yüklenemedi.') : undefined
+              }
+              onRetryNotifications={() => void notifications.refetch()}
+              onRetryInvitations={() => void companyInvitations.refetch()}
               onAcceptInvitation={handleAcceptInvitation}
               onRejectInvitation={handleRejectInvitation}
               isAcceptingInvitation={acceptInvitation.isPending}
