@@ -448,7 +448,7 @@ function MemberTaskDetailPanel({
                 {t('tasks.detail.comments')} ({comments.length})
               </h3>
               {commentsLoading ? (
-                <p className="shrink-0 text-sm text-muted-foreground">{t('Yükleniyor…')}</p>
+                <p className="sr-only" role="status">{t('Yükleniyor…')}</p>
               ) : (
                 <div
                   data-testid="member-task-comments-scroll"

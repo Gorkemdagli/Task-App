@@ -90,7 +90,11 @@ export function TasksPage() {
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-secondary-foreground">
-              {isLoading ? t('tasks.page.loading') : t('tasks.page.found', { count: data?.total ?? 0 })}
+              {isLoading ? (
+                <span role="status" className="sr-only">{t('tasks.page.loading')}</span>
+              ) : (
+                t('tasks.page.found', { count: data?.total ?? 0 })
+              )}
             </p>
             <ActiveFilterChips teams={teams ?? []} assignees={assignees} currentUserId={user?.id} />
           </div>

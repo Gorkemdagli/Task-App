@@ -5,11 +5,12 @@ export function RouteFallback() {
   return (
     <div
       data-testid="route-fallback"
-      className="flex min-h-screen items-center justify-center bg-background text-secondary-foreground"
+      className="flex min-h-24 items-center justify-center bg-background text-secondary-foreground"
       role="status"
       aria-label={t('Sayfa yükleniyor')}
     >
-      {t('Yükleniyor...')}
+      <span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      <span className="sr-only">{t('Yükleniyor...')}</span>
     </div>
   );
 }

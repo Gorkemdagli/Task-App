@@ -6,7 +6,6 @@ import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
-import { useTranslation } from './i18n';
 import {
   classifyGlobalError,
   clearGlobalError,
@@ -71,7 +70,6 @@ const AuthBootstrapContext = createContext(false);
 
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const { t } = useTranslation();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -112,14 +110,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     })();
   }, [bootstrapAttempt, clearAuth, setAccessToken, setUser]);
 
-  if (!bootstrapped && pathname !== '/') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-secondary-foreground">
-      {t('Yükleniyor...')}
-      </div>
-    );
-  }
-
+  if (!bootstrapped && pathname !== "/") return <RouteFallback />;
   return <AuthBootstrapContext.Provider value={bootstrapped}>{children}</AuthBootstrapContext.Provider>;
 }
 
