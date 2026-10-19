@@ -5,11 +5,13 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import type { AxiosProgressEvent } from 'axios';
 import { api } from '../lib/api';
 import { appendTaskFilterParams } from '../lib/taskFilterParams';
 import { useAuthStore } from '../stores/authStore';
 import { queryKeys } from '../lib/queryKeys';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 import {
   invalidateTaskFilesAndHistoryQueries,
   invalidateTaskQueries,
@@ -155,16 +157,26 @@ function taskMutationTenant(session: TaskMutationSession): string {
 
 // ─── Hooks ────────────────────────────────────────────────────────────
 
-export function useTasks(filters?: ListTasksFilters) {
+export function useTasks(filters?: ListTasksFilters, options?: { enabled?: boolean }) {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
-  return useQuery({
+  const readiness = useRouteDataReadiness();
+  const query = useQuery({
     queryKey: queryKeys.tasks.list(tenantId ?? 'tenantless', filters),
     queryFn: async () => {
       const r = await api.get<{ tasks: Task[]; total: number }>(`/tasks${toQuery(filters)}`);
       return r.data;
     },
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && (options?.enabled ?? true),
   });
+  useEffect(() => {
+    if (
+      readiness.phase === 'tasks' &&
+      (query.data !== undefined || (options?.enabled === false && query.fetchStatus === 'idle'))
+    ) {
+      readiness.completePhase('tasks');
+    }
+  }, [options?.enabled, query.data, query.fetchStatus, readiness]);
+  return query;
 }
 
 export function useTask(id: string | undefined) {

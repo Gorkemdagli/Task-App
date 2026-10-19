@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { preloadDashboardRoute } from './dashboardRouteModules';
+import { preloadDashboardRoute } from './preloadDashboardRoute';
 
 vi.mock('../components/ProtectedRoute', () => Promise.reject(new Error('chunk failed')));
 vi.mock('../components/layout/AppShell', () => ({ AppShell: () => null }));

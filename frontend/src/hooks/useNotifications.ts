@@ -7,6 +7,7 @@ import {
 import { api } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
 import { useAuthStore } from '../stores/authStore';
+import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 import {
   type BaseNotificationPayload,
   type MessageNotificationPayload,
@@ -46,9 +47,10 @@ export interface NotificationsPageData {
   nextCursor: string | null;
 }
 
-export function useNotifications() {
+export function useNotifications(enabled?: boolean) {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   const userId = useAuthStore((state) => state.user?.id ?? null);
+  const readiness = useRouteDataReadiness();
   const notificationsKey = queryKeys.notifications(tenantId ?? 'tenantless', userId ?? 'anonymous');
   return useInfiniteQuery({
     queryKey: notificationsKey,
@@ -65,7 +67,8 @@ export function useNotifications() {
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
     staleTime: 0,
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && (enabled ?? readiness.badgesEnabled),
+    meta: { localTransientError: true },
   });
 }
 

@@ -1,18 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { DashboardPage } from './index';
-import type { Task } from '@/hooks/tasks';
+import { RouteDataReadinessProvider, useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import * as teamsService from '@/services/teams';
+import type * as TaskModule from '@/hooks/tasks';
+import type * as TeamQueriesModule from '@/hooks/queries/useTeams';
 import { utcTodayCalendarDate } from '@/lib/calendarDate';
 
-const { useDroppableMock, useSensorMock, useSensorsMock } = vi.hoisted(() => ({
+const { useDroppableMock, useSensorMock, useSensorsMock, realQueries } = vi.hoisted(() => ({
   useDroppableMock: vi.fn(() => ({ setNodeRef: vi.fn(), isOver: false })),
   useSensorMock: vi.fn((sensor: unknown, options: unknown) => ({ sensor, options })),
   useSensorsMock: vi.fn((...sensors: unknown[]) => sensors),
+  realQueries: { teams: false, tasks: false },
 }));
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
@@ -35,18 +41,27 @@ const mocks = {
 void mocks; // referans korunsun (gelecek drag-drop testleri için yer tutucu)
 
 let lastTaskFilters: unknown;
-let mockSelectedTask: Task | undefined;
+let mockSelectedTask: TaskModule.Task | undefined;
 
-vi.mock('@/hooks/queries/useTeams', () => ({
-  useTeams: () => ({ data: mockTeams, isLoading: false, isError: false }),
-  useTeam: () => ({ data: mockTeamDetail, isLoading: false, isError: false }),
-}));
-
-vi.mock('@/hooks/tasks', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
+vi.mock('@/hooks/queries/useTeams', async (importOriginal) => {
+  const actual = await importOriginal<typeof TeamQueriesModule>();
   return {
     ...actual,
-    useTasks: (filters: unknown) => {
+    useTeams: (enabled?: boolean) => realQueries.teams
+      ? actual.useTeams(enabled)
+      : { data: mockTeams, isLoading: false, isError: false },
+    useTeam: (id?: string) => realQueries.teams
+      ? actual.useTeam(id)
+      : { data: mockTeamDetail, isLoading: false, isError: false },
+  };
+});
+
+vi.mock('@/hooks/tasks', async (importOriginal) => {
+  const actual = await importOriginal<typeof TaskModule>();
+  return {
+    ...actual,
+    useTasks: (filters?: TaskModule.ListTasksFilters, options?: { enabled?: boolean }) => {
+      if (realQueries.tasks) return actual.useTasks(filters, options);
       lastTaskFilters = filters;
       return {
         data: { tasks: mockTasks, total: mockTasks.length },
@@ -102,7 +117,7 @@ let mockTeamDetail: {
   }>;
 } | null = null;
 
-function makeTask(overrides: Partial<Task>): Task {
+function makeTask(overrides: Partial<TaskModule.Task>): TaskModule.Task {
   return {
     id: 't1',
     title: 'Test task',
@@ -140,7 +155,7 @@ function calendarDateOffset(offset: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-let mockTasks: Task[] = [];
+let mockTasks: TaskModule.Task[] = [];
 
 function renderDashboard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -154,6 +169,69 @@ function renderDashboard() {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function renderLiveDashboard(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route
+            path="*"
+            element={(
+              <RouteDataReadinessProvider>
+                <DashboardPage />
+                <ReadinessProbe />
+                <LocationProbe />
+              </RouteDataReadinessProvider>
+            )}
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { client, view };
+}
+
+function ReadinessProbe() {
+  const readiness = useRouteDataReadiness();
+  return <output data-testid="route-phase">{readiness.phase}</output>;
+}
+
+function makeTeamDetail(role: 'member' | 'teamAdmin'): teamsService.TeamDetail {
+  return {
+    id: 'team-1',
+    name: 'UX',
+    description: null,
+    photoUrl: null,
+    tenantId: 't1',
+    memberCount: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    taskCount: 0,
+    members: [{
+      userId: 'u1',
+      displayId: 'AAAAA',
+      fullName: 'Ada',
+      avatarUrl: null,
+      role,
+      joinedAt: '2026-01-01T00:00:00.000Z',
+    }],
+  };
+}
+
+function watchTaskRequests() {
+  const urls: string[] = [];
+  vi.spyOn(api, 'get').mockImplementation((url) => {
+    if (url.startsWith('/tasks')) urls.push(url);
+    return Promise.resolve({ data: { tasks: [], total: 0 } }) as never;
+  });
+  return urls;
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <span data-testid="location">{location.pathname}</span>;
@@ -161,11 +239,14 @@ function LocationProbe() {
 
 describe('DashboardPage', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    realQueries.teams = false;
+    realQueries.tasks = false;
     mockTeams = [{ id: 'team-1', name: 'UX' }];
     mockTeamDetail = {
       id: 'team-1',
@@ -547,6 +628,96 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('workflow-strip')).toBeNull();
   });
 
+  it('waits for the current team role before issuing one TeamAdmin-scoped task request', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: member });
+    vi.spyOn(teamsService, 'listTeams').mockResolvedValue([
+      { id: 'team-1', name: 'UX' } as teamsService.Team,
+    ]);
+    const detail = deferred<teamsService.TeamDetail>();
+    const getTeam = vi.spyOn(teamsService, 'getTeam').mockReturnValue(detail.promise);
+    const taskUrls = watchTaskRequests();
+    renderLiveDashboard();
+
+    await waitFor(() => expect(getTeam).toHaveBeenCalledWith('team-1'));
+    expect(taskUrls).toEqual([]);
+
+    await act(async () => detail.resolve(makeTeamDetail('teamAdmin')));
+    await waitFor(() => expect(taskUrls).toHaveLength(1));
+    expect(taskUrls[0]).toContain('teamId=team-1');
+    expect(taskUrls[0]).not.toContain('assigneeIds');
+  });
+
+  it('keeps a Member task request scoped to their own team and assignments', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: member });
+    vi.spyOn(teamsService, 'listTeams').mockResolvedValue([
+      { id: 'team-1', name: 'UX' } as teamsService.Team,
+    ]);
+    vi.spyOn(teamsService, 'getTeam').mockResolvedValue(makeTeamDetail('member'));
+    const taskUrls = watchTaskRequests();
+    renderLiveDashboard();
+
+    await waitFor(() => expect(taskUrls).toHaveLength(1));
+    expect(taskUrls[0]).toContain('teamId=team-1');
+    expect(taskUrls[0]).toContain('assigneeIds=u1');
+  });
+
+  it('uses a cached current-team role while the detail refresh is pending', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: member });
+    vi.spyOn(teamsService, 'listTeams').mockResolvedValue([
+      { id: 'team-1', name: 'UX' } as teamsService.Team,
+    ]);
+    const detailRefresh = deferred<teamsService.TeamDetail>();
+    const getTeam = vi.spyOn(teamsService, 'getTeam').mockReturnValue(detailRefresh.promise);
+    const taskUrls = watchTaskRequests();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.team.detail('t1', 'team-1'), makeTeamDetail('teamAdmin'));
+    renderLiveDashboard(client);
+
+    await waitFor(() => expect(getTeam).toHaveBeenCalledWith('team-1'));
+    await waitFor(() => expect(taskUrls).toHaveLength(1));
+    expect(taskUrls[0]).not.toContain('assigneeIds');
+    await act(async () => detailRefresh.resolve(makeTeamDetail('teamAdmin')));
+    await waitFor(() => expect(taskUrls).toHaveLength(1));
+  });
+
+  it('ends role resolution safely after a missing team detail without broadening task access', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: member });
+    vi.spyOn(teamsService, 'listTeams').mockResolvedValue([
+      { id: 'team-1', name: 'UX' } as teamsService.Team,
+    ]);
+    vi.spyOn(teamsService, 'getTeam').mockRejectedValue(new Error('team detail unavailable'));
+    const taskUrls = watchTaskRequests();
+    renderLiveDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('route-phase')).toHaveTextContent('badges'));
+    expect(taskUrls).toEqual([]);
+    expect(screen.queryByLabelText('Görevler yükleniyor')).not.toBeInTheDocument();
+  });
+
+  it('keeps tenantless Members out of the team sequence without requests or a loading skeleton', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: { ...member, tenantId: null } });
+    const listTeams = vi.spyOn(teamsService, 'listTeams');
+    const getTeam = vi.spyOn(teamsService, 'getTeam');
+    const taskUrls = watchTaskRequests();
+    renderLiveDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('route-phase')).toHaveTextContent('open'));
+    expect(listTeams).not.toHaveBeenCalled();
+    expect(getTeam).not.toHaveBeenCalled();
+    expect(taskUrls).toEqual([]);
+    expect(screen.queryByLabelText('Görevler yükleniyor')).not.toBeInTheDocument();
+  });
+
   it('opens the selected member task in the dashboard detail panel', () => {
     useAuthStore.setState({ accessToken: 't', user: member });
     mockSelectedTask = makeTask({
@@ -712,7 +883,7 @@ describe('DashboardPage', () => {
       pendingVersion: 1,
       pendingProposedBy: 'u2',
       pendingProposer: { id: 'u2', displayId: 'BBBBB', fullName: 'Bora', avatarUrl: null },
-      ...(overrides as Partial<Task>),
+      ...(overrides as Partial<TaskModule.Task>),
     });
     mockTasks = [mockSelectedTask];
 

@@ -14,8 +14,8 @@ import type { CurrentUserProfile } from '../../services/profile';
 import { useAuthStore } from '../../stores/authStore';
 
 vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() }, api: { get: vi.fn() } }));
-vi.mock('../../lib/dashboardRouteModules', () => ({ preloadDashboardRoute: vi.fn().mockResolvedValue(undefined) }));
-import { preloadDashboardRoute } from '../../lib/dashboardRouteModules';
+vi.mock('../../lib/preloadDashboardRoute', () => ({ preloadDashboardRoute: vi.fn().mockResolvedValue(undefined) }));
+import { preloadDashboardRoute } from '../../lib/preloadDashboardRoute';
 
 const loginProfile: CurrentUserProfile = {
   id: 'login-user',
