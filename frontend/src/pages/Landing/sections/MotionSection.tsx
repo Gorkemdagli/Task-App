@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Archive,
@@ -9,12 +9,7 @@ import {
   LayoutDashboard,
   MessageCircle,
 } from 'lucide-react';
-import { gsap } from 'gsap';
-import { useGSAP } from '@gsap/react';
-import { createLandingMotion } from '../motion/createLandingMotion';
 import './MotionSection.css';
-
-gsap.registerPlugin(useGSAP);
 
 export function MotionSection() {
   const { t } = useTranslation();
@@ -28,13 +23,21 @@ export function MotionSection() {
     { title: t('landing.workflow.step5Title'), copy: t('landing.workflow.step5Copy') },
   ];
 
-  useGSAP(
-    () => {
-      if (!scope.current) return;
-      return createLandingMotion(scope.current);
-    },
-    { scope },
-  );
+  useEffect(() => {
+    let mounted = true;
+    let cleanup: (() => void) | undefined;
+
+    void import('../motion/createLandingMotion')
+      .then(({ createLandingMotion }) => {
+        if (mounted && scope.current) cleanup = createLandingMotion(scope.current);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, []);
 
   return (
     <section

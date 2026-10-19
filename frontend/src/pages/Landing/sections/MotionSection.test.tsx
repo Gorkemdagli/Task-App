@@ -1,11 +1,79 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MotionSection } from './MotionSection';
 
-vi.mock('../motion/createLandingMotion', () => ({ createLandingMotion: vi.fn(() => vi.fn()) }));
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 describe('MotionSection', () => {
+  const renderSection = () =>
+    render(
+      <MemoryRouter>
+        <MotionSection />
+      </MemoryRouter>,
+    );
+
+  beforeEach(() => {
+    vi.doMock('../motion/createLandingMotion', () => ({
+      createLandingMotion: vi.fn(() => vi.fn()),
+    }));
+  });
+
+  afterEach(() => {
+    vi.doUnmock('../motion/createLandingMotion');
+    vi.resetModules();
+  });
+
+  it('cleans up an initialized motion controller on unmount', async () => {
+    const cleanup = vi.fn();
+    const createLandingMotion = vi.fn(() => cleanup);
+    vi.doMock('../motion/createLandingMotion', () => ({ createLandingMotion }));
+
+    const section = renderSection();
+    await waitFor(() => expect(createLandingMotion).toHaveBeenCalledTimes(1));
+    section.unmount();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the workflow visible when its motion module fails to load', async () => {
+    const loadMotion = vi.fn(() => {
+      throw new Error('motion unavailable');
+    });
+    vi.doMock('../motion/createLandingMotion', loadMotion);
+
+    render(
+      <MemoryRouter>
+        <MotionSection />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(loadMotion).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('lifecycle-ribbon')).toBeVisible();
+  });
+
+  it('ignores a late motion load after unmount', async () => {
+    const deferred = createDeferred<{ createLandingMotion: ReturnType<typeof vi.fn> }>();
+    const createLandingMotion = vi.fn(() => vi.fn());
+    const loadMotion = vi.fn(async () => await deferred.promise);
+    vi.doMock('../motion/createLandingMotion', loadMotion);
+    const first = renderSection();
+    await waitFor(() => expect(loadMotion).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    await act(async () => {
+      deferred.resolve({ createLandingMotion });
+      await deferred.promise;
+      await Promise.resolve();
+    });
+    expect(createLandingMotion).not.toHaveBeenCalled();
+  });
+
   it('renders the complete lifecycle without requiring animation', () => {
     render(
       <MemoryRouter>

@@ -40,24 +40,27 @@ function LogoutTrigger({ onStart }: { onStart: (promise: Promise<void>) => void 
 
 function LocationProbe() {
   const location = useLocation();
-  return <output data-testid="logout-location">{location.pathname}</output>;
+  return <output data-testid="logout-location" data-key={location.key}>{location.pathname}</output>;
 }
 
 function renderLogoutFlow({
   onStart,
   strict = false,
+  initialEntry = '/protected',
 }: {
   onStart: (promise: Promise<void>) => void;
   strict?: boolean;
+  initialEntry?: string;
 }) {
   const flow = (
-    <MemoryRouter initialEntries={['/protected']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <LogoutCoordinatorProvider>
         <Routes>
           <Route element={<ProtectedRoute />}>
             <Route path="/protected" element={<p>Protected page</p>} />
             <Route path="/protected-other" element={<p>Other protected page</p>} />
           </Route>
+          <Route path="/" element={<p>Landing route</p>} />
           <Route path="/login" element={<p>Login route</p>} />
         </Routes>
         <LogoutTrigger onStart={onStart} />
@@ -103,19 +106,21 @@ describe('LogoutCoordinatorProvider', () => {
   });
 
   it.each(['resolves', 'rejects'] as const)(
-    'clears local session after the public route commits when server logout %s',
+    'clears local session after the landing route commits when server logout %s',
     async (outcome) => {
       seedSession();
       const request = createDeferred<{ data: null }>();
       postSpy = vi.spyOn(authApi, 'post').mockReturnValue(request.promise as never);
       const actualClear = queryClient.clear.bind(queryClient);
-      const pathsAtClear: string[] = [];
+      const locationsAtClear: Array<{ pathname: string; key: string | null }> = [];
       const clearSpy = vi.spyOn(queryClient, 'clear').mockImplementation(() => {
-        pathsAtClear.push(screen.getByTestId('logout-location').textContent ?? '');
+        const location = screen.getByTestId('logout-location');
+        locationsAtClear.push({ pathname: location.textContent ?? '', key: location.getAttribute('data-key') });
         actualClear();
       });
       let logoutPromise!: Promise<void>;
       const { container } = renderLogoutFlow({ onStart: (promise) => (logoutPromise = promise), strict: true });
+      const originKey = screen.getByTestId('logout-location').getAttribute('data-key');
       const observer = observeSignInRequired(container);
 
       fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
@@ -129,14 +134,16 @@ describe('LogoutCoordinatorProvider', () => {
       if (outcome === 'resolves') request.resolve({ data: null });
       else request.reject(new Error('session already expired'));
 
-      await waitFor(() => expect(screen.getByText('Login route')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Landing route')).toBeInTheDocument());
       await expect(logoutPromise).resolves.toBeUndefined();
       await act(async () => {
         await Promise.resolve();
       });
       observer.disconnect();
 
-      expect(pathsAtClear).toEqual(['/login']);
+      expect(locationsAtClear).toHaveLength(1);
+      expect(locationsAtClear[0].pathname).toBe('/');
+      expect(locationsAtClear[0].key).not.toBe(originKey);
       expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
       expect(useTeamStore.getState().activeTeamId).toBeNull();
       expect(queryClient.getQueryData(privateQueryKey)).toBeUndefined();
@@ -144,6 +151,39 @@ describe('LogoutCoordinatorProvider', () => {
       expect(postSpy).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('waits for the landing navigation to commit when logout starts on the landing route', async () => {
+    seedSession();
+    const request = createDeferred<{ data: null }>();
+    postSpy = vi.spyOn(authApi, 'post').mockReturnValue(request.promise as never);
+    const actualClear = queryClient.clear.bind(queryClient);
+    let locationAtClear: { pathname: string; key: string | null } | undefined;
+    vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+      const location = screen.getByTestId('logout-location');
+      locationAtClear = { pathname: location.textContent ?? '', key: location.getAttribute('data-key') };
+      actualClear();
+    });
+    let logoutPromise!: Promise<void>;
+    renderLogoutFlow({
+      initialEntry: '/',
+      onStart: (promise) => (logoutPromise = promise),
+      strict: true,
+    });
+    const originKey = screen.getByTestId('logout-location').getAttribute('data-key');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
+    expect(locationAtClear).toBeUndefined();
+
+    request.resolve({ data: null });
+    await waitFor(() => expect(locationAtClear).toBeDefined());
+    await expect(logoutPromise).resolves.toBeUndefined();
+
+    expect(locationAtClear?.pathname).toBe('/');
+    expect(locationAtClear?.key).not.toBe(originKey);
+    expect(screen.getByText('Landing route')).toBeInTheDocument();
+    expect(screen.queryByText('Login route')).not.toBeInTheDocument();
+  });
 
   it('deduplicates concurrent calls for the same session generation', async () => {
     seedSession();
@@ -161,7 +201,7 @@ describe('LogoutCoordinatorProvider', () => {
 
     request.resolve({ data: null });
     await expect(promises[0]).resolves.toBeUndefined();
-    expect(await screen.findByText('Login route')).toBeInTheDocument();
+    expect(await screen.findByText('Landing route')).toBeInTheDocument();
   });
 
   it.each(['same-user', 'different-user'] as const)(

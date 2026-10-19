@@ -13,6 +13,7 @@ import {
   setGlobalError,
   subscribeGlobalError,
 } from './lib/globalError';
+import { LandingPage } from './pages/Landing/LandingPage';
 
 const AuthLayout = lazy(() =>
   import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
@@ -22,9 +23,6 @@ const ProtectedRoute = lazy(() =>
 );
 const GlobalErrorPage = lazy(() =>
   import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
-);
-const LandingPage = lazy(() =>
-  import('./pages/Landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
 const LoginPage = lazy(() =>
   import('./pages/Auth/LoginPage').then((module) => ({ default: module.LoginPage })),

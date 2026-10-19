@@ -235,7 +235,8 @@ describe('App', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(screen.queryByText(/yÃ¼kleniyor/i)).not.toBeInTheDocument();
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(getMe).not.toHaveBeenCalled();
     expect(document.querySelector('a[href="/login"]')).toBeInTheDocument();
