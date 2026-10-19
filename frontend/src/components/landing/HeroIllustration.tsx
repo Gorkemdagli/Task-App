@@ -24,7 +24,9 @@ export function HeroIllustration() {
             <span className="landing-hero-app__chrome-dot" />
           </div>
           <aside className="landing-hero-app__sidebar" aria-hidden>
-            <strong className="landing-hero-app__brand">TaskFlow</strong>
+            <strong className="landing-hero-app__brand">
+              <span className="text-landing-text">Task</span><span className="text-primary">Flow</span>
+            </strong>
             <nav>
               <span className="is-active">
                 <LayoutDashboard aria-hidden /> {t('landing.illustration.boards')}

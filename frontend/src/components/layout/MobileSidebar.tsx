@@ -64,7 +64,9 @@ export function MobileSidebar() {
         >
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <span className="text-lg font-bold text-primary">TaskFlow</span>
+              <span className="text-lg font-bold text-foreground">
+                Task<span className="text-primary">Flow</span>
+              </span>
               <DialogPrimitive.Close
                 aria-label={t('Menüyü kapat')}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
