@@ -83,6 +83,17 @@ describe('AuthBootstrap canonical flow', () => {
     expect(getMe).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps protected bootstrap pending state non-textual and accessible', () => {
+    window.history.pushState({}, '', '/dashboard');
+    refreshSpy.mockReturnValue(new Promise(() => {}) as never);
+
+    render(<App />);
+
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAccessibleName('Sayfa yükleniyor');
+    expect(screen.getByTestId('route-fallback').querySelector('.sr-only')).toBeInTheDocument();
+  });
+
   it('seeds the complete profile query so the sidebar reuses bootstrap /users/me', async () => {
     window.history.pushState({}, '', '/dashboard');
     const previousUser = { ...canonicalUser, id: 'previous-user' };

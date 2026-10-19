@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { MobileSidebar } from './MobileSidebar';
 import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
 import { RouteDataReadinessProvider } from './RouteDataReadiness';
+import { RouteFallback } from './RouteFallback';
 
 /**
  * AppShell: authenticated app chrome.
@@ -41,7 +42,9 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       <MobileSidebar />

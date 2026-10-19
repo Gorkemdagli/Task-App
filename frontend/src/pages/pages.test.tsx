@@ -202,6 +202,20 @@ describe('placeholder pages', () => {
     expect(screen.getByRole('heading', { name: 'Görevlerim' })).toBeInTheDocument();
   });
 
+  it("announces task loading while keeping the existing skeletons", () => {
+    useTasksMock.mockReturnValue({
+      data: { tasks: [], total: 0 },
+      isLoading: true,
+      isError: false,
+    });
+
+    renderAt("/tasks");
+
+    expect(screen.getByRole("status")).toHaveClass("sr-only");
+    expect(screen.getByTestId("tasks-page").querySelector("[aria-busy=true]")).toBeInTheDocument();
+    expect(screen.getByTestId("tasks-page").querySelectorAll(".animate-pulse")).toHaveLength(4);
+  });
+
   it('keeps the desktop task workspace fixed with independently scrolling panels', () => {
     renderAt('/tasks');
 

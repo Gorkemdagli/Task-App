@@ -42,6 +42,7 @@ void mocks; // referans korunsun (gelecek drag-drop testleri için yer tutucu)
 
 let lastTaskFilters: unknown;
 let mockSelectedTask: TaskModule.Task | undefined;
+let mockCommentsLoading = false;
 
 vi.mock('@/hooks/queries/useTeams', async (importOriginal) => {
   const actual = await importOriginal<typeof TeamQueriesModule>();
@@ -70,7 +71,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
       };
     },
     useTask: () => ({ data: mockSelectedTask, isLoading: false, isError: false }),
-    useTaskComments: () => ({ data: { comments: [] }, isLoading: false, isError: false }),
+    useTaskComments: () => ({ data: { comments: [] }, isLoading: mockCommentsLoading, isError: false }),
     useUpdateTaskStatus: () => ({
       mutate: mocks.useUpdateTaskStatus,
       mutateAsync: mocks.useUpdateTaskStatus,
@@ -255,6 +256,7 @@ describe('DashboardPage', () => {
     };
     useTeamStore.setState({ activeTeamId: null });
     mockTasks = [];
+    mockCommentsLoading = false;
     lastTaskFilters = undefined;
     mockSelectedTask = undefined;
   });
@@ -806,6 +808,20 @@ describe('DashboardPage', () => {
     expect(within(panel).getByTestId('member-task-information-region').parentElement).toHaveClass(
       'grid-rows-[minmax(0,1fr)_minmax(0,1fr)]',
     );
+  });
+
+  it("announces pending comments without visible loading text", () => {
+    useAuthStore.setState({ accessToken: "t", user: member });
+    mockSelectedTask = makeTask({ id: "comments-task" });
+    mockTasks = [mockSelectedTask];
+    mockCommentsLoading = true;
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId("task-card-comments-task").querySelector("a")!);
+
+    const comments = screen.getByTestId("member-task-comments-region");
+    expect(within(comments).getByRole("status")).toHaveClass("sr-only");
+    expect(within(comments).queryByTestId("member-task-comments-scroll")).not.toBeInTheDocument();
   });
 
   it('omits empty scope and expected output sections', () => {

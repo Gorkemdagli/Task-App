@@ -134,7 +134,10 @@ describe('CompanySettingsPage', () => {
   it('shows loading and error states', () => {
     mocks.useCompanySettings.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     renderPage();
-    expect(screen.getByText('Yükleniyor…')).toBeInTheDocument();
+    const loadingStatus = screen.getByRole("status");
+    expect(loadingStatus).toHaveClass("flex", "items-center");
+    expect(loadingStatus.querySelector("[aria-hidden=true]")).toHaveClass("animate-spin");
+    expect(loadingStatus.querySelector(".sr-only")).toBeInTheDocument();
 
     mocks.useCompanySettings.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     renderPage();

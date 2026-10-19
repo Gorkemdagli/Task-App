@@ -99,7 +99,7 @@ export function TeamSidebarSection({
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="my-1 bg-border" />
             {teamsLoading ? (
-              <div className="px-2 py-1 text-xs text-secondary-foreground">{t('Yükleniyor…')}</div>
+              <div className="sr-only" role="status">{t('Yükleniyor…')}</div>
             ) : teams.length > 0 ? (
               teams.slice(0, MAX_RENDERED_RECORDS).map((team) => (
                 <DropdownMenuItem
