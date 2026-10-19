@@ -128,7 +128,10 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
                   <a
                     href={link.href}
                     aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
-                    onClick={(event) => scrollToLandingSection(event, link.href)}
+                    onClick={(event) => {
+                      scrollToLandingSection(event, link.href);
+                      if (event.defaultPrevented) setOpen(false);
+                    }}
                   >
                     {t(link.label)}
                   </a>

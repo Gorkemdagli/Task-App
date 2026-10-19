@@ -12,6 +12,7 @@ import {
 import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { createFeatureMotion } from '../motion/createFeatureMotion';
+import { scrollToLandingSection } from '../landingScroll';
 
 gsap.registerPlugin(useGSAP);
 
@@ -217,7 +218,7 @@ export function FeaturesSection() {
         <div className="landing-context-footer-line">
           <span>{t('landing.features.footerKicker')}</span>
           <p>{t('landing.features.footerCopy')}</p>
-          <a href="#workflow">
+          <a href="#workflow" onClick={(event) => scrollToLandingSection(event, '#workflow')}>
             {t('landing.features.workflowQuestion')} <ArrowRight aria-hidden />
           </a>
         </div>

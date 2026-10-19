@@ -1,9 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TaskCard } from './TaskCard';
+import { TaskCardRow } from './TaskCardRow';
 import type { Task } from '@/hooks/tasks';
 import { addCalendarDays, utcTodayCalendarDate } from '@/lib/calendarDate';
+
+const { prefetchTaskMock } = vi.hoisted(() => ({ prefetchTaskMock: vi.fn() }));
+vi.mock('@/hooks/tasks', () => ({ usePrefetchTask: () => prefetchTaskMock }));
 
 const baseTask: Task = {
   id: 't1',
@@ -39,6 +43,8 @@ function Wrap({ children }: { children: React.ReactNode }) {
 }
 
 describe('TaskCard', () => {
+  beforeEach(() => prefetchTaskMock.mockClear());
+
   it('renders title and priority badge', () => {
     render(
       <Wrap>
@@ -164,6 +170,70 @@ describe('TaskCard', () => {
     );
     const link = screen.getByRole('link');
     expect(link.getAttribute('href')).toBe('/tasks/t1');
+  });
+
+  it('prefetches the detail on pointer entry and keyboard focus', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    const link = screen.getByRole('link');
+
+    fireEvent.pointerEnter(link, { pointerType: 'mouse' });
+    fireEvent.focus(link);
+
+    expect(prefetchTaskMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips detail prefetch for touch pointers', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} />
+      </Wrap>,
+    );
+    fireEvent.pointerEnter(screen.getByRole('link'), { pointerType: 'touch' });
+
+    expect(prefetchTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('skips detail prefetch for selection-mode cards', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} selected onSelect={vi.fn()} />
+      </Wrap>,
+    );
+    const link = screen.getByRole('link');
+
+    fireEvent.pointerEnter(link, { pointerType: 'mouse' });
+    fireEvent.focus(link);
+
+    expect(prefetchTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('prefetches list-row detail on pointer entry and keyboard focus', () => {
+    render(
+      <Wrap>
+        <TaskCardRow task={baseTask} />
+      </Wrap>,
+    );
+    const link = screen.getByRole('link');
+
+    fireEvent.pointerEnter(link, { pointerType: 'mouse' });
+    fireEvent.focus(link);
+
+    expect(prefetchTaskMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips list-row detail prefetch for touch pointers', () => {
+    render(
+      <Wrap>
+        <TaskCardRow task={baseTask} />
+      </Wrap>,
+    );
+    fireEvent.pointerEnter(screen.getByRole('link'), { pointerType: 'touch' });
+
+    expect(prefetchTaskMock).not.toHaveBeenCalled();
   });
 
   it('renders overdue indicator when deadline passed and status not done', () => {

@@ -79,6 +79,7 @@ vi.mock('@/components/tasks/ProposeConfirmDialog', () => ({
 let mockTask: Task | null = null;
 let mockTaskError: unknown = null;
 let mockTaskIsError = false;
+let mockTaskIsLoading = false;
 let mockTeamMembers: TeamMember[] = [];
 vi.mock('@/hooks/queries/useTeams', () => ({
   useTeam: () => ({ data: { members: mockTeamMembers }, isLoading: false, isError: false }),
@@ -100,7 +101,7 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     ...actual,
     useTask: () => ({
       data: mockTask,
-      isLoading: false,
+      isLoading: mockTaskIsLoading,
       isError: mockTaskIsError,
       error: mockTaskError,
     }),
@@ -188,6 +189,7 @@ describe('TaskDetailPage — approved workbench', () => {
     mockTeamMembers = [];
     mockTaskError = null;
     mockTaskIsError = false;
+    mockTaskIsLoading = false;
     updateFieldsMock.mockReset();
     updateFieldsPending = false;
     useAuthStore.setState({ accessToken: 't', user: admin });
@@ -208,6 +210,16 @@ describe('TaskDetailPage — approved workbench', () => {
     } finally {
       await i18n.changeLanguage(previousLanguage);
     }
+  });
+
+  it('shows a non-motion skeleton with a screen-reader loading status while pending', () => {
+    mockTaskIsLoading = true;
+    const { container } = renderTaskDetail();
+
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
   });
 
   it.each([401, 403, 404])('hides cached task data after a denied or missing response (%i)', (status) => {

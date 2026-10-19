@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ListTodo, MessageCircle, Users } from 'lucide-react';
 import { HeroIllustration } from '@/components/landing/HeroIllustration';
 import { buttonVariants } from '@/components/ui/button';
+import { scrollToLandingSection } from '../landingScroll';
 
 export function HeroSection({ hasConfirmedSession }: { hasConfirmedSession: boolean }) {
   const { t } = useTranslation();
@@ -37,6 +38,7 @@ export function HeroSection({ hasConfirmedSession }: { hasConfirmedSession: bool
               <a
                 href="#workflow"
                 className={`${buttonVariants({ variant: 'secondary', size: 'lg' })} landing-hero-cta`}
+                onClick={(event) => scrollToLandingSection(event, '#workflow')}
               >
                 {t('landing.hero.workflowLink')}
               </a>

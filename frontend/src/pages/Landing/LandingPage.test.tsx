@@ -225,8 +225,14 @@ describe('LandingPage', () => {
       renderLanding();
 
       await user.click(screen.getByRole('link', { name: 'İş akışı' }));
+      await user.click(document.querySelector('.landing-hero a[href="#workflow"]')!);
+      await user.click(document.querySelector('.landing-context-footer-line a[href="#workflow"]')!);
+      await user.click(document.querySelector('.landing-nav__menu')!);
+      await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'İş akışı' }));
 
       expect(window.location.hash).toBe('');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(document.getElementById('workflow')!.scrollIntoView).toHaveBeenCalledTimes(4);
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

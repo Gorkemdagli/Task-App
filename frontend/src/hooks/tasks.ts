@@ -179,16 +179,34 @@ export function useTasks(filters?: ListTasksFilters, options?: { enabled?: boole
   return query;
 }
 
+function taskDetailQueryOptions(tenantId: string, taskId: string) {
+  return {
+    queryKey: queryKeys.task.detail(tenantId, taskId),
+    queryFn: async () => {
+      const r = await api.get<Task>(`/tasks/${taskId}`);
+      return r.data;
+    },
+  };
+}
+
 export function useTask(id: string | undefined) {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   return useQuery<Task>({
-    queryKey: queryKeys.task.detail(tenantId ?? 'tenantless', id ?? 'none'),
-    queryFn: async () => {
-      const r = await api.get<Task>(`/tasks/${id}`);
-      return r.data;
-    },
+    ...taskDetailQueryOptions(tenantId ?? 'tenantless', id ?? 'none'),
     enabled: Boolean(tenantId && id),
   });
+}
+
+export function usePrefetchTask(id: string | undefined) {
+  const queryClient = useQueryClient();
+  return () => {
+    const { accessToken, user } = useAuthStore.getState();
+    if (!id || !accessToken || !user?.tenantId) return;
+    void queryClient.prefetchQuery({
+      ...taskDetailQueryOptions(user.tenantId, id),
+      meta: { speculativeTaskDetailPrefetch: true },
+    });
+  };
 }
 
 export function useTaskComments(taskId: string | undefined, options?: { enabled?: boolean }) {
