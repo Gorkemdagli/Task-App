@@ -2,7 +2,7 @@ import { Flag } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import type { Task, TaskPriority } from '@/hooks/tasks';
+import { usePrefetchTask, type Task, type TaskPriority } from '@/hooks/tasks';
 import { AssigneeAvatarStack } from './AssigneeAvatarStack';
 import { PendingStatusBadge } from './PendingStatusBadge';
 import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
@@ -83,6 +83,7 @@ interface TaskCardRowProps {
 
 export function TaskCardRow({ task }: TaskCardRowProps) {
   const { t, i18n } = useTranslation();
+  const prefetchTask = usePrefetchTask(task.id);
   const overdue =
     task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
   const isPending = task.pendingStatus !== null;
@@ -92,6 +93,10 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
       to={`/tasks/${task.id}`}
       data-testid={`task-row-${task.id}`}
       data-pending={isPending ? 'true' : undefined}
+      onPointerEnter={(event) => {
+        if (event.pointerType !== 'touch') prefetchTask();
+      }}
+      onFocus={prefetchTask}
       className={cn(
         'grid gap-3 border-b border-border bg-card px-4 py-3 transition-colors last:border-b-0 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:items-center',
         TASK_GRID,

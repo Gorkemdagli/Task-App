@@ -3,11 +3,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api';
+import { queryClient as appQueryClient } from '@/lib/react-query';
+import { clearGlobalError, getGlobalError } from '@/lib/globalError';
 import { queryKeys } from '@/lib/queryKeys';
 import type { ListTasksFilters, Task } from './tasks';
 import {
   useCreateComment,
   useCreateTask,
+  usePrefetchTask,
   useTask,
   useTasks,
   useUpdateTaskStatus,
@@ -128,6 +131,86 @@ describe('task query and mutation hooks', () => {
 
     expect(get).toHaveBeenCalledWith(`/tasks/${taskId}`);
     expect(queryClient.getQueryData(queryKeys.task.detail(tenantId, taskId))).toEqual(data);
+  });
+
+  it('prefetches the tenant-scoped detail query once for repeated intent', async () => {
+    const data = task();
+    let resolveRequest!: (value: { data: Task }) => void;
+    const get = vi.spyOn(api, 'get').mockReturnValue(
+      new Promise((resolve) => {
+        resolveRequest = resolve;
+      }) as never,
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const { result } = renderHook(() => usePrefetchTask(taskId), { wrapper: wrapper(queryClient) });
+
+    act(() => {
+      result.current();
+      result.current();
+    });
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith(`/tasks/${taskId}`);
+    expect(queryClient.getQueryCache().find({ queryKey: queryKeys.task.detail(tenantId, taskId) }))
+      .toBeDefined();
+    expect(queryClient.getQueryData(queryKeys.task.detail('tenant-b', taskId))).toBeUndefined();
+
+    await act(async () => {
+      resolveRequest({ data });
+    });
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.task.detail(tenantId, taskId))).toEqual(data),
+    );
+  });
+
+  it('does not surface a failed intent prefetch as a global route error', async () => {
+    const error = { isAxiosError: true, response: { status: 403 } };
+    vi.spyOn(api, 'get').mockRejectedValue(error as never);
+    const queryClient = new QueryClient({
+      queryCache: appQueryClient.getQueryCache(),
+      defaultOptions: { queries: { retry: false } },
+    });
+    const detailKey = queryKeys.task.detail(tenantId, taskId);
+    queryClient.clear();
+    clearGlobalError();
+    const { result, unmount } = renderHook(() => usePrefetchTask(taskId), {
+      wrapper: wrapper(queryClient),
+    });
+
+    try {
+      act(() => result.current());
+      await waitFor(() => expect(queryClient.getQueryState(detailKey)?.status).toBe('error'));
+      expect(getGlobalError()).toBeNull();
+    } finally {
+      unmount();
+      queryClient.clear();
+      clearGlobalError();
+    }
+  });
+
+  it('does not prefetch task data without an access token', () => {
+    setAuthenticatedUser();
+    useAuthStore.setState({ accessToken: null });
+    const get = vi.spyOn(api, 'get');
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => usePrefetchTask(taskId), { wrapper: wrapper(queryClient) });
+
+    act(() => result.current());
+
+    expect(get).not.toHaveBeenCalled();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  });
+
+  it('does not prefetch task data without a tenant', () => {
+    setAuthenticatedUser(null);
+    const get = vi.spyOn(api, 'get');
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => usePrefetchTask(taskId), { wrapper: wrapper(queryClient) });
+
+    act(() => result.current());
+
+    expect(get).not.toHaveBeenCalled();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
 
   it('creates a task and invalidates only the authenticated tenant cache', async () => {

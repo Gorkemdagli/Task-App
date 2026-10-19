@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
-import type { Task } from '@/hooks/tasks';
+import { usePrefetchTask, type Task } from '@/hooks/tasks';
 import { AssigneeAvatarStack } from './AssigneeAvatarStack';
 import { PendingStatusBadge } from './PendingStatusBadge';
 import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
@@ -48,6 +48,7 @@ export function TaskCard({
   onSelect,
 }: TaskCardProps) {
   const { t, i18n } = useTranslation();
+  const prefetchTask = usePrefetchTask(task.id);
   const isPending = task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
 
   // Pending varken sürükleme kilitli (admin override yoksa)
@@ -74,6 +75,9 @@ export function TaskCard({
   const handleRef = (node: HTMLElement | null) => {
     setNodeRef(node);
   };
+  const handlePrefetch = () => {
+    if (!disabled && !selected && !onSelect && !isDragging) prefetchTask();
+  };
 
   return (
     <div
@@ -97,6 +101,10 @@ export function TaskCard({
         to={`/tasks/${task.id}`}
         className="block p-3"
         draggable={false}
+        onPointerEnter={(event) => {
+          if (event.pointerType !== 'touch') handlePrefetch();
+        }}
+        onFocus={handlePrefetch}
         onClick={(e) => {
           if (isDragging || onSelect) e.preventDefault();
           if (onSelect && !isDragging) onSelect();

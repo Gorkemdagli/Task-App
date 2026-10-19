@@ -16,7 +16,10 @@ export const queryClient = new QueryClient({
         query.meta?.localTransientError === true &&
         isAxiosError(error) &&
         (!error.response || error.response.status >= 500);
-      if (query.state.data === undefined && !localTransientError) reportGlobalError(error);
+      const unobservedSpeculativePrefetch =
+        query.meta?.speculativeTaskDetailPrefetch === true && query.getObserversCount() === 0;
+      if (query.state.data === undefined && !localTransientError && !unobservedSpeculativePrefetch)
+        reportGlobalError(error);
     },
   }),
   defaultOptions: {

@@ -1,3 +1,4 @@
+import { QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { queryClient } from './react-query';
 import { clearGlobalError, getGlobalError } from './globalError';
@@ -53,5 +54,43 @@ describe('query cache local transient errors', () => {
     })).rejects.toBe(error);
 
     expect(getGlobalError()).toBe('generic');
+  });
+
+  it.each([401, 403, 404, 503])(
+    'keeps unobserved speculative task-detail error %s off the global path',
+    async (status) => {
+      const error = axiosError(status);
+      await expect(queryClient.prefetchQuery({
+        queryKey: ['tenant', 'tenant-a', 'task', 'task-1'],
+        queryFn: async () => { throw error; },
+        meta: { speculativeTaskDetailPrefetch: true },
+        retry: false,
+      })).resolves.toBeUndefined();
+
+      expect(getGlobalError()).toBeNull();
+    },
+  );
+
+  it.each([
+    [401, 'session-expired'],
+    [403, 'access-denied'],
+    [404, 'not-found'],
+  ] as const)('keeps mounted task-detail error %i on the global path', async (status, kind) => {
+    const error = axiosError(status);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['tenant', 'tenant-a', 'task', 'task-1'],
+      queryFn: async () => { throw error; },
+      meta: { speculativeTaskDetailPrefetch: true },
+      enabled: false,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    try {
+      await expect(observer.refetch({ throwOnError: true })).rejects.toBe(error);
+      expect(getGlobalError()).toBe(kind);
+    } finally {
+      unsubscribe();
+    }
   });
 });
