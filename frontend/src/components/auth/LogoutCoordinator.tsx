@@ -17,6 +17,7 @@ interface PendingLogout {
   generation: number;
   promise: Promise<void>;
   resolve: () => void;
+  originLocationKey: string;
   navigationRequested: boolean;
 }
 
@@ -48,7 +49,11 @@ export function LogoutCoordinatorProvider({ children }: { children: ReactNode })
 
     if (pendingLogout !== operation) return;
 
-    if (!operation.navigationRequested || location.pathname !== '/login') return;
+    if (
+      !operation.navigationRequested ||
+      location.pathname !== '/' ||
+      location.key === operation.originLocationKey
+    ) return;
 
     pendingLogoutRef.current = null;
     setPendingLogout(null);
@@ -56,7 +61,7 @@ export function LogoutCoordinatorProvider({ children }: { children: ReactNode })
     useAuthStore.getState().clearAuth();
     useTeamStore.getState().clearActiveTeam();
     operation.resolve();
-  }, [finishWithoutCleanup, location.pathname, pendingLogout, sessionGeneration]);
+  }, [finishWithoutCleanup, location.key, location.pathname, pendingLogout, sessionGeneration]);
 
   const logout = useCallback(() => {
     const generation = useAuthStore.getState().sessionGeneration;
@@ -72,6 +77,7 @@ export function LogoutCoordinatorProvider({ children }: { children: ReactNode })
       generation,
       promise,
       resolve: resolveOperation,
+      originLocationKey: location.key,
       navigationRequested: false,
     };
     pendingLogoutRef.current = operation;
@@ -94,11 +100,11 @@ export function LogoutCoordinatorProvider({ children }: { children: ReactNode })
 
       operation.navigationRequested = true;
       setPendingLogout(operation);
-      navigate('/login', { replace: true });
+      navigate('/', { replace: true });
     })();
 
     return promise;
-  }, [finishWithoutCleanup, navigate]);
+  }, [finishWithoutCleanup, location.key, navigate]);
 
   return <LogoutContext.Provider value={logout}>{children}</LogoutContext.Provider>;
 }

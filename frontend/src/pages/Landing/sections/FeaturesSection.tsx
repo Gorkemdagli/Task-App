@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
@@ -9,24 +9,27 @@ import {
   Send,
   Users,
 } from 'lucide-react';
-import { gsap } from 'gsap';
-import { useGSAP } from '@gsap/react';
-import { createFeatureMotion } from '../motion/createFeatureMotion';
 import { scrollToLandingSection } from '../landingScroll';
-
-gsap.registerPlugin(useGSAP);
 
 export function FeaturesSection() {
   const { t } = useTranslation();
   const scope = useRef<HTMLElement>(null);
 
-  useGSAP(
-    () => {
-      if (!scope.current) return;
-      return createFeatureMotion(scope.current);
-    },
-    { scope },
-  );
+  useEffect(() => {
+    let mounted = true;
+    let cleanup: (() => void) | undefined;
+
+    void import('../motion/createFeatureMotion')
+      .then(({ createFeatureMotion }) => {
+        if (mounted && scope.current) cleanup = createFeatureMotion(scope.current);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, []);
 
   return (
     <section

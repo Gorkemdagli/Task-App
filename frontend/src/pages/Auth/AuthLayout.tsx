@@ -30,7 +30,9 @@ export function AuthLayout() {
                   {t('auth.brand.footer')}
                 </p>
                 <p className="mt-1 text-xl font-bold leading-none tracking-tight text-foreground">
-                  <Link to="/">TaskFlow</Link>
+                  <Link to="/">
+                    Task<span className="text-primary">Flow</span>
+                  </Link>
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

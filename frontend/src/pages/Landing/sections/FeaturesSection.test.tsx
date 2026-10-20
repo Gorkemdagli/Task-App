@@ -1,7 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeaturesSection } from './FeaturesSection';
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 describe('FeaturesSection', () => {
   function renderFeatures() {
@@ -27,7 +35,50 @@ describe('FeaturesSection', () => {
   });
 
   afterEach(() => {
+    vi.doUnmock('../motion/createFeatureMotion');
+    vi.resetModules();
     vi.unstubAllGlobals();
+  });
+
+  it('cleans up an initialized motion controller on unmount', async () => {
+    const cleanup = vi.fn();
+    const createFeatureMotion = vi.fn(() => cleanup);
+    vi.doMock('../motion/createFeatureMotion', () => ({ createFeatureMotion }));
+
+    const section = renderFeatures();
+    await waitFor(() => expect(createFeatureMotion).toHaveBeenCalledTimes(1));
+    section.unmount();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps static content usable when its motion module fails to load', async () => {
+    const loadMotion = vi.fn(() => {
+      throw new Error('motion unavailable');
+    });
+    vi.doMock('../motion/createFeatureMotion', loadMotion);
+
+    renderFeatures();
+
+    await waitFor(() => expect(loadMotion).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('context-tether')).toBeVisible();
+  });
+
+  it('ignores a late motion load after unmount', async () => {
+    const deferred = createDeferred<{ createFeatureMotion: ReturnType<typeof vi.fn> }>();
+    const createFeatureMotion = vi.fn(() => vi.fn());
+    const loadMotion = vi.fn(async () => await deferred.promise);
+    vi.doMock('../motion/createFeatureMotion', loadMotion);
+
+    const first = renderFeatures();
+    await waitFor(() => expect(loadMotion).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    await act(async () => {
+      deferred.resolve({ createFeatureMotion });
+      await deferred.promise;
+      await Promise.resolve();
+    });
+    expect(createFeatureMotion).not.toHaveBeenCalled();
   });
 
   it('builds the central task context composition from design1', () => {

@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { performance } from 'node:perf_hooks';
+import { channel } from 'node:diagnostics_channel';
 import type { TransactionPhase, TransactionPhaseRecorder } from '../db/withTenant';
 
 // Spans aggregate attempts and nest in broad totals; open includes setup/BEGIN,
@@ -18,6 +19,9 @@ export type RequestTimingStage =
   | 'company_dashboard_teams_query_elapsed_ms'
   | 'company_dashboard_cumulative_flow_query_elapsed_ms'
   | 'company_dashboard_cumulative_flow_compute_elapsed_ms'
+  // Prisma/driver elapsed time; findMany includes relation loading. Both run concurrently, so do not sum them.
+  | 'task_list_find_many_elapsed_ms'
+  | 'task_list_count_elapsed_ms'
   | `auth_${TransactionPhase}`
   | `handler_${TransactionPhase}`;
 
@@ -48,6 +52,7 @@ declare global {
 
 const timedRoutes = new Set([
   'POST /api/v1/auth/login',
+  'POST /api/v1/auth/refresh',
   'GET /api/v1/users/me',
   'GET /api/v1/teams',
   'GET /api/v1/tasks',
@@ -56,6 +61,15 @@ const timedRoutes = new Set([
   'GET /api/v1/company/invitations',
   'GET /api/v1/users/me/company-invitations',
 ]);
+const requestTimingChannel = channel('taskflow.request-timing');
+
+function canonicalTimedRoute(method: string, path: string): string | undefined {
+  if (timedRoutes.has(`${method} ${path}`)) return path;
+  if (method === 'GET' && /^\/api\/v1\/teams\/[^/]+\/dashboard$/.test(path)) {
+    return '/api/v1/teams/:teamId/dashboard';
+  }
+  return undefined;
+}
 
 export function createRequestTiming(): RequestTimingRecorder {
   const durations: Partial<Record<RequestTimingStage, number>> = {};
@@ -105,8 +119,9 @@ export function createRequestTimingMiddleware(
 ): RequestHandler {
   if (!enabled) return (_req, _res, next) => next();
 
-  return (req: Request, _res, next) => {
-    if (timedRoutes.has(`${req.method} ${req.path}`)) {
+  return (req: Request, res, next) => {
+    const route = canonicalTimedRoute(req.method, req.path);
+    if (route) {
       const timing = createRequestTiming();
       try {
         timing.processPoolStart = getPoolSnapshot?.();
@@ -114,6 +129,16 @@ export function createRequestTimingMiddleware(
         // Pool telemetry must not alter request behavior.
       }
       req.requestTiming = timing;
+      if (requestTimingChannel.hasSubscribers) {
+        res.once('finish', () => {
+          requestTimingChannel.publish({
+            method: req.method,
+            route,
+            finished: true,
+            stages: timing.snapshot(),
+          });
+        });
+      }
     }
     next();
   };

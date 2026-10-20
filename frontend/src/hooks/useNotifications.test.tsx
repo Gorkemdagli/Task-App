@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { ReactNode } from 'react';
+import { focusManager } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import {
@@ -47,7 +48,11 @@ describe('useNotifications', () => {
     });
   });
 
-  afterEach(() => getSpy.mockRestore());
+  afterEach(() => {
+    getSpy.mockRestore();
+    focusManager.setFocused(undefined);
+    vi.useRealTimers();
+  });
 
   it('fetches first page with limit=10', async () => {
     getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
@@ -87,16 +92,81 @@ describe('useNotifications', () => {
     expect(options.refetchInterval).toBe(30_000);
     expect(options.refetchIntervalInBackground).toBe(false);
   });
+
+  it('reuses fresh data on focus and remount, then refetches when stale', async () => {
+    vi.useFakeTimers();
+    getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0, gcTime: 60_000 } } });
+    const first = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    first.unmount();
+    const remounted = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(2);
+
+    remounted.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const returned = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(3);
+    returned.unmount();
+  });
+
+  it('counts the scheduled poll at 30 seconds', async () => {
+    vi.useFakeTimers();
+    getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const { result } = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.isSuccess).toBe(true);
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(getSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('notification mutations', () => {
   let patchSpy: MockInstance;
+  let getSpy: MockInstance;
 
   beforeEach(() => {
     patchSpy = vi.spyOn(api, 'patch');
+    getSpy = vi.spyOn(api, 'get');
   });
 
-  afterEach(() => patchSpy.mockRestore());
+  afterEach(() => {
+    patchSpy.mockRestore();
+    getSpy.mockRestore();
+    vi.useRealTimers();
+  });
 
   function seed(qc: QueryClient) {
     const data: InfiniteData<NotificationsPageData, string | null> = {
@@ -176,5 +246,43 @@ describe('notification mutations', () => {
     expect(data.pages.every((p) => p.unreadCount === 0)).toBe(true);
     expect(data.pages.every((p) => p.items.every((item) => item.readAt !== null))).toBe(true);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: NOTIFICATIONS_KEY });
+  });
+
+  it('counts the active-query GET caused by mark-all-read invalidation', async () => {
+    vi.useFakeTimers();
+    getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
+    patchSpy.mockResolvedValue({ data: null } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const { result: notifications } = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    const { result: mutation } = renderHook(() => useMarkAllRead(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(notifications.current.isSuccess).toBe(true);
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+    mutation.current.mutate();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(mutation.current.isSuccess).toBe(true);
+    expect(getSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts the active-query GET caused by single-read invalidation while fresh', async () => {
+    vi.useFakeTimers();
+    getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
+    patchSpy.mockResolvedValue({ data: null } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const { result: notifications } = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    const { result: mutation } = renderHook(() => useMarkNotificationRead(), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(notifications.current.isSuccess).toBe(true);
+    seed(qc);
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+    mutation.current.mutate('n1');
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
+    expect(mutation.current.isSuccess).toBe(true);
+    expect(getSpy).toHaveBeenCalledTimes(2);
   });
 });

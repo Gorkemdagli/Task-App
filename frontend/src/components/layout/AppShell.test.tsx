@@ -56,7 +56,8 @@ describe('AppShell', () => {
   it('renders Topbar + Sidebar + main with children', () => {
     useAuthStore.setState({ accessToken: 't', user: baseUser });
     renderWithRouter();
-    expect(screen.getByText('TaskFlow')).toBeInTheDocument(); // logo
+    expect(screen.getByText('Task', { exact: true })).toBeInTheDocument();
+    expect(screen.getByText('Flow', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('Acme A.Ş.')).toBeInTheDocument(); // sidebar tenant header
     expect(screen.getByTestId('child')).toHaveTextContent('içerik');
   });

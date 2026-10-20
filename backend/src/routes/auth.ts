@@ -47,7 +47,7 @@ authRouter.post('/refresh', refreshLimiter, async (req, res, next) => {
       res.status(204).end();
       return;
     }
-    const r = await authService.refresh(cookie);
+    const r = await authService.refresh(cookie, req.requestTiming);
     setRefreshCookie(res, r.refreshToken, r.refreshExpiresAt * 1000 - Date.now());
     res.json({ user: r.user, accessToken: r.accessToken });
   } catch (e) {

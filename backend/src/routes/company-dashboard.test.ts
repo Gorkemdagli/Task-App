@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
@@ -74,6 +75,8 @@ async function createTask(input: {
   deadline?: Date;
   archivedAt?: Date;
   pendingStatus?: 'todo' | 'in_progress' | 'done';
+  createdAt?: Date;
+  completedAt?: Date;
 }) {
   return prisma.task.create({
     data: {
@@ -85,6 +88,8 @@ async function createTask(input: {
       ...(input.deadline ? { deadline: input.deadline } : {}),
       ...(input.archivedAt ? { archivedAt: input.archivedAt } : {}),
       ...(input.pendingStatus ? { pendingStatus: input.pendingStatus } : {}),
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      ...(input.completedAt ? { completedAt: input.completedAt } : {}),
       assignees: {
         create: input.assigneeIds.map((userId) => ({ userId })),
       },
@@ -381,6 +386,155 @@ describe('company dashboard routes', () => {
     expect(teamScope.body.summary.totalTaskCount).toBe(7);
     expect(teamScope.body.summary.totalUserCount).toBe(4);
     expect(teamScope.body.teams).toEqual([]);
+  });
+
+  it('counts assignee-joined metrics once per task and excludes a matching foreign-tenant task', async () => {
+    const admin = await register({
+      fullName: 'Aggregate Admin A',
+      email: 'dashboard-aggregate-a@company.test',
+      password: PASSWORD,
+      companyName: 'Aggregate Company A',
+    });
+    const tenantId = admin.user.tenantId!;
+    const memberA = await createDirectMember('Aggregate Member A', 901, tenantId);
+    const memberB = await createDirectMember('Aggregate Member B', 902, tenantId);
+    const team = await prisma.team.create({ data: { tenantId, name: 'Aggregate Team A' } });
+    const foreignAdmin = await register({
+      fullName: 'Aggregate Admin B',
+      email: 'dashboard-aggregate-b@company.test',
+      password: PASSWORD,
+      companyName: 'Aggregate Company B',
+    });
+    const foreignTeam = await prisma.team.create({
+      data: { tenantId: foreignAdmin.user.tenantId!, name: 'Aggregate Team B' },
+    });
+    const createdAt = new Date('2026-08-20T04:00:00+04:00');
+
+    await createTask({
+      teamId: team.id,
+      title: 'One task, two assignees',
+      assignerId: admin.user.id,
+      assigneeIds: [memberA.id, memberB.id],
+      status: 'todo',
+      priority: 'medium',
+      createdAt,
+    });
+    await createTask({
+      teamId: foreignTeam.id,
+      title: 'Matching task in another tenant',
+      assignerId: foreignAdmin.user.id,
+      assigneeIds: [foreignAdmin.user.id],
+      status: 'todo',
+      priority: 'medium',
+      createdAt,
+    });
+
+    const now = new Date('2026-08-20T12:00:00.000Z');
+    const dashboard = await withTenantContext(admin.user.id, tenantId, (db) =>
+      getCompanyDashboard(db, admin.user as Actor, { range: '7d' }, now),
+    );
+
+    expect(dashboard.summary.totalTaskCount).toBe(1);
+    expect(dashboard.createdInPeriod.current).toBe(1);
+    expect(
+      dashboard.createdVsCompleted
+        .filter((point) => point.created > 0)
+        .map(({ period, created }) => [period, created]),
+    ).toEqual([['2026-08-20', 1]]);
+    expect(
+      dashboard.members.items.find((member) => member.userId === memberA.id)?.assignedTaskCount,
+    ).toBe(1);
+    expect(
+      dashboard.members.items.find((member) => member.userId === memberB.id)?.assignedTaskCount,
+    ).toBe(1);
+  });
+
+  it('uses half-open UTC aggregate windows and labels buckets by UTC date', async () => {
+    const admin = await register({
+      fullName: 'UTC Boundary Admin',
+      email: 'dashboard-utc-boundary@company.test',
+      password: PASSWORD,
+      companyName: 'UTC Boundary Company',
+    });
+    const tenantId = admin.user.tenantId!;
+    const team = await prisma.team.create({ data: { tenantId, name: 'UTC Boundary Team' } });
+    const dates = [
+      ['Before start', new Date('2026-08-13T23:59:59.999Z')],
+      ['At start', new Date('2026-08-14T00:00:00.000Z')],
+      ['Offset equivalent', new Date('2026-08-21T00:30:00+03:00')],
+      ['Last included instant', new Date('2026-08-20T23:59:59.999Z')],
+      ['At exclusive end', new Date('2026-08-21T00:00:00.000Z')],
+    ] as const;
+
+    for (const [title, at] of dates) {
+      await createTask({
+        teamId: team.id,
+        title,
+        assignerId: admin.user.id,
+        assigneeIds: [],
+        status: 'done',
+        priority: 'low',
+        createdAt: at,
+        completedAt: at,
+      });
+    }
+
+    const now = new Date('2026-08-20T12:00:00.000Z');
+    const dashboard = await withTenantContext(admin.user.id, tenantId, (db) =>
+      getCompanyDashboard(db, admin.user as Actor, { range: '7d' }, now),
+    );
+
+    expect(dashboard.period).toEqual({ range: '7d', start: '2026-08-14', end: '2026-08-21' });
+    expect(dashboard.createdInPeriod).toMatchObject({ current: 3, previous: 1 });
+    expect(dashboard.completedInPeriod).toMatchObject({ current: 3, previous: 1 });
+    expect(
+      dashboard.createdVsCompleted
+        .filter((point) => point.created > 0 || point.completed > 0)
+        .map(({ period, created, completed }) => [period, created, completed]),
+    ).toEqual([
+      ['2026-08-14', 1, 1],
+      ['2026-08-20', 2, 2],
+    ]);
+  });
+
+  it('keeps tenant reads on one repeatable-read snapshot during a concurrent commit', async () => {
+    const admin = await register({
+      fullName: 'Snapshot Admin',
+      email: 'dashboard-snapshot@company.test',
+      password: PASSWORD,
+      companyName: 'Snapshot Company',
+    });
+    const tenantId = admin.user.tenantId!;
+    const team = await prisma.team.create({ data: { tenantId, name: 'Snapshot Team' } });
+    const taskInput = {
+      teamId: team.id,
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo' as const,
+      priority: 'low' as const,
+    };
+    await createTask({ ...taskInput, title: 'Before transaction' });
+
+    const counts = await withTenantContext(
+      admin.user.id,
+      tenantId,
+      async (db) => {
+        const beforeConcurrentCommit = await db.task.count({ where: { teamId: team.id } });
+        await createTask({ ...taskInput, title: 'Concurrent committed task' });
+        const withinTransactionAfterCommit = await db.task.count({ where: { teamId: team.id } });
+        return [beforeConcurrentCommit, withinTransactionAfterCommit];
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const afterTransaction = await withTenantContext(
+      admin.user.id,
+      tenantId,
+      (db) => db.task.count({ where: { teamId: team.id } }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    expect(counts).toEqual([1, 1]);
+    expect(afterTransaction).toBe(2);
   });
 
   it('keeps the response contract stable for a tenant without tasks', async () => {

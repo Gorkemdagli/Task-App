@@ -57,7 +57,7 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
           aria-current={activeSection === 'hero' ? 'location' : undefined}
           onClick={(event) => scrollToLandingSection(event, '#hero')}
         >
-          TaskFlow
+          <span className="text-landing-text">Task</span><span className="text-primary">Flow</span>
         </a>
 
         <nav className="landing-nav__links" aria-label={t('landing.nav.sections')}>
@@ -120,7 +120,9 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
             </button>
           </SheetTrigger>
           <SheetContent side="right" className="theme-landing landing-mobile-sheet">
-            <SheetTitle className="text-landing-text">TaskFlow</SheetTitle>
+            <SheetTitle className="text-landing-text">
+              Task<span className="text-primary">Flow</span>
+            </SheetTitle>
 
             <nav className="landing-mobile-links" aria-label={t('landing.nav.mobileSections')}>
               {sectionLinks.map((link) => (

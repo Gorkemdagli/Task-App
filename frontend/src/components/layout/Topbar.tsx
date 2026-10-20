@@ -127,7 +127,7 @@ function TopbarContent() {
           to="/dashboard"
           className="text-xl font-bold tracking-tight text-primary hover:opacity-90"
         >
-          TaskFlow
+          <span className="text-foreground">Task</span><span className="text-primary">Flow</span>
         </Link>
 
         <nav className="hidden items-center md:flex" aria-label={t('Birincil gezinme')}>

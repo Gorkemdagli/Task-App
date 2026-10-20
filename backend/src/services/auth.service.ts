@@ -224,25 +224,30 @@ export async function login(
   return { ...result, user: loginUser };
 }
 
-export async function refresh(refreshToken: string): Promise<AuthResult> {
+export async function refresh(
+  refreshToken: string,
+  timing?: RequestTimingRecorder,
+): Promise<AuthResult> {
   let p;
   try {
     p = verifyRefreshToken(refreshToken);
   } catch {
     throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
   }
-  if (await isTokenBlacklisted(p.jti))
+  if (await measureRequestStage(timing, 'session_redis_ms', () => isTokenBlacklisted(p.jti)))
     throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
-  const session = await getRefreshSession(p.jti);
+  const session = await measureRequestStage(timing, 'session_redis_ms', () => getRefreshSession(p.jti));
   if (!session) throw new AppError(401, 'Oturum sonlandırılmış', 'TOKEN_REVOKED');
   const { userId, sessionExpiresAt } = session;
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (sessionExpiresAt <= nowSeconds) {
     throw new AppError(401, 'Oturum süresi doldu', 'SESSION_EXPIRED');
   }
-  const user = await findUserById(userId);
+  const user = await measureRequestStage(timing, 'auth_db_ms', () => findUserById(userId));
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
-  const tenantName = await findTenantName(user.id, user.tenantId);
+  const tenantName = await measureRequestStage(timing, 'auth_db_ms', () =>
+    findTenantName(user.id, user.tenantId),
+  );
   const accessToken = signAccessToken(user.id, user.tenantId);
   const refreshLifetimeSeconds = Math.min(
     REFRESH_TOKEN_IDLE_TTL_SECONDS,
@@ -250,12 +255,14 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
   );
   const newRefreshToken = signRefreshToken(user.id, user.tenantId, refreshLifetimeSeconds);
   const refreshExpiresAt = verifyRefreshToken(newRefreshToken).exp;
-  const rotated = await rotateSessionTokens(
-    p.jti,
-    session,
-    Math.min(p.exp, sessionExpiresAt) - nowSeconds,
-    accessToken,
-    newRefreshToken,
+  const rotated = await measureRequestStage(timing, 'session_redis_ms', () =>
+    rotateSessionTokens(
+      p.jti,
+      session,
+      Math.min(p.exp, sessionExpiresAt) - nowSeconds,
+      accessToken,
+      newRefreshToken,
+    ),
   );
   if (!rotated) throw new AppError(401, 'Oturum sonlandÄ±rÄ±lmÄ±Å¸', 'TOKEN_REVOKED');
   return {

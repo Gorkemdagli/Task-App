@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { register, login, refresh, logout, isTokenBlacklisted } from './auth.service';
 import { verifyAccessToken, verifyRefreshToken } from '../lib/jwt';
+import { createRequestTiming } from '../http/requestTiming';
 
 async function cleanDb() {
   // child tables that Restrict-delete from user must go first
@@ -136,9 +137,14 @@ describe('refresh', () => {
   it('rotates and blacklists old jti', async () => {
     const reg = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });
     const oldJti = JSON.parse(Buffer.from(reg.refreshToken.split('.')[1], 'base64').toString()).jti;
-    const r = await refresh(reg.refreshToken);
+    const timing = createRequestTiming();
+    const r = await refresh(reg.refreshToken, timing);
     expect(r.accessToken).toBeDefined();
     expect(await isTokenBlacklisted(oldJti)).toBe(true);
+    expect(timing.snapshot()).toMatchObject({
+      auth_db_ms: expect.any(Number),
+      session_redis_ms: expect.any(Number),
+    });
   });
   it('401 on already-rotated', async () => {
     const reg = await register({ fullName: 'A', email: 'a@x.com', password: 'hunter22' });

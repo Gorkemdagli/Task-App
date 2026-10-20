@@ -29,6 +29,72 @@ function row(
 }
 
 describe('cumulative flow reconstruction', () => {
+  it('matches the previous daily reconstruction across lifecycle and event boundaries', () => {
+    const rows = [
+      row('pre-period', '2026-08-10T00:00:00.000Z', { status: 'in_progress' }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        status: 'done',
+        event_id: 'before-range',
+        event_created_at: new Date('2026-08-17T12:00:00.000Z'),
+        event_type: 'status_changed',
+        event_to_status: 'in_progress',
+      }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        event_id: 'same-day-a',
+        event_created_at: new Date('2026-08-18T04:00:00.000Z'),
+        event_type: 'status_changed',
+        event_to_status: 'done',
+      }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        event_id: 'same-day-b',
+        event_created_at: new Date('2026-08-18T04:00:00.000Z'),
+        event_type: 'task_reopened',
+        event_to_status: 'todo',
+      }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        event_id: 'later-transition',
+        event_created_at: new Date('2026-08-18T18:00:00.000Z'),
+        event_type: 'status_changed',
+        event_to_status: 'in_progress',
+      }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        event_id: 'pending',
+        event_created_at: new Date('2026-08-19T02:00:00.000Z'),
+        event_type: 'task_blocked',
+        event_to_status: 'done',
+      }),
+      row('transitions', '2026-08-01T00:00:00.000Z', {
+        event_id: 'reopen',
+        event_created_at: new Date('2026-08-19T12:00:00.000Z'),
+        event_type: 'task_reopened',
+        event_to_status: 'done',
+      }),
+      row('created-at-boundary', '2026-08-19T00:00:00.000Z'),
+      row('archived-at-boundary', '2026-08-17T00:00:00.000Z', {
+        archived_at: new Date('2026-08-20T00:00:00.000Z'),
+      }),
+      row('created-and-archived', '2026-08-19T00:00:00.000Z', {
+        archived_at: new Date('2026-08-19T00:00:00.000Z'),
+      }),
+      row('archived-before-creation', '2026-08-20T00:00:00.000Z', {
+        archived_at: new Date('2026-08-18T00:00:00.000Z'),
+      }),
+    ];
+
+    const result = deriveCumulativeFlow(
+      rows,
+      periodStart,
+      periodEnd,
+      new Date('2026-08-20T12:00:00.000Z'),
+    );
+
+    expect(result.samples).toEqual([
+      { date: '2026-08-18', todo: 2, inProgress: 1, done: 0 },
+      { date: '2026-08-19', todo: 2, inProgress: 0, done: 1 },
+      { date: '2026-08-20', todo: 2, inProgress: 0, done: 1 },
+    ]);
+  });
+
   it('reconstructs daily states in event/id order and ignores pending proposals', () => {
     const result = deriveCumulativeFlow(
       [

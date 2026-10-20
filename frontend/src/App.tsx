@@ -13,6 +13,7 @@ import {
   setGlobalError,
   subscribeGlobalError,
 } from './lib/globalError';
+import { LandingPage } from './pages/Landing/LandingPage';
 
 const AuthLayout = lazy(() =>
   import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
@@ -22,9 +23,6 @@ const ProtectedRoute = lazy(() =>
 );
 const GlobalErrorPage = lazy(() =>
   import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
-);
-const LandingPage = lazy(() =>
-  import('./pages/Landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
 const LoginPage = lazy(() =>
   import('./pages/Auth/LoginPage').then((module) => ({ default: module.LoginPage })),
@@ -97,7 +95,10 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
           if (useAuthStore.getState().accessToken) setGlobalError(kind);
           queryClient.clear();
           clearAuth();
-        } else {
+        } else if (
+          useAuthStore.getState().accessToken ||
+          !['/', '/login', '/register'].includes(window.location.pathname)
+        ) {
           setGlobalError(kind, () => {
             clearGlobalError();
             setBootstrapped(false);

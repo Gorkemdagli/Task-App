@@ -256,7 +256,7 @@ describe('Topbar', () => {
     await user.click(screen.getByText('Oturumu Kapat'));
 
     await waitFor(() => expect(postSpy).toHaveBeenCalledWith('/logout'));
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'));
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/'));
     await act(async () => {
       await Promise.resolve();
     });
@@ -294,7 +294,7 @@ describe('Topbar', () => {
       if (outcome === 'resolves') resolveLogout({ data: null });
       else rejectLogout(new Error('session already expired'));
 
-      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'));
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/'));
       await waitFor(() => expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null }));
       await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBeNull());
       await waitFor(() => expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined());

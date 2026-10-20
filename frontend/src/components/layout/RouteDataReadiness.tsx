@@ -87,7 +87,9 @@ export function RouteDataReadinessProvider({ children }: { children: ReactNode }
 
   const value = useMemo<RouteDataReadiness>(() => ({
     phase,
-    teamsEnabled: mode === 'open' || mode === 'team-dashboard' || index >= 1,
+    teamsEnabled:
+      mode === 'open' || mode === 'team-dashboard' || mode === 'company-dashboard' ||
+      mode === 'company-page' || index >= 1,
     tasksEnabled:
       mode === 'open' || mode === 'company-dashboard' || (mode === 'team-dashboard' && index >= 2),
     badgesEnabled:
