@@ -1,5 +1,5 @@
-import { createContext, lazy, Suspense, useContext, useEffect, useState, useSyncExternalStore } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
@@ -68,16 +68,30 @@ const AuthBootstrapContext = createContext(false);
 
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  useLayoutEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const sessionGeneration = useAuthStore((s) => s.sessionGeneration);
+  const [initialSessionGeneration] = useState(() => useAuthStore.getState().sessionGeneration);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    const generation = useAuthStore.getState().sessionGeneration;
+    const isCurrent = () =>
+      active && useAuthStore.getState().sessionGeneration === generation;
+
     (async () => {
       try {
         const response = await authApi.post('/refresh', null);
+        if (!isCurrent()) return;
 
         if (response.status === 204) {
           clearAuth();
@@ -87,9 +101,14 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         const data = response.data as { accessToken: string };
         setAccessToken(data.accessToken);
         const canonicalUser = await getMe();
+        if (!isCurrent()) return;
         queryClient.setQueryData(queryKeys.profile(canonicalUser.id), canonicalUser);
         setUser(canonicalUser);
+        if (['/login', '/register'].includes(window.location.pathname)) {
+          navigateRef.current('/dashboard', { replace: true });
+        }
       } catch (error) {
+        if (!isCurrent()) return;
         const kind = classifyGlobalError(error);
         if (kind === 'session-expired') {
           if (useAuthStore.getState().accessToken) setGlobalError(kind);
@@ -106,12 +125,22 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
           });
         }
       } finally {
-        setBootstrapped(true);
+        if (active) setBootstrapped(true);
       }
     })();
+    return () => {
+      active = false;
+    };
   }, [bootstrapAttempt, clearAuth, setAccessToken, setUser]);
 
-  if (!bootstrapped && pathname !== "/") return <RouteFallback />;
+  const loginEstablishedDuringBootstrap =
+    Boolean(accessToken) && sessionGeneration !== initialSessionGeneration;
+  if (
+    !bootstrapped &&
+    pathname !== '/' &&
+    pathname !== '/login' &&
+    !loginEstablishedDuringBootstrap
+  ) return <RouteFallback />;
   return <AuthBootstrapContext.Provider value={bootstrapped}>{children}</AuthBootstrapContext.Provider>;
 }
 

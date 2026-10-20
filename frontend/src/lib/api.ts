@@ -17,13 +17,56 @@ export type LoginResponse = {
 export const authApi: AxiosInstance = axios.create({
   baseURL: `${API_PREFIX}/auth`,
   withCredentials: true,
+  timeout: 10_000,
 });
 
+type AuthRequestConfig = InternalAxiosRequestConfig & {
+  _authSessionGeneration?: number;
+  _logoutBearer?: string | null;
+};
+
 authApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = useAuthStore.getState().accessToken;
-  if (token && config.url === '/logout') config.headers.set('Authorization', `Bearer ${token}`);
+  const request = config as AuthRequestConfig;
+  const session = useAuthStore.getState();
+  if (
+    ['/refresh', '/logout'].includes(config.url ?? '') &&
+    request._authSessionGeneration !== undefined &&
+    request._authSessionGeneration !== session.sessionGeneration
+  ) {
+    throw new CancelledError({ silent: true });
+  }
+  if (config.url === '/logout') {
+    if (request._logoutBearer) config.headers.set('Authorization', `Bearer ${request._logoutBearer}`);
+    else config.headers.delete('Authorization');
+  }
   return config;
 });
+
+const authPost = authApi.post.bind(authApi);
+const serializedAuthPosts = new Set(['/refresh', '/login', '/register', '/logout']);
+let authPostQueue: Promise<void> = Promise.resolve();
+
+authApi.post = ((url, data, config) => {
+  if (!serializedAuthPosts.has(url)) return authPost(url, data, config);
+
+  const { accessToken, sessionGeneration } = useAuthStore.getState();
+  const request = authPostQueue.then(() => {
+    if (
+      ['/refresh', '/logout'].includes(url) &&
+      useAuthStore.getState().sessionGeneration !== sessionGeneration
+    ) {
+      throw new CancelledError({ silent: true });
+    }
+    const requestConfig = {
+      ...config,
+      _authSessionGeneration: sessionGeneration,
+      ...(url === '/logout' ? { _logoutBearer: accessToken } : {}),
+    } as Parameters<typeof authPost>[2];
+    return authPost(url, data, requestConfig);
+  });
+  authPostQueue = request.then(() => undefined, () => undefined);
+  return request;
+}) as AxiosInstance['post'];
 
 export const api: AxiosInstance = axios.create({
   baseURL: directApiBaseURL,

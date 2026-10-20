@@ -217,7 +217,7 @@ describe('Topbar', () => {
     expect(languageButton.querySelector('img')).toHaveAttribute('src', expect.stringContaining('tr.png'));
     await user.click(languageButton);
 
-    expect(screen.getByRole('button', { name: 'Switch language to Turkish' }).querySelector('img'))
+    expect((await screen.findByRole('button', { name: 'Switch language to Turkish' })).querySelector('img'))
       .toHaveAttribute('src', expect.stringContaining('us.png'));
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeInTheDocument();

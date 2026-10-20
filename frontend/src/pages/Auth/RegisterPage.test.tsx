@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { RegisterPage } from './RegisterPage';
 import i18n from '../../i18n';
+import { useAuthStore } from '../../stores/authStore';
 
 vi.mock('../../lib/api', () => ({ authApi: { post: vi.fn() } }));
 import { authApi } from '../../lib/api';
@@ -73,8 +74,17 @@ describe('RegisterPage', () => {
     expect(screen.getByText('Orta')).toBeInTheDocument();
   });
   it('form-top on 409', async () => {
-    vi.mocked(authApi.post).mockRejectedValueOnce({
-      response: { status: 409, data: { message: 'Bu e-posta zaten kullanılıyor' } },
+    useAuthStore.getState().establishSession('old-token', {
+      id: 'old-user', displayId: 'OLD1', email: 'old@example.com', fullName: 'Old',
+      role: 'member', tenantId: 'old-tenant',
+    });
+    const generationBeforeSubmit = useAuthStore.getState().sessionGeneration;
+    vi.mocked(authApi.post).mockImplementationOnce(() => {
+      expect(useAuthStore.getState().accessToken).toBeNull();
+      expect(useAuthStore.getState().sessionGeneration).toBe(generationBeforeSubmit + 1);
+      return Promise.reject({
+        response: { status: 409, data: { message: 'Bu e-posta zaten kullanılıyor' } },
+      });
     });
     const u = userEvent.setup();
     render(
@@ -87,6 +97,8 @@ describe('RegisterPage', () => {
     await u.type(screen.getByLabelText('Şifre'), 'medium123');
     await u.click(screen.getByRole('button', { name: /hesap oluştur/i }));
     expect(await screen.findByText(/bu e-posta zaten kullanılıyor/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/e-posta/i)).toBeInTheDocument();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
   it('link to /login', () => {
     render(

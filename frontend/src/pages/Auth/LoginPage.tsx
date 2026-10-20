@@ -20,6 +20,7 @@ export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const establishSession = useAuthStore((s) => s.establishSession);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const clearActiveTeam = useTeamStore((s) => s.clearActiveTeam);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +34,7 @@ export function LoginPage() {
     setFormError(null);
     void preloadDashboardRoute();
     try {
+      clearAuth();
       const res = await authApi.post<LoginResponse>('/login', data);
       queryClient.clear();
       establishSession(res.data.accessToken, res.data.user);
