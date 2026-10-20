@@ -152,7 +152,7 @@ describe('route data readiness', () => {
     expect(get).not.toHaveBeenCalledWith('/tasks');
   });
 
-  it('starts CompanyAdmin all-team tasks before teams and waits to start badges until teams finish', async () => {
+  it('starts CompanyAdmin all-team tasks and teams together, then waits for both before badges', async () => {
     const teams = deferred<teamsService.Team[]>();
     const tasks = deferred<{ data: { tasks: []; total: number } }>();
     const teamList = vi.spyOn(teamsService, 'listTeams').mockReturnValue(teams.promise);
@@ -167,11 +167,11 @@ describe('route data readiness', () => {
     renderWithReadiness('/dashboard', { ...member, role: 'companyAdmin' });
 
     await waitFor(() => expect(urls).toEqual(['/tasks']));
-    expect(teamList).not.toHaveBeenCalled();
+    await waitFor(() => expect(teamList).toHaveBeenCalledTimes(1));
     expect(incoming).not.toHaveBeenCalled();
 
     await act(async () => tasks.resolve({ data: { tasks: [], total: 0 } }));
-    await waitFor(() => expect(teamList).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('teams'));
     expect(incoming).not.toHaveBeenCalled();
 
     await act(async () => teams.resolve([{ id: 'team-a', name: 'Alpha' }] as teamsService.Team[]));
@@ -179,7 +179,7 @@ describe('route data readiness', () => {
     expect(urls).toEqual(['/tasks', '/notifications?limit=10']);
   });
 
-  it('waits for the company summary before teams, and prevents a stale completion from a previous tenant', async () => {
+  it('starts company teams with the summary and waits for both before badges', async () => {
     const summary = deferred<{ ready: true }>();
     const teams = deferred<teamsService.Team[]>();
     const teamList = vi.spyOn(teamsService, 'listTeams').mockReturnValue(teams.promise);
@@ -189,9 +189,10 @@ describe('route data readiness', () => {
     } as never);
     renderWithReadiness('/company', { ...member, role: 'companyAdmin' }, <CompanyQueries summary={summary.promise} />);
 
-    expect(teamList).not.toHaveBeenCalled();
-    await act(async () => summary.resolve({ ready: true }));
     await waitFor(() => expect(teamList).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('phase')).toHaveTextContent('summary');
+    await act(async () => summary.resolve({ ready: true }));
+    await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('teams'));
     await act(async () => teams.resolve([{ id: 'team-a', name: 'Alpha' }] as teamsService.Team[]));
     await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('badges'));
   });

@@ -46,7 +46,8 @@ function renderPage() {
         <LogoutCoordinatorProvider>
           <Routes>
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/login" element={<p>Giriş</p>} />
+            <Route path="/login" element={<p data-testid="public-login">Sign in</p>} />
+            <Route path="/" element={<p data-testid="public-landing">Public landing</p>} />
           </Routes>
         </LogoutCoordinatorProvider>
       </MemoryRouter>
@@ -66,7 +67,7 @@ function renderProtectedPage() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/protected-other" element={<p>Other protected page</p>} />
             </Route>
-            <Route path="/login" element={<p>Giriş</p>} />
+            <Route path="/" element={<p data-testid="public-landing">Public landing</p>} />
           </Routes>
           <ProfileTestNavigation />
           <ProfileTestLocation />
@@ -174,7 +175,7 @@ describe('ProfilePage', () => {
     fireEvent.change(screen.getByLabelText('Yeni şifre onayı'), { target: { value: 'new-hunter22' } });
     fireEvent.click(screen.getByRole('button', { name: 'Şifreyi güncelle' }));
 
-    await waitFor(() => expect(screen.getByText('Giriş')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('public-login')).toBeInTheDocument());
     expect(mutateAsync).toHaveBeenCalledWith({
       currentPassword: 'hunter22',
       newPassword: 'new-hunter22',
@@ -190,7 +191,7 @@ describe('ProfilePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }));
 
-    await waitFor(() => expect(screen.getByText('Giriş')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('public-landing')).toBeInTheDocument());
     await waitFor(() => expect(logoutSpy).toHaveBeenCalledWith('/logout'));
     await waitFor(() => expect(observer.signInRequiredInsertions).toEqual([]));
     observer.disconnect();
@@ -224,7 +225,8 @@ describe('ProfilePage', () => {
       if (outcome === 'resolves') resolveLogout({ data: null });
       else rejectLogout(new Error('session already expired'));
 
-      await waitFor(() => expect(screen.getByTestId('profile-location')).toHaveTextContent('/login'));
+      await waitFor(() => expect(screen.getByTestId('profile-location')).toHaveTextContent(/^\/$/));
+      expect(screen.getByTestId('public-landing')).toBeInTheDocument();
       await waitFor(() => expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null }));
       await waitFor(() => expect(useTeamStore.getState().activeTeamId).toBeNull());
       await waitFor(() => expect(queryClient.getQueryData(['logout-private-data'])).toBeUndefined());

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantDb } from '../db/types';
 import { createRequestTiming } from '../http/requestTiming';
 import type { Actor } from '../lib/permissions';
-import { getCompanyDashboard } from './company-dashboard.service';
+import { getCompanyDashboard, getTeamDashboard } from './company-dashboard.service';
 
 const TEAM_ID = '11111111-1111-4111-8111-111111111111';
 const now = new Date('2026-08-20T12:00:00.000Z');
@@ -152,6 +152,28 @@ describe('getCompanyDashboard', () => {
       company_dashboard_risk_tasks_query_elapsed_ms: expect.any(Number),
       company_dashboard_trend_query_elapsed_ms: expect.any(Number),
       company_dashboard_teams_query_elapsed_ms: expect.any(Number),
+      company_dashboard_cumulative_flow_query_elapsed_ms: expect.any(Number),
+      company_dashboard_cumulative_flow_compute_elapsed_ms: expect.any(Number),
+    });
+  });
+
+  it('records request-scoped timings for a team dashboard', async () => {
+    vi.mocked(db.team.findFirst).mockResolvedValue({ id: TEAM_ID } as never);
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([summaryRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const timing = createRequestTiming();
+    await getTeamDashboard(db, TEAM_ID, admin, {}, now, timing);
+
+    expect(timing.snapshot()).toEqual({
+      company_dashboard_summary_query_elapsed_ms: expect.any(Number),
+      company_dashboard_members_query_elapsed_ms: expect.any(Number),
+      company_dashboard_risk_tasks_query_elapsed_ms: expect.any(Number),
+      company_dashboard_trend_query_elapsed_ms: expect.any(Number),
       company_dashboard_cumulative_flow_query_elapsed_ms: expect.any(Number),
       company_dashboard_cumulative_flow_compute_elapsed_ms: expect.any(Number),
     });

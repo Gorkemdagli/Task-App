@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
 import express from 'express';
+import { channel } from 'node:diagnostics_channel';
 import pino from 'pino';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,8 @@ type LogEntry = {
     end: ProcessPoolSnapshot;
   };
 };
+
+const stageTimingChannel = channel('taskflow.request-timing');
 
 function appWithLogs(
   timingEnabled: boolean,
@@ -46,6 +49,47 @@ function appWithLogs(
 }
 
 describe('request stage timing', () => {
+  it('publishes only canonical numeric timing at response finish for subscribed consumers', async () => {
+    const { app } = appWithLogs(true);
+    const events: unknown[] = [];
+    const listener = (event: unknown) => events.push(event);
+    stageTimingChannel.subscribe(listener);
+    try {
+      app.get('/api/v1/teams/:teamId/dashboard', (req, res) => {
+        req.requestTiming?.record('handler_db_ms', 12.3);
+        res.status(200).json({ body: 'complete' });
+      });
+      const response = await request(app).get('/api/v1/teams/private-team-id/dashboard');
+      expect(response.body).toEqual({ body: 'complete' });
+      expect(events).toEqual([{
+        method: 'GET',
+        route: '/api/v1/teams/:teamId/dashboard',
+        finished: true,
+        stages: { handler_db_ms: 12.3 },
+      }]);
+      expect(JSON.stringify(events)).not.toMatch(/private-team-id|complete|header|cookie|user.?id/i);
+    } finally {
+      stageTimingChannel.unsubscribe(listener);
+    }
+  });
+
+  it('publishes no timing event when request stage timing is disabled', async () => {
+    const { app } = appWithLogs(false);
+    const events: unknown[] = [];
+    const listener = (event: unknown) => events.push(event);
+    stageTimingChannel.subscribe(listener);
+    try {
+      app.get('/api/v1/tasks', (req, res) => {
+        req.requestTiming?.record('handler_db_ms', 5);
+        res.sendStatus(204);
+      });
+      await request(app).get('/api/v1/tasks');
+      expect(events).toEqual([]);
+    } finally {
+      stageTimingChannel.unsubscribe(listener);
+    }
+  });
+
   it('leaves requests uninstrumented when disabled', async () => {
     const getPoolSnapshot = vi.fn();
     const { app, logs } = appWithLogs(false, getPoolSnapshot);
@@ -135,6 +179,7 @@ describe('request stage timing', () => {
     });
 
     await request(app).post('/api/v1/auth/login');
+    await request(app).post('/api/v1/auth/refresh');
     await request(app).get('/api/v1/users/me');
     await request(app).get('/api/v1/teams');
     await request(app).get('/api/v1/tasks');
@@ -149,12 +194,30 @@ describe('request stage timing', () => {
     await request(app).post('/api/v1/notifications');
     await request(app).post('/api/v1/users/me/company-invitations/invitation-id/accept');
 
-    expect(logs).toHaveLength(14);
-    for (const log of logs.slice(0, 8)) {
+    expect(logs).toHaveLength(15);
+    for (const log of logs.slice(0, 9)) {
       expect(log.request_timing_ms).toEqual({ handler_db_ms: 12.3 });
       expect(Object.values(log.request_timing_ms ?? {}).every(Number.isFinite)).toBe(true);
     }
-    for (const log of logs.slice(8)) {
+    for (const log of logs.slice(9)) {
+      expect(log).not.toHaveProperty('request_timing_ms');
+    }
+  });
+
+  it('times only exact team dashboard routes when enabled', async () => {
+    const { app, logs } = appWithLogs(true);
+    app.use((req, res) => {
+      req.requestTiming?.record('handler_db_ms', 12.3);
+      res.sendStatus(204);
+    });
+
+    await request(app).get('/api/v1/teams/team-id/dashboard');
+    await request(app).get('/api/v1/teams/team-id/dashboard/extra');
+    await request(app).get('/api/v1/teams/dashboard');
+    await request(app).post('/api/v1/teams/team-id/dashboard');
+
+    expect(logs[0].request_timing_ms).toEqual({ handler_db_ms: 12.3 });
+    for (const log of logs.slice(1)) {
       expect(log).not.toHaveProperty('request_timing_ms');
     }
   });

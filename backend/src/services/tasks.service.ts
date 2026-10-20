@@ -33,6 +33,7 @@ import type {
   RestoreTaskInput,
 } from '../schemas/tasks.schema';
 import { startOfUtcToday } from '../lib/calendarDate';
+import { measureRequestStage, type RequestTimingRecorder } from '../http/requestTiming';
 import { appendTaskEvent } from './task-events.service';
 
 export interface TaskWithRelations {
@@ -175,6 +176,7 @@ export async function listTasks(
   db: TenantDb,
   query: ListTasksQuery,
   actor: Actor,
+  timing?: RequestTimingRecorder,
 ): Promise<{ tasks: TaskWithRelations[]; total: number }> {
   const tenantId = actor.tenantId;
   if (tenantId === null) return { tasks: [], total: 0 };
@@ -203,14 +205,16 @@ export async function listTasks(
   };
 
   const [tasks, total] = await Promise.all([
-    db.task.findMany({
-      where,
-      include: TASK_INCLUDE,
-      orderBy: [{ deadline: 'asc' }, { createdAt: 'desc' }],
-      take: query.limit,
-      skip: query.offset,
-    }),
-    db.task.count({ where }),
+    measureRequestStage(timing, 'task_list_find_many_elapsed_ms', () =>
+      db.task.findMany({
+        where,
+        include: TASK_INCLUDE,
+        orderBy: [{ deadline: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        take: query.limit,
+        skip: query.offset,
+      }),
+    ),
+    measureRequestStage(timing, 'task_list_count_elapsed_ms', () => db.task.count({ where })),
   ]);
 
   return { tasks: tasks as TaskWithRelations[], total };

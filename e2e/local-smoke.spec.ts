@@ -14,6 +14,19 @@ test('renders the public login route', async ({ page }) => {
   await expect(page.locator('#password')).toBeVisible();
 });
 
+test('shows login from the public landing after refresh returns 504', async ({ page }) => {
+  await page.route('**/api/v1/auth/refresh', (route) => route.fulfill({ status: 504 }));
+  const refreshResponse = page.waitForResponse('**/api/v1/auth/refresh');
+  const response = await page.goto('/');
+
+  expect(response?.status()).toBe(200);
+  expect((await refreshResponse).status()).toBe(504);
+  await page.getByRole('link', { name: /giriş yap/i }).first().click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator('#email')).toBeVisible();
+  await expect(page.locator('#password')).toBeVisible();
+});
+
 test('serves the protected deep link through the SPA shell', async ({ page }) => {
   const refreshResponse = page.waitForResponse('**/api/v1/auth/refresh');
   const response = await page.goto('/dashboard');

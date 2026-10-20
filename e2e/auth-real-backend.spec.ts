@@ -130,7 +130,8 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
     );
     await page.getByRole('menuitem', { name: /oturumu kapat|log out|sign out/i }).click();
     expect((await logoutResponsePromise).status()).toBe(204);
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL((url) => url.pathname === '/');
+    await expect(page.getByRole('link', { name: /giriş yap/i }).first()).toBeVisible();
 
     const revokedRefresh = await page.request.post('/api/v1/auth/refresh');
     expect(revokedRefresh.status()).toBe(204);

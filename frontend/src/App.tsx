@@ -95,7 +95,10 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
           if (useAuthStore.getState().accessToken) setGlobalError(kind);
           queryClient.clear();
           clearAuth();
-        } else {
+        } else if (
+          useAuthStore.getState().accessToken ||
+          !['/', '/login', '/register'].includes(window.location.pathname)
+        ) {
           setGlobalError(kind, () => {
             clearGlobalError();
             setBootstrapped(false);

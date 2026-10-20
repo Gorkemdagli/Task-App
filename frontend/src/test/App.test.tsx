@@ -280,6 +280,42 @@ describe('App', () => {
     expect(useAuthStore.getState()).toMatchObject({ accessToken: 'stale', user: canonicalUser });
   });
 
+  it('allows sign-in and reaches the protected app after an unauthenticated refresh timeout', async () => {
+    window.history.pushState({}, '', '/');
+    refreshSpy
+      .mockRejectedValueOnce({ response: { status: 504 } })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { accessToken: 'signed-in', user: canonicalUser },
+      } as never);
+    vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeVisible();
+    expect(getGlobalError()).toBeNull();
+    fireEvent.click(document.querySelector('a[href="/login"]')!);
+    expect(await screen.findByRole('heading', { name: /Giri/ })).toBeInTheDocument();
+    expect(getGlobalError()).toBeNull();
+
+    fireEvent.change(document.querySelector('#email')!, { target: { value: 'u@example.com' } });
+    fireEvent.change(document.querySelector('#password')!, { target: { value: 'FixturePass123!' } });
+    fireEvent.click(screen.getByRole('button', { name: /Giri/ }));
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/dashboard');
+    expect(refreshSpy).toHaveBeenNthCalledWith(2, '/login', {
+      email: 'u@example.com',
+      password: 'FixturePass123!',
+    });
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'signed-in', user: canonicalUser });
+    expect(getGlobalError()).toBeNull();
+  });
+
   it('waits for canonical restore when navigation reaches a protected route', async () => {
     window.history.pushState({}, '', '/');
     let resolveRefresh!: (value: unknown) => void;

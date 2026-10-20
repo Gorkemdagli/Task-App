@@ -54,7 +54,7 @@ tasksRouter.get('/', authenticatedReadLimiter, async (req, res, next) => {
       req.query,
     );
     const result = await runTenantRequest(req, (db, actor) =>
-      tasksService.listTasks(db, parsed, actor),
+      tasksService.listTasks(db, parsed, actor, req.requestTiming),
     );
     res.json({ ...result, tasks: result.tasks.map(toTaskDto) });
   } catch (e) {

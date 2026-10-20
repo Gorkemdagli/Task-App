@@ -686,35 +686,80 @@ export function deriveCumulativeFlow(
   now: Date,
 ): CumulativeFlow {
   const tasks = flowTasks(rows);
-  const samples: CumulativeFlowSample[] = [];
-  const eventIndexes = tasks.map(() => 0);
-  const statuses: FlowStatus[] = tasks.map(() => 'todo');
+  const sampleDates: string[] = [];
+  const sampleBoundaries: Date[] = [];
   for (let boundary = new Date(periodStart); boundary < periodEnd; boundary = new Date(boundary.getTime() + DAY_MS)) {
-    const counts = { todo: 0, inProgress: 0, done: 0 };
-    const sampleBoundary = new Date(boundary.getTime() + DAY_MS);
-    for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
-      const task = tasks[taskIndex];
-      if (task.createdAt >= sampleBoundary || (task.archivedAt && task.archivedAt <= sampleBoundary)) continue;
-      const events = task.events;
-      let eventIndex = eventIndexes[taskIndex];
-      let status = statuses[taskIndex];
-      while (eventIndex < events.length && events[eventIndex].createdAt < sampleBoundary) {
-        const event = events[eventIndex];
-        if (
-          (event.type === 'status_changed' || event.type === 'task_reopened') &&
-          event.toStatus
-        ) {
-          status = event.toStatus;
-        }
-        eventIndex += 1;
-      }
-      eventIndexes[taskIndex] = eventIndex;
-      statuses[taskIndex] = status;
-      if (status === 'todo') counts.todo += 1;
-      if (status === 'in_progress') counts.inProgress += 1;
-      if (status === 'done') counts.done += 1;
+    sampleDates.push(formatCalendarDate(boundary)!);
+    sampleBoundaries.push(new Date(boundary.getTime() + DAY_MS));
+  }
+  const countDeltas = Array.from({ length: sampleDates.length + 1 }, () => ({
+    todo: 0,
+    inProgress: 0,
+    done: 0,
+  }));
+  const firstSampleIndexAfter = (timestamp: Date) => {
+    let low = 0;
+    let high = sampleBoundaries.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (sampleBoundaries[middle].getTime() <= timestamp.getTime()) low = middle + 1;
+      else high = middle;
     }
-    samples.push({ date: formatCalendarDate(boundary)!, ...counts });
+    return low;
+  };
+  const firstSampleIndexAtOrAfter = (timestamp: Date) => {
+    let low = 0;
+    let high = sampleBoundaries.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (sampleBoundaries[middle].getTime() < timestamp.getTime()) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const addStatusRange = (status: FlowStatus, start: number, end: number) => {
+    if (start >= end) return;
+    const key = status === 'in_progress' ? 'inProgress' : status;
+    countDeltas[start][key] += 1;
+    countDeltas[end][key] -= 1;
+  };
+
+  for (const task of tasks) {
+    const firstActiveSample = firstSampleIndexAfter(task.createdAt);
+    const endExclusive = task.archivedAt
+      ? firstSampleIndexAtOrAfter(task.archivedAt)
+      : sampleDates.length;
+    if (firstActiveSample >= endExclusive) continue;
+
+    let rangeStart = firstActiveSample;
+    let status: FlowStatus = 'todo';
+    for (const event of task.events) {
+      if (
+        (event.type !== 'status_changed' && event.type !== 'task_reopened') ||
+        !event.toStatus
+      ) {
+        continue;
+      }
+      const eventSample = firstSampleIndexAfter(event.createdAt);
+      if (eventSample >= endExclusive) break;
+      if (eventSample < firstActiveSample) {
+        status = event.toStatus;
+        continue;
+      }
+      addStatusRange(status, rangeStart, eventSample);
+      status = event.toStatus;
+      rangeStart = eventSample;
+    }
+    addStatusRange(status, rangeStart, endExclusive);
+  }
+
+  const samples: CumulativeFlowSample[] = [];
+  const counts = { todo: 0, inProgress: 0, done: 0 };
+  for (let index = 0; index < sampleDates.length; index += 1) {
+    counts.todo += countDeltas[index].todo;
+    counts.inProgress += countDeltas[index].inProgress;
+    counts.done += countDeltas[index].done;
+    samples.push({ date: sampleDates[index], ...counts });
   }
 
   const currentTasks = tasks.filter((task) => !task.archivedAt || task.archivedAt > now);
@@ -1489,6 +1534,7 @@ export async function getTeamDashboard(
   actor: Actor,
   filters: Pick<CompanyDashboardFilters, 'range'> = {},
   now = new Date(),
+  timing?: RequestTimingRecorder,
 ): Promise<CompanyDashboard> {
   const tenantId = requireTenant(actor);
   const team = await db.team.findFirst({
@@ -1501,5 +1547,5 @@ export async function getTeamDashboard(
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }
 
-  return getDashboardData(db, actor, { teamId, range: filters.range }, now);
+  return getDashboardData(db, actor, { teamId, range: filters.range }, now, timing);
 }

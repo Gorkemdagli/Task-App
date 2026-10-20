@@ -75,7 +75,7 @@ teamsRouter.get('/:id/dashboard', authenticatedReadLimiter, async (req, res, nex
     const dashboard = await runTenantRequest(
       req,
       (db, actor) =>
-        getTeamDashboard(db, id, actor, query),
+        getTeamDashboard(db, id, actor, query, undefined, req.requestTiming),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
     res.json(dashboard);

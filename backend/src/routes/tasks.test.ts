@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import express from 'express';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
@@ -12,6 +13,12 @@ import * as taskServiceImpl from '../services/tasks.service';
 import type { Actor } from '../lib/permissions';
 import { withTenantContext } from '../db/withTenant';
 import type { TenantDb } from '../db/types';
+import {
+  createRequestTiming,
+  createRequestTimingMiddleware,
+  type RequestTimingRecorder,
+} from '../http/requestTiming';
+import { tasksRouter } from './tasks';
 
 async function inTenant<T>(actor: Actor, work: (db: TenantDb) => Promise<T>): Promise<T> {
   return withTenantContext(actor.id, actor.tenantId!, work);
@@ -327,6 +334,36 @@ describe('listTasks', () => {
     expect(list.total).toBe(2);
   });
 
+  it('orders equal deadlines and creation times deterministically across offset pages', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const tasks = [];
+    for (let index = 0; index < 5; index += 1) {
+      tasks.push(await tasksService.createTask(
+        { title: `Page task ${index}`, priority: 'low', assigneeIds: [member.id], teamId: team.id },
+        admin,
+      ));
+    }
+
+    await prisma.task.updateMany({
+      where: { id: { in: tasks.map(({ id }) => id) } },
+      data: {
+        deadline: new Date('2030-01-01T00:00:00.000Z'),
+        createdAt: new Date('2030-01-02T00:00:00.000Z'),
+      },
+    });
+
+    const expectedIds = tasks.map(({ id }) => id).sort();
+    const pages = [];
+    for (const offset of [0, 2, 4]) {
+      const page = await tasksService.listTasks({ limit: 2, offset } as never, admin);
+      expect(page.total).toBe(5);
+      pages.push(page.tasks.map(({ id }) => id));
+    }
+
+    expect(pages.map((page) => page.length)).toEqual([2, 2, 1]);
+    expect(pages.flat()).toEqual(expectedIds);
+  });
+
   it('admin sees all tasks in tenant', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(
@@ -378,6 +415,74 @@ describe('listTasks', () => {
       admin,
     );
     expect(list.tasks).toHaveLength(1);
+  });
+});
+
+describe('listTasks stage timing', () => {
+  it('times the two concurrent Prisma promises until each settles', async () => {
+    let finishFindMany!: (tasks: unknown[]) => void;
+    let finishCount!: (count: number) => void;
+    const findManyPromise = new Promise<unknown[]>((resolve) => {
+      finishFindMany = resolve;
+    });
+    const countPromise = new Promise<number>((resolve) => {
+      finishCount = resolve;
+    });
+    const findMany = vi.fn(() => findManyPromise);
+    const count = vi.fn(() => countPromise);
+    const db = { task: { findMany, count } } as unknown as TenantDb;
+    const actor = { id: 'actor-id', role: 'companyAdmin', tenantId: 'tenant-id' } as Actor;
+    const timing = createRequestTiming();
+
+    const result = taskServiceImpl.listTasks(
+      db,
+      { limit: 1, offset: 0 } as never,
+      actor,
+      timing,
+    );
+
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(count).toHaveBeenCalledOnce();
+    expect(timing.snapshot()).toEqual({});
+
+    finishFindMany([]);
+    await vi.waitFor(() =>
+      expect(timing.snapshot().task_list_find_many_elapsed_ms).toEqual(expect.any(Number)),
+    );
+    expect(timing.snapshot()).not.toHaveProperty('task_list_count_elapsed_ms');
+
+    finishCount(0);
+    await expect(result).resolves.toEqual({ tasks: [], total: 0 });
+    expect(timing.snapshot()).toEqual({
+      task_list_find_many_elapsed_ms: expect.any(Number),
+      task_list_count_elapsed_ms: expect.any(Number),
+    });
+  });
+});
+
+describe('GET /api/v1/tasks stage timing', () => {
+  beforeEach(cleanDb);
+
+  it('forwards the opted-in request recorder through the route and service', async () => {
+    const { adminAccessToken } = await makeRouteTaskFixture();
+    const app = express();
+    let timing: RequestTimingRecorder | undefined;
+    app.use(createRequestTimingMiddleware(true));
+    app.use((req, _res, next) => {
+      timing = req.requestTiming;
+      next();
+    });
+    app.use('/api/v1/tasks', tasksRouter);
+
+    const response = await request(app)
+      .get('/api/v1/tasks?includeArchived=true&limit=100')
+      .set('Authorization', `Bearer ${adminAccessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(timing?.snapshot()).toEqual(expect.objectContaining({
+      task_list_find_many_elapsed_ms: expect.any(Number),
+      task_list_count_elapsed_ms: expect.any(Number),
+    }));
   });
 });
 
