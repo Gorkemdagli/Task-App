@@ -8,12 +8,16 @@ import { useAuthStore } from '../stores/authStore';
 import { RouteFallback } from '../components/layout/RouteFallback';
 import { clearGlobalError, getGlobalError } from '../lib/globalError';
 import { queryKeys } from '../lib/queryKeys';
+import { preloadDashboardRoute } from '../lib/preloadDashboardRoute';
 import type { CurrentUserProfile } from '../services/profile';
 
 vi.mock('../lib/api', async () => {
   const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
   return { ...actual, getMe: vi.fn() };
 });
+vi.mock('../lib/preloadDashboardRoute', () => ({
+  preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
+}));
 
 const canonicalUser: CurrentUserProfile = {
   id: 'u1',
@@ -55,6 +59,7 @@ describe('AuthBootstrap canonical flow', () => {
     clearGlobalError();
     queryClient.clear();
     vi.mocked(getMe).mockReset();
+    vi.mocked(preloadDashboardRoute).mockClear();
     stubMatchMedia();
     refreshSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ status: 204, data: null } as never);
   });
@@ -92,6 +97,55 @@ describe('AuthBootstrap canonical flow', () => {
     expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveAccessibleName('Sayfa yükleniyor');
     expect(screen.getByTestId('route-fallback').querySelector('.sr-only')).toBeInTheDocument();
+  });
+
+  it('preloads dashboard code during auth restore but waits for canonical user before mounting it', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    let resolveRefresh!: (value: unknown) => void;
+    let resolveMe!: (user: CurrentUserProfile) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    vi.mocked(getMe).mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(preloadDashboardRoute).toHaveBeenCalledTimes(1));
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRefresh({ status: 200, data: { accessToken: 'fresh' } });
+    });
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveMe(canonicalUser);
+    });
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'fresh', user: canonicalUser });
+  }, 15_000);
+
+  it('does not preload dashboard code for the landing route', () => {
+    window.history.pushState({}, '', '/');
+    refreshSpy.mockReturnValue(new Promise(() => {}) as never);
+
+    render(<App />);
+
+    expect(screen.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(preloadDashboardRoute).not.toHaveBeenCalled();
   });
 
   it('seeds the complete profile query so the sidebar reuses bootstrap /users/me', async () => {
