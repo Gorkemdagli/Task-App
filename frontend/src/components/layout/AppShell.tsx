@@ -1,5 +1,5 @@
 import { Suspense, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { MobileSidebar } from './MobileSidebar';
@@ -20,6 +20,7 @@ import { RouteFallback } from './RouteFallback';
  * inside page-level components, not on the shell itself.
  */
 export function AppShell() {
+  const { pathname } = useLocation();
   useQueryScopeCleanup();
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
-          <Suspense fallback={<RouteFallback />}>
+          <Suspense fallback={<RouteFallback variant={pathname === '/dashboard' ? 'dashboard-content' : undefined} />}>
             <Outlet />
           </Suspense>
         </main>
