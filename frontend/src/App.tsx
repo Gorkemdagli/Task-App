@@ -4,6 +4,7 @@ import { RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
+import { preloadDashboardRoute } from './lib/preloadDashboardRoute';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
 import {
@@ -87,6 +88,8 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     const generation = useAuthStore.getState().sessionGeneration;
     const isCurrent = () =>
       active && useAuthStore.getState().sessionGeneration === generation;
+
+    if (window.location.pathname === '/dashboard') void preloadDashboardRoute();
 
     (async () => {
       try {
