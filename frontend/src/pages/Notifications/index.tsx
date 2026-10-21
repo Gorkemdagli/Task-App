@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useMarkAllRead,
   useMarkNotificationRead,
   useNotifications,
+  queueAutomaticNotificationRead,
   type NotificationItem as NotificationItemType,
 } from '@/hooks/useNotifications';
 import {
@@ -63,12 +64,16 @@ export function NotificationsPage() {
   const { i18n, t } = useTranslation();
   const hasTenant = useAuthStore((state) => Boolean(state.user?.tenantId));
   const navigate = useNavigate();
-  const notifications = useNotifications();
+  const notifications = useNotifications(undefined, false);
   const companyInvitations = useCompanyInvitations();
   const invitations = companyInvitations.data ?? [];
   const acceptInvitation = useAcceptCompanyInvitation();
   const rejectInvitation = useRejectCompanyInvitation();
-  const markRead = useMarkNotificationRead();
+  const { mutate: markRead, mutateAsync: markReadAsync } = useMarkNotificationRead();
+  const autoRead = useCallback(
+    (id: string) => queueAutomaticNotificationRead(id, () => markReadAsync(id)),
+    [markReadAsync],
+  );
   const markAllRead = useMarkAllRead();
   const items = useMemo(
     () =>
@@ -88,7 +93,7 @@ export function NotificationsPage() {
       item.type === 'company_invite_accepted' ||
       item.type === 'company_invite_rejected'
     ) return;
-    if (item.readAt === null) markRead.mutate(item.id);
+    if (item.readAt === null) markRead(item.id);
     if (!('taskId' in item.payload)) return;
     navigate(`/tasks/${item.payload.taskId}`);
   }
@@ -199,7 +204,7 @@ export function NotificationsPage() {
                 >
                   {group.items.map((item) => (
                     <li key={item.id}>
-                      <NotificationItem item={item} onSelect={handleSelect} />
+                      <NotificationItem item={item} onSelect={handleSelect} onAutoRead={autoRead} />
                     </li>
                   ))}
                 </ul>

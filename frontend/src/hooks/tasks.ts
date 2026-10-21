@@ -300,11 +300,23 @@ export function useUploadTaskFile() {
 
 export function useDownloadTaskFile() {
   return useMutation({
-    mutationFn: async (vars: { taskId: string; fileId: string }) => {
+    mutationFn: async (vars: { taskId: string; fileId: string; filename: string }) => {
       const r = await api.post<{ url: string; expiresAt: string }>(
         `/tasks/${vars.taskId}/files/${vars.fileId}/download`,
       );
-      if (typeof window !== 'undefined') window.open(r.data.url, '_blank', 'noopener,noreferrer');
+      if (typeof window !== 'undefined') {
+        const url = new URL(r.data.url, window.location.origin);
+        url.searchParams.set('download', vars.filename);
+        const link = document.createElement('a');
+        link.href = url.toString();
+        link.download = vars.filename;
+        document.body.append(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+        }
+      }
     },
   });
 }

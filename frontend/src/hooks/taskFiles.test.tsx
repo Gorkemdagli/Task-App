@@ -97,20 +97,26 @@ describe('task file and history hooks', () => {
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.task.comments(tenantId, taskId) });
   });
 
-  it('opens the returned signed URL without caching it', async () => {
-    const signedUrl = 'https://signed.example/task-file';
+  it('downloads from the returned signed URL with the original filename', async () => {
+    const signedUrl = 'https://signed.example/task-file?token=temporary';
     const post = vi.spyOn(api, 'post').mockResolvedValue({
       data: { url: signedUrl, expiresAt: '2026-09-20T11:00:00.000Z' },
     } as never);
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    let clickedAnchor: HTMLAnchorElement | undefined;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+      clickedAnchor = document.body.querySelector<HTMLAnchorElement>('a[download]') ?? undefined;
+    });
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
     const { result } = renderHook(() => useDownloadTaskFile(), { wrapper: wrapper(queryClient) });
 
-    result.current.mutate({ taskId, fileId: 'file-1' });
+    result.current.mutate({ taskId, fileId: 'file-1', filename: 'spec sheet.pdf' });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(post).toHaveBeenCalledWith(`/tasks/${taskId}/files/file-1/download`);
-    expect(open).toHaveBeenCalledWith(signedUrl, '_blank', 'noopener,noreferrer');
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(clickedAnchor?.href).toBe(`${signedUrl}&download=spec+sheet.pdf`);
+    expect(clickedAnchor?.download).toBe('spec sheet.pdf');
+    expect(clickedAnchor?.isConnected).toBe(false);
     expect(result.current.data).toBeUndefined();
     expect(JSON.stringify(queryClient.getQueryCache().getAll())).not.toContain(signedUrl);
   });

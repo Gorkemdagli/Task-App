@@ -12,6 +12,7 @@ import {
   useMarkAllRead,
   useMarkNotificationRead,
   useNotifications,
+  queueAutomaticNotificationRead,
 } from './useNotifications';
 
 function wrapper(qc: QueryClient) {
@@ -89,7 +90,7 @@ describe('useNotifications', () => {
       refetchInterval?: number;
       refetchIntervalInBackground?: boolean;
     };
-    expect(options.refetchInterval).toBe(30_000);
+    expect(options.refetchInterval).toBe(10_000);
     expect(options.refetchIntervalInBackground).toBe(false);
   });
 
@@ -137,19 +138,69 @@ describe('useNotifications', () => {
     returned.unmount();
   });
 
-  it('counts the scheduled poll at 30 seconds', async () => {
+  it('polls every ten seconds with staggered observers sharing one query', async () => {
     vi.useFakeTimers();
-    getSpy.mockResolvedValue({ data: page([], 0, null) } as never);
+    const startedAt = Date.now();
+    const callTimes: number[] = [];
+    getSpy.mockImplementation(() => {
+      callTimes.push(Date.now());
+      return Promise.resolve({ data: page([], 0, null) }) as never;
+    });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
-    const { result } = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
+    const first = renderHook(() => useNotifications(), { wrapper: wrapper(qc) });
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(result.current.isSuccess).toBe(true);
+    expect(first.result.current.isSuccess).toBe(true);
     expect(getSpy).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    const second = renderHook(() => useNotifications(undefined, false), { wrapper: wrapper(qc) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(getSpy).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(getSpy).toHaveBeenCalledTimes(3);
+    expect(callTimes).toEqual([startedAt, startedAt + 10_000, startedAt + 20_000]);
+    first.unmount();
+    second.unmount();
+  });
+});
+
+describe('automatic notification reads', () => {
+  it('serializes writes, deduplicates IDs, and does not retry a failed ID', async () => {
+    let failFirst!: () => void;
+    let active = 0;
+    let maxActive = 0;
+    const firstRead = vi.fn(() => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      return new Promise<void>((_resolve, reject) => {
+        failFirst = () => {
+          active -= 1;
+          reject(new Error('network failure'));
+        };
+      });
+    });
+    const secondRead = vi.fn(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      active -= 1;
+    });
+
+    queueAutomaticNotificationRead('auto-read-failed-1', firstRead);
+    queueAutomaticNotificationRead('auto-read-failed-1', firstRead);
+    queueAutomaticNotificationRead('auto-read-next-1', secondRead);
+    await waitFor(() => expect(firstRead).toHaveBeenCalledTimes(1));
+    expect(secondRead).not.toHaveBeenCalled();
+
+    failFirst();
+    await waitFor(() => expect(secondRead).toHaveBeenCalledTimes(1));
+    queueAutomaticNotificationRead('auto-read-failed-1', firstRead);
+    await Promise.resolve();
+
+    expect(firstRead).toHaveBeenCalledTimes(1);
+    expect(maxActive).toBe(1);
   });
 });
 

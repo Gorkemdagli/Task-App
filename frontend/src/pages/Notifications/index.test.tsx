@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -81,6 +81,7 @@ describe('NotificationsPage', () => {
   afterEach(() => {
     getSpy.mockRestore();
     patchSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('fetches only first page on mount', async () => {
@@ -118,6 +119,42 @@ describe('NotificationsPage', () => {
     await userEvent.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-n1'));
+  });
+
+  it('auto-marks a visible page notification read after its dwell period', async () => {
+    const itemId = 'page-auto-read-1';
+    let observerCallback: IntersectionObserverCallback | undefined;
+    class MockIntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '0px';
+      readonly thresholds = [0.5];
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+
+      constructor(callback: IntersectionObserverCallback) {
+        observerCallback = callback;
+      }
+
+      takeRecords = () => [] as IntersectionObserverEntry[];
+    }
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+    getSpy.mockResolvedValue({
+      data: { items: [makeItem(itemId)], unreadCount: 1, nextCursor: null },
+    } as never);
+    renderPage();
+    const item = await screen.findByTestId(`notification-item-${itemId}`);
+    expect(observerCallback).toBeDefined();
+    expect(document.visibilityState).toBe('visible');
+    act(() => {
+      observerCallback?.(
+        [{ target: item, isIntersecting: true, intersectionRatio: 0.75 } as unknown as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+
+    await waitFor(() => expect(patchSpy).toHaveBeenCalledWith(`/notifications/${itemId}/read`), { timeout: 3_000 });
+    expect(patchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('keeps read task navigation without single-read PATCH', async () => {

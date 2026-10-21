@@ -40,10 +40,15 @@ import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
 
-const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
-  { status: 'todo', label: 'Yapılacak', color: 'border-status-todo' },
-  { status: 'in_progress', label: 'Yapılıyor', color: 'border-status-inprogress' },
-  { status: 'done', label: 'Yapıldı', color: 'border-status-done' },
+const COLUMNS: { status: TaskStatus; label: string; color: string; dropRing: string }[] = [
+  { status: 'todo', label: 'Yapılacak', color: 'border-status-todo', dropRing: 'ring-status-todo' },
+  {
+    status: 'in_progress',
+    label: 'Yapılıyor',
+    color: 'border-status-inprogress',
+    dropRing: 'ring-status-inprogress',
+  },
+  { status: 'done', label: 'Yapıldı', color: 'border-status-done', dropRing: 'ring-status-done' },
 ];
 
 const EMPTY_TASKS: Task[] = [];
@@ -194,7 +199,7 @@ function StatusColumn({
       data-testid={`column-${column.status}`}
       data-status={column.status}
       className={`min-w-0 rounded-md border-t-4 bg-card/30 p-4 ${column.color} ${
-        isOver ? 'ring-2 ring-primary' : ''
+        isOver ? `ring-2 ring-inset ${column.dropRing}` : ''
       } ${
         hasDesktopTaskOverflow
           ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col'
