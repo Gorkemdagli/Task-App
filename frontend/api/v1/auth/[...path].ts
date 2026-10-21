@@ -1,4 +1,6 @@
 /// <reference types="node" />
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -199,16 +201,52 @@ function sendError(res: ProxyResponse, error: unknown): ProxyResponse {
   return res.status(502).json({ error: 'Auth upstream unavailable' });
 }
 
+function logRefreshDiagnostic(fields: Record<string, string | number>): void {
+  try {
+    console.info(JSON.stringify({ event: 'auth_refresh_proxy', ...fields }));
+  } catch {
+    // Diagnostics must not change proxy behavior.
+  }
+}
+
+function diagnosticError(error: unknown): { status: number; errorClass: string } {
+  if (error instanceof ProxyError) return { status: error.statusCode, errorClass: 'proxy_error' };
+  if (error instanceof Error && error.name === 'AbortError') {
+    return { status: 504, errorClass: 'upstream_timeout' };
+  }
+  return { status: 502, errorClass: 'upstream_unavailable' };
+}
+
 export function createAuthProxyHandler(options: AuthProxyOptions = {}) {
   const apiOrigin = parseApiOrigin(options.apiOrigin ?? process.env.API_ORIGIN);
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return async function authProxyHandler(req: ProxyRequest, res: ProxyResponse): Promise<void> {
+    const method = (req.method ?? 'GET').toUpperCase();
+    const diagnosticEnabled =
+      process.env.REQUEST_STAGE_TIMING === 'true' &&
+      method === 'POST' &&
+      req.url?.split('?')[0] === '/api/v1/auth/refresh' &&
+      getRawPath(req) === 'refresh';
+    const requestId = diagnosticEnabled ? randomUUID() : undefined;
+    const started = performance.now();
+    let status = 502;
+    let errorClass: string | undefined;
+    const log = (fields: Record<string, string | number>) => {
+      if (!requestId) return;
+      logRefreshDiagnostic({
+        route: '/api/v1/auth/refresh',
+        method: 'POST',
+        requestId,
+        ...fields,
+      });
+    };
+
+    if (requestId) log({ phase: 'start' });
     try {
       if (!apiOrigin) throw new ProxyError(500, { error: 'Auth proxy is not configured' });
 
-      const method = (req.method ?? 'GET').toUpperCase();
       if (method !== 'POST') throw new ProxyError(405, { error: 'Method Not Allowed' });
       if (req.url?.includes('?')) throw new ProxyError(400, { error: 'Invalid auth request' });
 
@@ -221,8 +259,10 @@ export function createAuthProxyHandler(options: AuthProxyOptions = {}) {
         const value = getHeader(req.headers, name);
         if (value) headers.set(name, value);
       }
+      if (requestId) headers.set('x-taskflow-request-id', requestId);
 
       let upstream: Response;
+      let responseBody: string;
       try {
         upstream = await fetchImpl(`${apiOrigin}/api/v1/auth/${path}`, {
           method,
@@ -230,12 +270,14 @@ export function createAuthProxyHandler(options: AuthProxyOptions = {}) {
           body: body && new Uint8Array(body),
           signal: controller.signal,
         });
+        log({ phase: 'upstream_headers', status: upstream.status });
+        responseBody = await readResponseBody(upstream);
       } finally {
         clearTimeout(timeout);
       }
 
-      const responseBody = await readResponseBody(upstream);
       copySafeResponseHeaders(upstream, res);
+      status = upstream.status;
       res.status(upstream.status);
       if (upstream.status === 204) {
         res.end();
@@ -243,7 +285,19 @@ export function createAuthProxyHandler(options: AuthProxyOptions = {}) {
         res.send(responseBody);
       }
     } catch (error) {
+      const diagnostic = diagnosticError(error);
+      status = diagnostic.status;
+      errorClass = diagnostic.errorClass;
       sendError(res, error);
+    } finally {
+      if (requestId) {
+        log({
+          phase: 'terminal',
+          elapsedMs: Math.max(0, Math.round((performance.now() - started) * 10) / 10),
+          status,
+          errorClass: errorClass ?? 'none',
+        });
+      }
     }
   };
 }

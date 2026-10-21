@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { redis } from '../lib/redis';
+import { createRequestTiming } from '../http/requestTiming';
 import { createRateLimit } from './rateLimit';
 import { RATE_LIMIT_PROFILES, authenticatedReadLimiter, uploadLimiter } from './rateLimitProfiles';
 
@@ -73,5 +74,28 @@ describe('createRateLimit', () => {
       expect((await request(app).post('/upload')).status).toBe(204);
     }
     expect((await request(app).post('/upload')).status).toBe(429);
+  });
+
+  it('observes rate limiter start before recording its completion duration', async () => {
+    const app = express();
+    const events: Array<{ phase: string; stage: string; elapsedMs?: number }> = [];
+    let timing: ReturnType<typeof createRequestTiming> | undefined;
+    app.use((req, _res, next) => {
+      timing = createRequestTiming();
+      timing.observeDiagnosticStage = (phase, stage, elapsedMs) => {
+        events.push({ phase, stage, elapsedMs });
+      };
+      req.requestTiming = timing;
+      next();
+    });
+    app.use(createRateLimit({ windowMs: 60_000, max: 3, keyPrefix: 'test:rl:timing' }));
+    app.get('/x', (_req, res) => res.sendStatus(204));
+
+    expect((await request(app).get('/x')).status).toBe(204);
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toEqual({ phase: 'start', stage: 'rate_limit_ms' });
+    expect(events[1]).toMatchObject({ phase: 'end', stage: 'rate_limit_ms', elapsedMs: expect.any(Number) });
+    expect(timing?.snapshot().rate_limit_ms).toEqual(expect.any(Number));
   });
 });

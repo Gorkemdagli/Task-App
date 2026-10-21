@@ -18,6 +18,7 @@ export function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const establishSession = useAuthStore((s) => s.establishSession);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -37,6 +38,7 @@ export function RegisterPage() {
     setFormError(null);
     const payload = data.companyName?.trim() ? data : { ...data, companyName: undefined };
     try {
+      clearAuth();
       const res = await authApi.post('/register', payload);
       establishSession(res.data.accessToken, res.data.user);
       navigate('/dashboard');

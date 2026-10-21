@@ -39,6 +39,7 @@ describe('api interceptors', () => {
 
     expect(authApi.defaults.baseURL).toBe('/api/v1/auth');
     expect(authApi.defaults.withCredentials).toBe(true);
+    expect(authApi.defaults.timeout).toBe(10_000);
     expect(api.defaults.baseURL).toMatch(/\/api\/v1$/);
     expect(api.defaults.withCredentials).toBe(false);
 
@@ -53,6 +54,131 @@ describe('api interceptors', () => {
 
     await authApi.post('/login', { email: 'a@x.com', password: 'password' });
     await api.get('/users/me');
+  });
+
+  it.each([
+    ['success', false, 200],
+    ['204', false, 204],
+    ['rejection', true, 0],
+  ] as const)('waits to dispatch login until a %s refresh settles', async (_name, rejectRefresh, status) => {
+    const refresh = deferred<[number, unknown]>();
+    const refreshStarted = deferred<void>();
+    let loginStarted = false;
+    authApiMock.onPost('/refresh').reply(() => {
+      refreshStarted.resolve();
+      return refresh.promise;
+    });
+    authApiMock.onPost('/login').reply(() => {
+      loginStarted = true;
+      return [200, { accessToken: 'login-token' }];
+    });
+
+    const refreshRequest = authApi.post('/refresh', null);
+    const settledRefresh = refreshRequest.catch(() => undefined);
+    await refreshStarted.promise;
+    const loginRequest = authApi.post('/login', { email: 'a@x.com', password: 'password' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(loginStarted).toBe(false);
+
+    if (rejectRefresh) refresh.reject(new Error('refresh transport failed'));
+    else refresh.resolve([status, status === 200 ? { accessToken: 'refresh-token' } : null]);
+    await settledRefresh;
+    await loginRequest;
+
+    expect(authApiMock.history.post.map(({ url }) => url)).toEqual(['/refresh', '/login']);
+  });
+
+  it('releases a queued login when refresh reaches its HTTP timeout', async () => {
+    authApiMock.onPost('/refresh').timeout();
+    authApiMock.onPost('/login').reply(200, { accessToken: 'login-token' });
+
+    await expect(authApi.post('/refresh', null)).rejects.toMatchObject({ code: 'ECONNABORTED' });
+    await expect(authApi.post('/login', { email: 'a@x.com', password: 'password' })).resolves.toMatchObject({
+      data: { accessToken: 'login-token' },
+    });
+
+    expect(authApiMock.history.post.map(({ url }) => url)).toEqual(['/refresh', '/login']);
+  });
+
+  it('drops queued refresh and logout from a session that changed before dispatch', async () => {
+    useAuthStore.getState().establishSession('old-token', {
+      id: 'old-user', displayId: 'OLD1', email: 'old@example.com', fullName: 'Old',
+      role: 'member', tenantId: 'old-tenant',
+    });
+    const login = deferred<[number, unknown]>();
+    const loginStarted = deferred<void>();
+    authApiMock.onPost('/login').reply(() => {
+      loginStarted.resolve();
+      return login.promise;
+    });
+    const firstLogin = authApi.post('/login', { email: 'first@x.com', password: 'password' });
+    await loginStarted.promise;
+
+    const staleRefresh = authApi.post('/refresh', null).catch((error: unknown) => error);
+    const staleLogout = authApi.post('/logout').catch((error: unknown) => error);
+    useAuthStore.getState().clearAuth();
+    useAuthStore.getState().establishSession('new-token', {
+      id: 'new-user', displayId: 'NEW1', email: 'new@example.com', fullName: 'New',
+      role: 'member', tenantId: 'new-tenant',
+    });
+    login.resolve([200, { accessToken: 'first-login-token' }]);
+
+    await firstLogin;
+    expect(await staleRefresh).toBeInstanceOf(CancelledError);
+    expect(await staleLogout).toBeInstanceOf(CancelledError);
+    expect(authApiMock.history.post.map(({ url }) => url)).toEqual(['/login']);
+  });
+
+  it('uses the logout bearer captured before waiting in the auth queue', async () => {
+    useAuthStore.getState().setAccessToken('originating-token');
+    const refresh = deferred<[number, unknown]>();
+    const refreshStarted = deferred<void>();
+    authApiMock.onPost('/refresh').reply(() => {
+      refreshStarted.resolve();
+      return refresh.promise;
+    });
+    authApiMock.onPost('/logout').reply(204);
+
+    const refreshRequest = authApi.post('/refresh', null);
+    await refreshStarted.promise;
+    const logoutRequest = authApi.post('/logout');
+    useAuthStore.getState().setAccessToken('later-token');
+    refresh.resolve([200, { accessToken: 'refreshed-token' }]);
+    await Promise.all([refreshRequest, logoutRequest]);
+
+    const logout = authApiMock.history.post.find(({ url }) => url === '/logout');
+    expect(logout?.headers?.Authorization).toBe('Bearer originating-token');
+  });
+
+  it('waits for logout cleanup before dispatching a later login', async () => {
+    useAuthStore.getState().establishSession('old-token', {
+      id: 'old-user', displayId: 'OLD1', email: 'old@example.com', fullName: 'Old',
+      role: 'member', tenantId: 'old-tenant',
+    });
+    const logout = deferred<[number, unknown]>();
+    const logoutStarted = deferred<void>();
+    let loginStarted = false;
+    authApiMock.onPost('/logout').reply(() => {
+      logoutStarted.resolve();
+      return logout.promise;
+    });
+    authApiMock.onPost('/login').reply(() => {
+      loginStarted = true;
+      return [200, { accessToken: 'new-token' }];
+    });
+
+    const logoutRequest = authApi.post('/logout');
+    await logoutStarted.promise;
+    useAuthStore.getState().clearAuth();
+    const loginRequest = authApi.post('/login', { email: 'new@x.com', password: 'password' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(loginStarted).toBe(false);
+
+    logout.resolve([204, null]);
+    await Promise.all([logoutRequest, loginRequest]);
+
+    expect(authApiMock.history.post.map(({ url }) => url)).toEqual(['/logout', '/login']);
+    expect(authApiMock.history.post[0].headers?.Authorization).toBe('Bearer old-token');
   });
 
   it('attaches the current access token to logout', async () => {
@@ -237,7 +363,7 @@ describe('api interceptors', () => {
     expect(getGlobalError()).toBeNull();
   });
 
-  it('keeps refresh flights isolated across sessions without clobbering the new flight', async () => {
+  it('serializes refresh flights across sessions without clobbering the new flight', async () => {
     useAuthStore.getState().setAccessToken('old');
     const oldRefresh = deferred<[number, { accessToken: string }] >();
     const newRefresh = deferred<[number, { accessToken: string }] >();
@@ -282,9 +408,9 @@ describe('api interceptors', () => {
     queryClient.setQueryData(['new-user-data'], { secret: 'new-user-cache' });
 
     const requestA = api.get('/new-a');
-    await refreshStarted[1].promise;
     oldRefresh.resolve([200, { accessToken: 'late-old-token' }]);
     await expect(oldRequest).rejects.toBeInstanceOf(CancelledError);
+    await refreshStarted[1].promise;
 
     const requestB = api.get('/new-b');
     await Promise.resolve();

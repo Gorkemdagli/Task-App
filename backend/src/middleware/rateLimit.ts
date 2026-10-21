@@ -42,6 +42,11 @@ export function createRateLimit(opts: CreateRateLimitOptions) {
     if (!timing) return limiter(req, res, next);
 
     const started = performance.now();
+    try {
+      timing.observeDiagnosticStage?.('start', 'rate_limit_ms');
+    } catch {
+      // Diagnostic observers must not change rate limiting.
+    }
     let recorded = false;
     const finish = () => {
       if (recorded) return;
@@ -49,7 +54,13 @@ export function createRateLimit(opts: CreateRateLimitOptions) {
       res.off('prefinish', finish);
       res.off('finish', finish);
       res.off('close', finish);
-      timing.record('rate_limit_ms', performance.now() - started);
+      const elapsedMs = performance.now() - started;
+      timing.record('rate_limit_ms', elapsedMs);
+      try {
+        timing.observeDiagnosticStage?.('end', 'rate_limit_ms', elapsedMs);
+      } catch {
+        // Diagnostic observers must not change rate limiting.
+      }
     };
     res.once('prefinish', finish);
     res.once('finish', finish);

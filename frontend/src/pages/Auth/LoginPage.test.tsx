@@ -85,8 +85,14 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/şifre gerekli/i)).toBeInTheDocument();
   });
   it('form-top on 401', async () => {
-    vi.mocked(authApi.post).mockRejectedValueOnce({
-      response: { status: 401, data: { message: 'E-posta veya şifre hatalı' } },
+    useAuthStore.getState().establishSession('old-token', loginProfile);
+    const generationBeforeSubmit = useAuthStore.getState().sessionGeneration;
+    vi.mocked(authApi.post).mockImplementationOnce(() => {
+      expect(useAuthStore.getState().accessToken).toBeNull();
+      expect(useAuthStore.getState().sessionGeneration).toBe(generationBeforeSubmit + 1);
+      return Promise.reject({
+        response: { status: 401, data: { message: 'E-posta veya şifre hatalı' } },
+      });
     });
     const u = userEvent.setup();
     render(
@@ -98,6 +104,8 @@ describe('LoginPage', () => {
     await u.type(screen.getByLabelText('Şifre'), 'wrong');
     await u.click(screen.getByRole('button', { name: /giriş yap/i }));
     expect(await screen.findByText(/e-posta veya şifre hatalı/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/e-posta/i)).toBeInTheDocument();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
   it('starts dashboard preload before waiting for the login response', async () => {
     let resolveLogin!: (value: unknown) => void;
@@ -142,7 +150,7 @@ describe('LoginPage', () => {
     expect(queryClient.getQueryData(queryKeys.profile('previous-user'))).toBeUndefined();
     expect(api.get).not.toHaveBeenCalled();
     expect(useAuthStore.getState().user?.id).toBe(loginProfile.id);
-    expect(useAuthStore.getState().sessionGeneration).toBe(generationBeforeLogin + 1);
+    expect(useAuthStore.getState().sessionGeneration).toBe(generationBeforeLogin + 2);
   });
 
   it('password visibility toggle is keyboard accessible', async () => {

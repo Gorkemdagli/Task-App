@@ -1,16 +1,32 @@
 import { Writable } from 'node:stream';
+import { EventEmitter } from 'node:events';
 import express from 'express';
 import { channel } from 'node:diagnostics_channel';
 import pino from 'pino';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import type { ProcessPoolSnapshot, RequestTimingStage } from './requestTiming';
+import {
+  createRequestTimingMiddleware,
+  type ProcessPoolSnapshot,
+  type RequestTimingStage,
+} from './requestTiming';
 import { createRequestLogger } from '../middleware/requestLogger';
 
 vi.mock('../lib/prisma', () => ({ getRuntimePoolSnapshot: vi.fn() }));
 
 type LogEntry = {
-  req?: { url: string; headers: { authorization?: string } };
+  event?: string;
+  route?: string;
+  method?: string;
+  requestId?: string;
+  phase?: string;
+  stage?: string;
+  elapsedMs?: number;
+  status?: number;
+  req?: {
+    url: string;
+    headers: { authorization?: string; 'x-taskflow-request-id'?: string | string[] };
+  };
   res?: { statusCode: number };
   request_timing_ms?: Partial<Record<RequestTimingStage, number>>;
   runtime_pool_process?: {
@@ -25,6 +41,7 @@ const stageTimingChannel = channel('taskflow.request-timing');
 function appWithLogs(
   timingEnabled: boolean,
   getPoolSnapshot?: () => ProcessPoolSnapshot,
+  beforeLogger?: express.RequestHandler,
 ) {
   const logs: LogEntry[] = [];
   const stream = new Writable({
@@ -44,6 +61,7 @@ function appWithLogs(
     stream,
   );
   const app = express();
+  if (beforeLogger) app.use(beforeLogger);
   app.use(...createRequestLogger(timingEnabled, logger, getPoolSnapshot));
   return { app, logs };
 }
@@ -194,12 +212,13 @@ describe('request stage timing', () => {
     await request(app).post('/api/v1/notifications');
     await request(app).post('/api/v1/users/me/company-invitations/invitation-id/accept');
 
-    expect(logs).toHaveLength(15);
-    for (const log of logs.slice(0, 9)) {
+    const requestLogs = logs.filter((log) => log.event !== 'auth_refresh_request');
+    expect(requestLogs).toHaveLength(15);
+    for (const log of requestLogs.slice(0, 9)) {
       expect(log.request_timing_ms).toEqual({ handler_db_ms: 12.3 });
       expect(Object.values(log.request_timing_ms ?? {}).every(Number.isFinite)).toBe(true);
     }
-    for (const log of logs.slice(9)) {
+    for (const log of requestLogs.slice(9)) {
       expect(log).not.toHaveProperty('request_timing_ms');
     }
   });
@@ -284,5 +303,152 @@ describe('request stage timing', () => {
     expect(JSON.stringify(logs[0].request_timing_ms)).not.toMatch(/secret|private|tenant|user/i);
     expect(JSON.stringify(logs[0])).not.toContain('secret-token');
     expect(logs[0].req?.headers.authorization).toBe('[redacted]');
+  });
+
+  it('logs safe lifecycle and allowlisted stage events for exact refresh requests', async () => {
+    const { app, logs } = appWithLogs(true);
+    const requestId = '6a2a2b9c-08a3-4d85-b647-5122d2e4d55f';
+    app.post('/api/v1/auth/refresh', async (req, res) => {
+      await req.requestTiming?.measure('session_redis_ms', () => Promise.resolve());
+      await req.requestTiming?.measure('auth_db_ms', () => Promise.resolve());
+      await req.requestTiming?.measure('handler_db_ms', () => Promise.resolve());
+      res.sendStatus(204);
+    });
+
+    await request(app)
+      .post('/api/v1/auth/refresh')
+      .set('x-taskflow-request-id', requestId)
+      .set('Cookie', 'refreshToken=secret-cookie')
+      .send({ refreshToken: 'secret-body' });
+
+    const events = logs.filter((entry) => entry.event === 'auth_refresh_request');
+    expect(events.map((event) => event.phase)).toEqual([
+      'start',
+      'stage_start',
+      'stage_end',
+      'stage_start',
+      'stage_end',
+      'finish',
+    ]);
+    expect(events.every((event) => event.route === '/api/v1/auth/refresh' && event.method === 'POST')).toBe(true);
+    expect(events.every((event) => event.requestId === requestId)).toBe(true);
+    expect(events.map((event) => event.stage).filter(Boolean)).toEqual([
+      'session_redis_ms',
+      'session_redis_ms',
+      'auth_db_ms',
+      'auth_db_ms',
+    ]);
+    expect(events.at(-1)).toMatchObject({ status: 204, elapsedMs: expect.any(Number) });
+    expect(events.every((event) => !('req' in event))).toBe(true);
+    expect(JSON.stringify(events)).not.toMatch(/secret-cookie|secret-body|refreshToken/i);
+    expect(JSON.stringify(logs)).not.toContain('x-taskflow-request-id');
+  });
+
+  it('includes only a single canonical UUID correlation header in diagnostics', async () => {
+    const requestId = '6a2a2b9c-08a3-4d85-b647-5122d2e4d55f';
+    const arrayHeader = ((req, _res, next) => {
+      if (req.query.multiple === 'true') {
+        req.headers['x-taskflow-request-id'] = [requestId, requestId] as unknown as string;
+      }
+      next();
+    }) as express.RequestHandler;
+    const { app, logs } = appWithLogs(true, undefined, arrayHeader);
+    app.post('/api/v1/auth/refresh', (_req, res) => res.sendStatus(204));
+
+    await request(app).post('/api/v1/auth/refresh').set('x-taskflow-request-id', requestId);
+    await request(app).post('/api/v1/auth/refresh').set('x-taskflow-request-id', 'attacker-value');
+    await request(app)
+      .post('/api/v1/auth/refresh?multiple=true')
+      .set('x-taskflow-request-id', requestId);
+
+    const events = logs.filter((entry) => entry.event === 'auth_refresh_request');
+    expect(events.slice(0, 2).every((event) => event.requestId === requestId)).toBe(true);
+    expect(events.slice(2).every((event) => !('requestId' in event))).toBe(true);
+    expect(JSON.stringify(events)).not.toContain('attacker-value');
+    expect(JSON.stringify(events)).not.toContain('multiple=true');
+    expect(JSON.stringify(logs)).not.toContain('attacker-value');
+  });
+
+  it('keeps concurrent refresh diagnostics attached to their own correlation IDs', async () => {
+    const { app, logs } = appWithLogs(true);
+    const requestIds = [
+      '6a2a2b9c-08a3-4d85-b647-5122d2e4d55f',
+      '9a2a2b9c-08a3-4d85-b647-5122d2e4d55f',
+    ];
+    app.post('/api/v1/auth/refresh', async (req, res) => {
+      await req.requestTiming?.measure(
+        'session_redis_ms',
+        () => new Promise((resolve) => setTimeout(resolve, Number(req.query.wait))),
+      );
+      res.sendStatus(204);
+    });
+
+    await Promise.all([
+      request(app).post('/api/v1/auth/refresh?wait=20').set('x-taskflow-request-id', requestIds[0]!),
+      request(app).post('/api/v1/auth/refresh?wait=1').set('x-taskflow-request-id', requestIds[1]!),
+    ]);
+
+    const events = logs.filter((entry) => entry.event === 'auth_refresh_request');
+    for (const requestId of requestIds) {
+      const requestEvents = events.filter((event) => event.requestId === requestId);
+      expect(requestEvents.map((event) => event.phase)).toEqual([
+        'start',
+        'stage_start',
+        'stage_end',
+        'finish',
+      ]);
+      expect(requestEvents.every((event) => event.status === undefined || event.status === 204)).toBe(true);
+    }
+    expect(events).toHaveLength(8);
+    expect(JSON.stringify(events)).not.toContain('wait=');
+  });
+
+  it('emits no refresh diagnostics when disabled or for another route', async () => {
+    const disabled = appWithLogs(false);
+    disabled.app.post('/api/v1/auth/refresh', (_req, res) => res.sendStatus(204));
+    await request(disabled.app).post('/api/v1/auth/refresh');
+    expect(disabled.logs.some((entry) => entry.event === 'auth_refresh_request')).toBe(false);
+
+    const enabled = appWithLogs(true);
+    enabled.app.get('/api/v1/tasks', (_req, res) => res.sendStatus(204));
+    await request(enabled.app).get('/api/v1/tasks');
+    expect(enabled.logs.some((entry) => entry.event === 'auth_refresh_request')).toBe(false);
+  });
+
+  it('logs one terminal event when finish and close both fire', () => {
+    const events: unknown[] = [];
+    const requestId = '6a2a2b9c-08a3-4d85-b647-5122d2e4d55f';
+    const req = {
+      method: 'POST',
+      path: '/api/v1/auth/refresh',
+      headers: { 'x-taskflow-request-id': requestId },
+    } as express.Request;
+    const res = new EventEmitter() as express.Response;
+    Object.assign(res, { statusCode: 204 });
+
+    createRequestTimingMiddleware(true, undefined, (event) => events.push(event))(req, res, () => {});
+    res.emit('finish');
+    res.emit('close');
+
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => (event as LogEntry).phase)).toEqual(['start', 'finish']);
+  });
+
+  it('isolates diagnostic logger failures from request timing and response behavior', async () => {
+    const app = express();
+    app.use(createRequestTimingMiddleware(true, undefined, () => {
+      throw new Error('diagnostic logger secret');
+    }));
+    let stages: Partial<Record<RequestTimingStage, number>> | undefined;
+    app.post('/api/v1/auth/refresh', async (req, res) => {
+      await req.requestTiming?.measure('session_redis_ms', () => Promise.resolve());
+      stages = req.requestTiming?.snapshot();
+      res.sendStatus(204);
+    });
+
+    const response = await request(app).post('/api/v1/auth/refresh');
+
+    expect(response.status).toBe(204);
+    expect(stages?.session_redis_ms).toEqual(expect.any(Number));
   });
 });

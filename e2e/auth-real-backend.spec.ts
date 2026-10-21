@@ -57,15 +57,25 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
   await database.connect();
 
   const registration = await playwrightRequest.newContext({ baseURL: 'http://127.0.0.1:3001' });
+  const registrationB = await playwrightRequest.newContext({ baseURL: 'http://127.0.0.1:3001' });
   const suffix = crypto.randomUUID();
+  const suffixB = crypto.randomUUID();
   const fixture = {
     email: `e2e-${suffix}@taskflow.invalid`,
     fullName: `E2E User ${suffix.slice(0, 8)}`,
     password: `E2E-${suffix}-Password!`,
     companyName: `E2E Company ${suffix}`,
   };
+  const fixtureB = {
+    email: `e2e-${suffixB}@taskflow.invalid`,
+    fullName: `E2E User ${suffixB.slice(0, 8)}`,
+    password: `E2E-${suffixB}-Password!`,
+    companyName: `E2E Company ${suffixB}`,
+  };
   let created: Fixture | undefined;
+  let createdB: Fixture | undefined;
   let registrationToken: string | undefined;
+  let registrationTokenB: string | undefined;
   let browserToken: string | undefined;
 
   try {
@@ -94,6 +104,31 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
     expect(registeredUser.email).toBe(fixture.email);
     expect(registeredUser.tenantId).toBeTruthy();
 
+    const registrationResponseB = await registrationB.post('/api/v1/auth/register', { data: fixtureB });
+    const registrationBodyB = await registrationResponseB.json();
+    if (typeof registrationBodyB.accessToken === 'string') {
+      registrationTokenB = registrationBodyB.accessToken;
+    }
+    const registeredUserB = registrationBodyB.user;
+    if (
+      typeof registeredUserB?.id === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(registeredUserB.id) &&
+      registeredUserB.email === fixtureB.email &&
+      typeof registeredUserB.tenantId === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(registeredUserB.tenantId)
+    ) {
+      createdB = {
+        id: registeredUserB.id,
+        email: registeredUserB.email,
+        tenantId: registeredUserB.tenantId,
+        companyName: fixtureB.companyName,
+      };
+    }
+    expect(registrationResponseB.status()).toBe(201);
+    expect(createdB).toBeTruthy();
+    expect(registeredUserB.email).toBe(fixtureB.email);
+    expect(registeredUserB.tenantId).toBeTruthy();
+
     await page.goto('/login');
     await page.locator('#email').fill(fixture.email);
     await page.locator('#password').fill(fixture.password);
@@ -113,6 +148,42 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
     await expect(page.getByText(created.email, { exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
 
+    let releaseRefresh!: () => void;
+    let markRefreshStarted!: () => void;
+    const refreshStarted = new Promise<void>((resolve) => { markRefreshStarted = resolve; });
+    const refreshRelease = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const queuedLoginRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/auth/login')) queuedLoginRequests.push(request.url());
+    });
+    await page.route('**/api/v1/auth/refresh', async (route) => {
+      const response = await route.fetch();
+      markRefreshStarted();
+      await refreshRelease;
+      await route.fulfill({ response });
+    });
+    await page.goto('/login');
+    await refreshStarted;
+    await page.locator('#email').fill(fixtureB.email);
+    await page.locator('#password').fill(fixtureB.password);
+    const secondLoginResponsePromise = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/login'),
+    );
+    await page.locator('form button[type="submit"]').click();
+    await expect(page.locator('form button[type="submit"]')).toBeDisabled();
+    expect(queuedLoginRequests).toHaveLength(0);
+
+    releaseRefresh();
+    const secondLoginResponse = await secondLoginResponsePromise;
+    expect(secondLoginResponse.status()).toBe(200);
+    const secondLoginBody = await secondLoginResponse.json();
+    expect(secondLoginBody.user.id).toBe(createdB.id);
+    expect(secondLoginBody.user.email).toBe(createdB.email);
+    browserToken = secondLoginBody.accessToken;
+    expect(queuedLoginRequests).toHaveLength(1);
+    await page.unroute('**/api/v1/auth/refresh');
+    await expect(page.getByTestId('dashboard-page')).toBeVisible();
+
     const refreshResponsePromise = page.waitForResponse((response) =>
       response.url().endsWith('/api/v1/auth/refresh'),
     );
@@ -120,11 +191,12 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
     const refreshResponse = await refreshResponsePromise;
     expect(refreshResponse.status()).toBe(200);
     const refreshBody = await refreshResponse.json();
-    expect(refreshBody.user.id).toBe(created.id);
-    expect(refreshBody.user.email).toBe(created.email);
+    expect(refreshBody.user.id).toBe(createdB.id);
+    expect(refreshBody.user.email).toBe(createdB.email);
     await expect(page.getByTestId('dashboard-page')).toBeVisible();
 
     await page.getByRole('button', { name: /kullanıcı menüsünü aç|open user menu/i }).click();
+    await expect(page.getByText(createdB.email, { exact: true })).toBeVisible();
     const logoutResponsePromise = page.waitForResponse((response) =>
       response.url().endsWith('/api/v1/auth/logout'),
     );
@@ -141,10 +213,165 @@ test('real user login, refresh persistence, and logout protect the dashboard', a
   } finally {
     await logout(page.request, browserToken);
     await logout(registration, registrationToken);
-    await registration.dispose();
+    await logout(registrationB, registrationTokenB);
+    await Promise.all([registration.dispose(), registrationB.dispose()]);
     try {
       if (!created) created = await recoverFixture(database, fixture.email, fixture.companyName);
       if (created) await removeFixture(database, created);
+      if (!createdB) createdB = await recoverFixture(database, fixtureB.email, fixtureB.companyName);
+      if (createdB) await removeFixture(database, createdB);
+    } finally {
+      await database.end();
+    }
+  }
+});
+
+test('real refresh timeout releases a queued login without restoring the old cookie', async ({ page }) => {
+  await resetFixtureRegistrationLimit();
+  const database = new Client({ connectionString: guardedTestDatabaseUrl() });
+  await database.connect();
+  const registrationA = await playwrightRequest.newContext({ baseURL: 'http://127.0.0.1:3001' });
+  const registrationB = await playwrightRequest.newContext({ baseURL: 'http://127.0.0.1:3001' });
+  const createFixture = async (context: APIRequestContext) => {
+    const suffix = crypto.randomUUID();
+    const fixture = {
+      email: `e2e-${suffix}@taskflow.invalid`,
+      fullName: `E2E User ${suffix.slice(0, 8)}`,
+      password: `E2E-${suffix}-Password!`,
+      companyName: `E2E Company ${suffix}`,
+    };
+    const response = await context.post('/api/v1/auth/register', { data: fixture });
+    const body = await response.json();
+    const user = body.user;
+    const created =
+      typeof user?.id === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(user.id) &&
+      user.email === fixture.email &&
+      typeof user.tenantId === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(user.tenantId)
+        ? {
+            id: user.id as string,
+            email: user.email as string,
+            tenantId: user.tenantId as string,
+            companyName: fixture.companyName,
+          }
+        : undefined;
+    return { fixture, response, created, token: body.accessToken as string | undefined };
+  };
+  let accountA: Awaited<ReturnType<typeof createFixture>> | undefined;
+  let accountB: Awaited<ReturnType<typeof createFixture>> | undefined;
+  let browserToken: string | undefined;
+
+  try {
+    accountA = await createFixture(registrationA);
+    accountB = await createFixture(registrationB);
+    expect(accountA.response.status()).toBe(201);
+    expect(accountA.created).toBeTruthy();
+    expect(accountB.response.status()).toBe(201);
+    expect(accountB.created).toBeTruthy();
+
+    await page.goto('/login');
+    await page.locator('#email').fill(accountA.fixture.email);
+    await page.locator('#password').fill(accountA.fixture.password);
+    const accountALogin = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/login'),
+    );
+    await page.locator('form button[type="submit"]').click();
+    const accountALoginResponse = await accountALogin;
+    const accountALoginBody = await accountALoginResponse.json();
+    browserToken = accountALoginBody.accessToken;
+    expect(accountALoginBody.user.email).toBe(accountA.created?.email);
+    await expect(page.getByTestId('dashboard-page')).toBeVisible();
+
+    let releaseRefresh!: () => void;
+    let markRefreshStarted!: () => void;
+    let markRefreshFinished!: () => void;
+    let lateRefreshFulfilled = false;
+    let lateRefreshFulfillError: unknown;
+    const refreshStarted = new Promise<void>((resolve) => { markRefreshStarted = resolve; });
+    const refreshRelease = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const refreshFinished = new Promise<void>((resolve) => { markRefreshFinished = resolve; });
+    const loginRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/auth/login')) loginRequests.push(request.url());
+    });
+    await page.route('**/api/v1/auth/refresh', async (route) => {
+      const response = await route.fetch();
+      markRefreshStarted();
+      await refreshRelease;
+      try {
+        await route.fulfill({ response });
+        lateRefreshFulfilled = true;
+      } catch (error) {
+        lateRefreshFulfillError = error;
+      } finally {
+        markRefreshFinished();
+      }
+    });
+
+    await page.goto('/login');
+    await refreshStarted;
+    await page.locator('#email').fill(accountB.fixture.email);
+    await page.locator('#password').fill(accountB.fixture.password);
+    const accountBLoginRequest = page.waitForRequest((request) =>
+      request.url().endsWith('/api/v1/auth/login'),
+    );
+    const accountBLogin = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/login'),
+    );
+    await page.locator('form button[type="submit"]').click();
+    await expect(page.locator('form button[type="submit"]')).toBeDisabled();
+    expect(loginRequests).toHaveLength(0);
+
+    await accountBLoginRequest;
+    releaseRefresh();
+    await refreshFinished;
+    const loginResponse = await accountBLogin;
+    expect(loginResponse.status()).toBe(200);
+    const loginBody = await loginResponse.json();
+    expect(loginBody.user.id).toBe(accountB.created?.id);
+    expect(loginBody.user.email).toBe(accountB.created?.email);
+    browserToken = loginBody.accessToken;
+    expect(loginRequests).toHaveLength(1);
+    expect(lateRefreshFulfilled || lateRefreshFulfillError).toBeTruthy();
+    if (lateRefreshFulfillError) {
+      expect(String(lateRefreshFulfillError)).toMatch(/closed|aborted|handled/i);
+    }
+    await page.unroute('**/api/v1/auth/refresh');
+
+    await expect(page.getByTestId('dashboard-page')).toBeVisible();
+    const refreshResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/refresh'),
+    );
+    await page.reload();
+    const refreshed = await refreshResponse;
+    expect(refreshed.status()).toBe(200);
+    const refreshedBody = await refreshed.json();
+    expect(refreshedBody.user.id).toBe(accountB.created?.id);
+    expect(refreshedBody.user.email).toBe(accountB.created?.email);
+    await expect(page.getByTestId('dashboard-page')).toBeVisible();
+  } finally {
+    await logout(page.request, browserToken);
+    await logout(registrationA, accountA?.token);
+    await logout(registrationB, accountB?.token);
+    await Promise.all([registrationA.dispose(), registrationB.dispose()]);
+    try {
+      if (accountA && !accountA.created) {
+        accountA.created = await recoverFixture(
+          database,
+          accountA.fixture.email,
+          accountA.fixture.companyName,
+        );
+      }
+      if (accountA?.created) await removeFixture(database, accountA.created);
+      if (accountB && !accountB.created) {
+        accountB.created = await recoverFixture(
+          database,
+          accountB.fixture.email,
+          accountB.fixture.companyName,
+        );
+      }
+      if (accountB?.created) await removeFixture(database, accountB.created);
     } finally {
       await database.end();
     }

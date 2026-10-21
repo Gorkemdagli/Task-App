@@ -204,13 +204,82 @@ describe('App', () => {
     vi.restoreAllMocks();
     clearGlobalError();
   });
-  it('shows loading initially', async () => {
+  it('renders a usable login form while refresh is pending and after no session is found', async () => {
+    await import('../pages/Auth/AuthLayout');
+    await import('../pages/Auth/LoginPage');
+    let resolveRefresh!: (value: unknown) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+
     render(<App />);
-    expect(screen.getByText(/yükleniyor/i)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByText(/yükleniyor/i)).not.toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', { name: /Giri/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /Giri/ })).toBeEnabled();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRefresh({ status: 204, data: null });
     });
+
+    expect(screen.getByRole('heading', { name: /Giri/ })).toBeVisible();
+    expect(getGlobalError()).toBeNull();
   });
+
+  it('keeps login usable after a transient tokenless refresh failure', async () => {
+    refreshSpy.mockRejectedValue({ isAxiosError: true, code: 'ERR_NETWORK' });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: /Giri/ })).toBeVisible();
+    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+    expect(getGlobalError()).toBeNull();
+    expect(screen.getByRole('button', { name: /Giri/ })).toBeEnabled();
+  });
+
+  it.each(['session invalidation', 'unmount'] as const)(
+    'ignores a late refresh response after %s',
+    async (ending) => {
+      let resolveRefresh!: (value: unknown) => void;
+      refreshSpy.mockImplementation(
+        () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+      );
+
+      const app = render(<App />);
+      expect(await screen.findByRole('heading', { name: /Giri/ })).toBeVisible();
+      await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+
+      if (ending === 'session invalidation') {
+        act(() => useAuthStore.getState().clearAuth());
+      } else {
+        app.unmount();
+      }
+
+      await act(async () => {
+        resolveRefresh({ status: 200, data: { accessToken: 'late-refresh' } });
+      });
+
+      expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+      expect(getMe).not.toHaveBeenCalled();
+    },
+  );
+
+  it('redirects to the dashboard after a canonical session refresh on login', async () => {
+    refreshSpy.mockResolvedValue({ status: 200, data: { accessToken: 'fresh' } } as never);
+    vi.mocked(getMe).mockResolvedValue(canonicalUser);
+    vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/dashboard');
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: 'fresh', user: canonicalUser });
+  }, 15_000);
+
   it('shows sign-in required on a protected route and keeps login accessible', async () => {
     window.history.pushState({}, '', '/dashboard');
     render(<App />);
@@ -315,6 +384,59 @@ describe('App', () => {
     expect(useAuthStore.getState()).toMatchObject({ accessToken: 'signed-in', user: canonicalUser });
     expect(getGlobalError()).toBeNull();
   });
+
+  it.each(['204', '200', 'network error'] as const)(
+    'ignores a late %s refresh after a successful login',
+    async (lateResult) => {
+      let resolveRefresh!: (value: unknown) => void;
+      let rejectRefresh!: (error: unknown) => void;
+      refreshSpy.mockImplementation((url: string) => {
+        if (url === '/refresh') {
+          return new Promise((resolve, reject) => {
+            resolveRefresh = resolve as (value: unknown) => void;
+            rejectRefresh = reject;
+          }) as never;
+        }
+        return Promise.resolve({
+          status: 200,
+          data: { accessToken: 'signed-in', user: canonicalUser },
+        }) as never;
+      });
+      vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>,
+      );
+
+      expect(await screen.findByRole('heading', { name: /Giri/ })).toBeVisible();
+      fireEvent.change(document.querySelector('#email')!, { target: { value: 'u@example.com' } });
+      fireEvent.change(document.querySelector('#password')!, { target: { value: 'FixturePass123!' } });
+      fireEvent.click(screen.getByRole('button', { name: /Giri/ }));
+
+      expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+      const loginGeneration = useAuthStore.getState().sessionGeneration;
+
+      await act(async () => {
+        if (lateResult === '204') resolveRefresh({ status: 204, data: null });
+        else if (lateResult === '200') {
+          resolveRefresh({ status: 200, data: { accessToken: 'late-refresh' } });
+        } else {
+          rejectRefresh({ isAxiosError: true, code: 'ERR_NETWORK' });
+        }
+      });
+
+      expect(useAuthStore.getState()).toMatchObject({
+        accessToken: 'signed-in',
+        user: canonicalUser,
+        sessionGeneration: loginGeneration,
+      });
+      expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toEqual(canonicalUser);
+      expect(getGlobalError()).toBeNull();
+      if (lateResult === '200') expect(getMe).not.toHaveBeenCalled();
+    },
+  );
 
   it('waits for canonical restore when navigation reaches a protected route', async () => {
     window.history.pushState({}, '', '/');
