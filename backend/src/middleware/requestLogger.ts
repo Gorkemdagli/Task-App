@@ -14,7 +14,7 @@ export function createRequestLogger(
   const snapshotPool = timingEnabled ? getPoolSnapshot : undefined;
 
   return [
-    createRequestTimingMiddleware(timingEnabled, snapshotPool),
+    createRequestTimingMiddleware(timingEnabled, snapshotPool, (event) => requestLoggerInstance.info(event)),
     pinoHttp({
       logger: requestLoggerInstance,
       customProps: (req, res) => {

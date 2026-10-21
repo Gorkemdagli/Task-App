@@ -194,4 +194,154 @@ describe('auth proxy', () => {
     expect(timeoutResponse.statusCode).toBe(504);
     expect(timeoutResponse.body).toEqual({ error: 'Auth upstream timeout' });
   });
+
+  it('keeps the upstream deadline active while reading the response body', async () => {
+    vi.stubEnv('REQUEST_STAGE_TIMING', 'true');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    let signal: AbortSignal | undefined;
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      signal = init.signal as AbortSignal;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const fallback = setTimeout(
+              () => controller.error(Object.assign(new Error('fallback body timeout'), { name: 'AbortError' })),
+              50,
+            );
+            signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(fallback);
+                controller.error(Object.assign(new Error('body secret'), { name: 'AbortError' }));
+              },
+              { once: true },
+            );
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 'secret-cookie' } },
+      );
+    });
+    const response = createResponse();
+
+    try {
+      await createAuthProxyHandler({
+        apiOrigin: 'https://api.example.test',
+        fetchImpl,
+        timeoutMs: 10,
+      })(createRequest({ url: '/api/v1/auth/refresh', query: { path: ['refresh'] } }), response);
+
+      expect(response.statusCode).toBe(504);
+      expect(response.body).toEqual({ error: 'Auth upstream timeout' });
+      expect(response.headers).toEqual({});
+      expect(signal?.aborted).toBe(true);
+      const events = log.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+      expect(events.map((event) => event.phase)).toEqual(['start', 'upstream_headers', 'terminal']);
+      expect(events[1]).toMatchObject({ status: 200 });
+      expect(events[2]).toMatchObject({ status: 504, errorClass: 'upstream_timeout' });
+      expect(JSON.stringify(events)).not.toMatch(/body secret|secret-cookie|refreshToken|password|access-token/i);
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('clears the upstream deadline after a complete response body', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      signal = init.signal as AbortSignal;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+            setTimeout(() => controller.close(), 5);
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    const response = createResponse();
+
+    await createAuthProxyHandler({
+      apiOrigin: 'https://api.example.test',
+      fetchImpl,
+      timeoutMs: 30,
+    })(createRequest({ url: '/api/v1/auth/refresh', query: { path: ['refresh'] } }), response);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe('{"ok":true}');
+    expect(signal?.aborted).toBe(false);
+  });
+
+  it('replaces an incoming correlation header and logs only safe refresh lifecycle fields', async () => {
+    vi.stubEnv('REQUEST_STAGE_TIMING', 'true');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{"accessToken":"response-secret"}', { status: 200 }));
+    const response = createResponse();
+
+    try {
+      await createAuthProxyHandler({ apiOrigin: 'https://api.example.test', fetchImpl })(
+        createRequest({
+          url: '/api/v1/auth/refresh',
+          query: { path: ['refresh'] },
+          headers: {
+            'content-type': 'application/json',
+            cookie: 'refreshToken=request-secret',
+            authorization: 'Bearer request-secret',
+            'x-taskflow-request-id': 'attacker-value',
+          },
+        }),
+        response,
+      );
+
+      const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      const requestId = new Headers(init.headers).get('x-taskflow-request-id');
+      expect(requestId ?? '').toMatch(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);
+      expect(requestId).not.toBe('attacker-value');
+      const events = log.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+      expect(events.map((event) => event.phase)).toEqual(['start', 'upstream_headers', 'terminal']);
+      expect(events.every((event) => event.route === '/api/v1/auth/refresh' && event.method === 'POST')).toBe(true);
+      expect(events.every((event) => event.requestId === requestId)).toBe(true);
+      expect(events[2]).toMatchObject({ status: 200 });
+      expect(events[2]?.elapsedMs).toEqual(expect.any(Number));
+      expect(JSON.stringify(events)).not.toMatch(/request-secret|response-secret|attacker-value|email|password/i);
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('does not inject or log a correlation ID when diagnostics are disabled or route differs', async () => {
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+
+    try {
+      vi.stubEnv('REQUEST_STAGE_TIMING', 'false');
+      await createAuthProxyHandler({ apiOrigin: 'https://api.example.test', fetchImpl })(
+        createRequest({
+          url: '/api/v1/auth/refresh',
+          query: { path: ['refresh'] },
+          headers: { 'x-taskflow-request-id': 'attacker-value' },
+        }),
+        createResponse(),
+      );
+      expect(new Headers((fetchImpl.mock.calls[0] as [string, RequestInit])[1].headers).has('x-taskflow-request-id')).toBe(false);
+      expect(log).not.toHaveBeenCalled();
+
+      vi.stubEnv('REQUEST_STAGE_TIMING', 'true');
+      await createAuthProxyHandler({ apiOrigin: 'https://api.example.test', fetchImpl })(createRequest(), createResponse());
+      expect(new Headers((fetchImpl.mock.calls[1] as [string, RequestInit])[1].headers).has('x-taskflow-request-id')).toBe(false);
+      expect(log).not.toHaveBeenCalled();
+
+      await createAuthProxyHandler({ apiOrigin: 'https://api.example.test', fetchImpl })(
+        createRequest({ url: '/api/v1/auth/refresh', query: { path: ['login'] } }),
+        createResponse(),
+      );
+      expect(new Headers((fetchImpl.mock.calls[2] as [string, RequestInit])[1].headers).has('x-taskflow-request-id')).toBe(false);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
 });

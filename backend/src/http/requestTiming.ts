@@ -39,6 +39,22 @@ export type RequestTimingRecorder = {
   record(stage: RequestTimingStage, elapsedMs: number): void;
   snapshot(): Partial<Record<RequestTimingStage, number>>;
   processPoolStart?: ProcessPoolSnapshot;
+  observeDiagnosticStage?: (
+    phase: 'start' | 'end',
+    stage: RequestTimingStage,
+    elapsedMs?: number,
+  ) => void;
+};
+
+type RefreshDiagnostic = {
+  event: 'auth_refresh_request';
+  route: '/api/v1/auth/refresh';
+  method: 'POST';
+  requestId?: string;
+  phase: 'start' | 'stage_start' | 'stage_end' | 'finish' | 'close';
+  stage?: 'rate_limit_ms' | 'session_redis_ms' | 'auth_db_ms';
+  elapsedMs?: number;
+  status?: number;
 };
 
 declare global {
@@ -78,9 +94,20 @@ export function createRequestTiming(): RequestTimingRecorder {
     async measure<T>(stage: RequestTimingStage, work: () => T | Promise<T>): Promise<T> {
       const started = performance.now();
       try {
+        this.observeDiagnosticStage?.('start', stage);
+      } catch {
+        // Diagnostic observers must not change request behavior.
+      }
+      try {
         return await work();
       } finally {
-        this.record(stage, performance.now() - started);
+        const elapsedMs = performance.now() - started;
+        this.record(stage, elapsedMs);
+        try {
+          this.observeDiagnosticStage?.('end', stage, elapsedMs);
+        } catch {
+          // Diagnostic observers must not change request behavior.
+        }
       }
     },
     record(stage, elapsedMs) {
@@ -116,6 +143,7 @@ export function createTransactionPhaseRecorder(
 export function createRequestTimingMiddleware(
   enabled: boolean,
   getPoolSnapshot?: () => ProcessPoolSnapshot,
+  logDiagnostic?: (event: RefreshDiagnostic) => void,
 ): RequestHandler {
   if (!enabled) return (_req, _res, next) => next();
 
@@ -129,6 +157,63 @@ export function createRequestTimingMiddleware(
         // Pool telemetry must not alter request behavior.
       }
       req.requestTiming = timing;
+      if (route === '/api/v1/auth/refresh' && req.method === 'POST' && logDiagnostic) {
+        const incomingRequestId = req.headers['x-taskflow-request-id'];
+        const requestId =
+          typeof incomingRequestId === 'string' &&
+          /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(incomingRequestId)
+            ? incomingRequestId
+            : undefined;
+        delete req.headers['x-taskflow-request-id'];
+        const log = (event: Omit<RefreshDiagnostic, 'event' | 'route' | 'method' | 'requestId'>) => {
+          try {
+            logDiagnostic({
+              event: 'auth_refresh_request',
+              route: '/api/v1/auth/refresh',
+              method: 'POST',
+              ...(requestId ? { requestId } : {}),
+              ...event,
+            });
+          } catch {
+            // Diagnostic logging must not change request behavior.
+          }
+        };
+        timing.observeDiagnosticStage = (phase, stage, elapsedMs) => {
+          if (
+            stage !== 'rate_limit_ms' &&
+            stage !== 'session_redis_ms' &&
+            stage !== 'auth_db_ms'
+          ) {
+            return;
+          }
+          log({
+            phase: phase === 'start' ? 'stage_start' : 'stage_end',
+            stage,
+            ...(elapsedMs === undefined
+              ? {}
+              : { elapsedMs: Math.max(0, Math.round(elapsedMs * 10) / 10) }),
+          });
+        };
+        // The logger is mounted after parsers; this records logger-entry time, not upstream arrival.
+        const started = performance.now();
+        let terminal = false;
+        const finish = (phase: 'finish' | 'close') => {
+          if (terminal) return;
+          terminal = true;
+          res.off('finish', onFinish);
+          res.off('close', onClose);
+          log({
+            phase,
+            elapsedMs: Math.max(0, Math.round((performance.now() - started) * 10) / 10),
+            status: res.statusCode,
+          });
+        };
+        const onFinish = () => finish('finish');
+        const onClose = () => finish('close');
+        log({ phase: 'start' });
+        res.once('finish', onFinish);
+        res.once('close', onClose);
+      }
       if (requestTimingChannel.hasSubscribers) {
         res.once('finish', () => {
           requestTimingChannel.publish({
