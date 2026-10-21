@@ -143,7 +143,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     pathname !== '/' &&
     pathname !== '/login' &&
     !loginEstablishedDuringBootstrap
-  ) return <RouteFallback />;
+  ) return <RouteFallback variant={pathname === '/dashboard' ? 'dashboard' : undefined} />;
   return <AuthBootstrapContext.Provider value={bootstrapped}>{children}</AuthBootstrapContext.Provider>;
 }
 
@@ -167,7 +167,7 @@ function AppRoutes() {
   }
 
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <Suspense fallback={<RouteFallback variant={pathname === '/dashboard' ? 'dashboard' : undefined} />}>
       <Routes>
         <Route path="/" element={<RootRoute hasGlobalError={Boolean(globalError)} />} />
         <Route element={<AuthLayout />}>

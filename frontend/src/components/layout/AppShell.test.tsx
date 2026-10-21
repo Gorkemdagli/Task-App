@@ -78,7 +78,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('main')).toHaveClass('min-h-0', 'min-w-0', 'overflow-y-auto');
   });
 
-  it('keeps the shell visible while a destination route is suspended', () => {
+  it('keeps the shell visible with a content-only skeleton while the dashboard is suspended', () => {
     useAuthStore.setState({ accessToken: 't', user: baseUser });
     const pending = new Promise<void>(() => {});
     function SuspendedDestination(): never {
@@ -101,6 +101,8 @@ describe('AppShell', () => {
 
     expect(screen.getByTestId('app-shell')).toBeInTheDocument();
     expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.getByTestId('dashboard-content-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-route-skeleton')).not.toBeInTheDocument();
   });
 
   it('announces sidebar team loading without visible loading text', async () => {

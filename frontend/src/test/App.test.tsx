@@ -88,7 +88,7 @@ describe('AuthBootstrap canonical flow', () => {
     expect(getMe).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps protected bootstrap pending state non-textual and accessible', () => {
+  it('shows a data-free dashboard scaffold while protected bootstrap is pending', () => {
     window.history.pushState({}, '', '/dashboard');
     refreshSpy.mockReturnValue(new Promise(() => {}) as never);
 
@@ -97,7 +97,23 @@ describe('AuthBootstrap canonical flow', () => {
     expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveAccessibleName('Sayfa yükleniyor');
     expect(screen.getByTestId('route-fallback').querySelector('.sr-only')).toBeInTheDocument();
+    const scaffold = screen.getByTestId('dashboard-route-skeleton');
+    expect(scaffold.querySelectorAll('a, button')).toHaveLength(0);
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
   });
+
+  it.each(['/tasks', '/dashboard/other'])(
+    'keeps the generic fallback outside the exact dashboard route (%s)',
+    (path) => {
+      window.history.pushState({}, '', path);
+      refreshSpy.mockReturnValue(new Promise(() => {}) as never);
+
+      render(<App />);
+
+      expect(screen.getByTestId('route-fallback').querySelector('.animate-spin')).toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-route-skeleton')).not.toBeInTheDocument();
+    },
+  );
 
   it('preloads dashboard code during auth restore but waits for canonical user before mounting it', async () => {
     window.history.pushState({}, '', '/dashboard');
@@ -560,10 +576,10 @@ describe('App', () => {
     expect(document.querySelector('a[href="/register"]')).not.toBeInTheDocument();
   });
 
-  it('renders the shared route fallback', () => {
+  it('keeps the default shared route fallback generic', () => {
     render(<RouteFallback />);
 
-    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.getByTestId('route-fallback').querySelector('.animate-spin')).toBeInTheDocument();
   });
 
   it('renders a not-found screen for unknown routes', async () => {
