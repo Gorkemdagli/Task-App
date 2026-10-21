@@ -177,6 +177,13 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
   };
 
   const files = data?.files ?? [];
+  const downloadError = downloadFile.isError
+    ? getApiErrorMessage(
+        downloadFile.error,
+        i18n.language === 'en' ? 'File download failed.' : 'Dosya indirilemedi.',
+      )
+    : null;
+  const fileError = uploadError ?? deleteError ?? downloadError;
 
   return (
     <section aria-labelledby="files-heading" data-testid="task-files-panel">
@@ -287,10 +294,10 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
         )}
       </div>
 
-      {(uploadError || deleteError) && (
+      {fileError && (
         <p role="alert" className="mt-3 flex items-start gap-2 text-sm text-destructive">
           <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-          {uploadError ?? deleteError}
+          {fileError}
         </p>
       )}
 
@@ -313,16 +320,16 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
       ) : files.length === 0 ? (
         <p className="mt-4 text-sm italic text-muted-foreground">{t('tasks.files.empty')}</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
-          <div className="min-w-[520px]">
-            <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] gap-3 border-b border-border px-1 pb-2 text-[11px] text-muted-foreground">
-              <span>{t('tasks.files.name')}</span>
-              <span>{t('tasks.files.uploader')}</span>
-              <span className="text-right">{t('tasks.files.actions')}</span>
-            </div>
+        <div className="mt-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(76px,0.7fr)_auto] gap-2 border-b border-border px-1 pb-2 text-[11px] text-muted-foreground">
+            <span>{t('tasks.files.name')}</span>
+            <span>{t('tasks.files.uploader')}</span>
+            <span className="text-right">{t('tasks.files.actions')}</span>
+          </div>
+          <div data-testid="task-files-list-scroll" className="max-h-[320px] overflow-y-auto">
             <ul aria-label={t('tasks.files.aria')} className="divide-y divide-border">
           {files.map((file) => (
-            <li key={file.id} className="grid grid-cols-[minmax(0,1.6fr)_minmax(90px,0.8fr)_auto] items-center gap-3 px-1 py-3" data-testid={`task-file-${file.id}`}>
+            <li key={file.id} className="grid grid-cols-[minmax(0,1fr)_minmax(76px,0.7fr)_auto] items-center gap-2 px-1 py-3" data-testid={`task-file-${file.id}`}>
               <div className="flex min-w-0 items-start gap-2">
                 <FileText aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div className="min-w-0">
@@ -334,13 +341,13 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
               </div>
               <p className="min-w-0 text-xs text-muted-foreground">
                 <span className="block truncate text-foreground">{file.uploader.name}</span>
-                <span className="block truncate">{formatFileDate(file.createdAt, i18n.language === 'en' ? 'en-US' : 'tr-TR')}</span>
+                <span className="block break-words text-[11px]">{formatFileDate(file.createdAt, i18n.language === 'en' ? 'en-US' : 'tr-TR')}</span>
               </p>
               <div className="flex shrink-0 items-center justify-end gap-1">
                   <button
                     type="button"
                     aria-label={t('tasks.files.download', { name: file.originalName })}
-                    onClick={() => downloadFile.mutate({ taskId, fileId: file.id })}
+                    onClick={() => downloadFile.mutate({ taskId, fileId: file.id, filename: file.originalName })}
                     disabled={downloadFile.isPending}
                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                   >

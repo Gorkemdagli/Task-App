@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Bell, ChevronDown, LogOut, Menu, Moon, Settings, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -20,6 +20,7 @@ import {
   useNotifications,
   useMarkNotificationRead,
   useMarkAllRead,
+  queueAutomaticNotificationRead,
 } from '@/hooks/useNotifications';
 import {
   useAcceptCompanyInvitation,
@@ -67,7 +68,11 @@ function TopbarContent() {
   const notificationCount = notificationsKnown && companyInvitations.data
     ? unreadCount + invitations.length
     : undefined;
-  const markRead = useMarkNotificationRead();
+  const { mutate: markRead, mutateAsync: markReadAsync } = useMarkNotificationRead();
+  const autoRead = useCallback(
+    (id: string) => queueAutomaticNotificationRead(id, () => markReadAsync(id)),
+    [markReadAsync],
+  );
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
 
@@ -77,7 +82,7 @@ function TopbarContent() {
       item.type === 'company_invite_accepted' ||
       item.type === 'company_invite_rejected'
     ) return;
-    if (item.readAt === null) markRead.mutate(item.id);
+    if (item.readAt === null) markRead(item.id);
     if (!('taskId' in item.payload)) return;
     setBellOpen(false);
     navigate(`/tasks/${item.payload.taskId}`);
@@ -184,6 +189,7 @@ function TopbarContent() {
               items={items}
               unreadCount={unreadCount}
               onSelect={handleNotificationSelect}
+              onAutoRead={autoRead}
               onMarkAllRead={() => markAllRead.mutate()}
               onViewAll={() => {
                 setBellOpen(false);

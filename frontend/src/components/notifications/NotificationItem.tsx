@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { notificationActorInitials, notificationCopy } from '@/lib/notificationCopy';
 import type { NotificationItem as NotificationItemType } from '@/hooks/useNotifications';
@@ -6,6 +7,7 @@ import { useTranslation } from '@/i18n';
 interface NotificationItemProps {
   item: NotificationItemType;
   onSelect: (item: NotificationItemType) => void;
+  onAutoRead?: (id: string) => void;
 }
 
 function timeAgo(iso: string, language: string): string {
@@ -26,11 +28,62 @@ function timeAgo(iso: string, language: string): string {
   return relativeTime.format(-Math.round(abs / 86400), 'day');
 }
 
-export function NotificationItem({ item, onSelect }: NotificationItemProps) {
+export function NotificationItem({ item, onSelect, onAutoRead }: NotificationItemProps) {
   const { i18n } = useTranslation();
+  const itemElement = useRef<HTMLElement | null>(null);
+  const autoReadAttempted = useRef(false);
   const isUnread = item.readAt === null;
   const initials = notificationActorInitials(item.payload.actorName ?? null);
   const text = notificationCopy(item);
+
+  useEffect(() => {
+    const element = itemElement.current;
+    if (
+      !element ||
+      !onAutoRead ||
+      item.readAt !== null ||
+      typeof IntersectionObserver === 'undefined'
+    ) return;
+
+    let isVisibleEnough = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopDwell = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+    };
+    const startDwell = () => {
+      if (autoReadAttempted.current || timer !== undefined || document.visibilityState !== 'visible') {
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (!isVisibleEnough || document.visibilityState !== 'visible') return;
+        autoReadAttempted.current = true;
+        onAutoRead(item.id);
+      }, 1_000);
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      isVisibleEnough = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5);
+      if (isVisibleEnough) startDwell();
+      else stopDwell();
+    }, { threshold: 0.5 });
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') startDwell();
+      else stopDwell();
+    };
+
+    observer.observe(element);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopDwell();
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [item.id, item.readAt, onAutoRead]);
+
+  const setItemElement = useCallback((element: HTMLDivElement | HTMLButtonElement | null) => {
+    itemElement.current = element;
+  }, []);
 
   const content = (
     <>
@@ -61,6 +114,7 @@ export function NotificationItem({ item, onSelect }: NotificationItemProps) {
   ) {
     return (
       <div
+        ref={setItemElement}
         data-testid={`notification-item-${item.id}`}
         className="flex w-full items-start gap-3 px-3 py-2 text-left"
       >
@@ -71,6 +125,7 @@ export function NotificationItem({ item, onSelect }: NotificationItemProps) {
 
   return (
     <button
+        ref={setItemElement}
       type="button"
       data-testid={`notification-item-${item.id}`}
       onClick={() => onSelect(item)}

@@ -12,6 +12,7 @@ interface NotificationPanelProps {
   items: NotificationItemType[];
   unreadCount: number;
   onSelect: (item: NotificationItemType) => void;
+  onAutoRead?: (id: string) => void;
   onMarkAllRead: () => void;
   onViewAll: () => void;
   invitations?: CompanyInvitationDTO[];
@@ -34,6 +35,7 @@ export function NotificationPanel({
   items,
   unreadCount,
   onSelect,
+  onAutoRead,
   onMarkAllRead,
   onViewAll,
   invitations = [],
@@ -131,7 +133,7 @@ export function NotificationPanel({
           >
             {items.map((item) => (
               <li key={item.id}>
-                <NotificationItem item={item} onSelect={onSelect} />
+                <NotificationItem item={item} onSelect={onSelect} onAutoRead={onAutoRead} />
               </li>
             ))}
           </ul>

@@ -8,6 +8,7 @@ const uploadMock = vi.fn();
 const downloadMock = vi.fn();
 const deleteMock = vi.fn();
 const refetchMock = vi.fn();
+let downloadError: unknown;
 
 let files: TaskFile[] = [];
 let filesQuery: {
@@ -29,7 +30,7 @@ vi.mock('@/hooks/tasks', () => ({
     data: filesQuery.data ? { files } : undefined,
   }),
   useUploadTaskFile: () => ({ mutate: uploadMock, isPending: false }),
-  useDownloadTaskFile: () => ({ mutate: downloadMock, isPending: false }),
+  useDownloadTaskFile: () => ({ mutate: downloadMock, isPending: false, isError: Boolean(downloadError), error: downloadError }),
   useDeleteTaskFile: () => ({ mutate: deleteMock, isPending: false }),
 }));
 
@@ -47,6 +48,7 @@ const file = (overrides: Partial<TaskFile> = {}): TaskFile => ({
 describe('TaskFilesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    downloadError = undefined;
     files = [];
     filesQuery = {
       data: { files },
@@ -93,6 +95,31 @@ describe('TaskFilesPanel', () => {
     expect(screen.queryByText('Ekleyen · Tarih')).not.toBeInTheDocument();
     expect(screen.getByText('PDF · 1 KB')).toBeInTheDocument();
     expect(screen.getByText('Ada')).toBeInTheDocument();
+  });
+
+  it('fits long file names into the responsive table while keeping the full name accessible', () => {
+    const longName = `project-${'x'.repeat(120)}.pdf`;
+    files = [file({ originalName: longName })];
+    render(<TaskFilesPanel taskId="task-1" />);
+
+    const name = screen.getByText(longName);
+    const row = screen.getByTestId('task-file-file-1');
+    const grid = row.parentElement?.parentElement;
+    expect(name).toHaveAttribute('title', longName);
+    expect(name).toHaveTextContent(longName);
+    expect(grid).not.toHaveClass('min-w-[520px]');
+    expect(grid?.parentElement).not.toHaveClass('overflow-x-auto');
+  });
+
+  it('scrolls only the file list while keeping the section header and upload area fixed', () => {
+    files = [file()];
+    render(<TaskFilesPanel taskId="task-1" />);
+
+    const listScroll = screen.getByTestId('task-files-list-scroll');
+    expect(listScroll.querySelector('ul')).toBeInTheDocument();
+    expect(listScroll).toContainElement(screen.getByTestId('task-file-file-1'));
+    expect(listScroll).not.toContainElement(screen.getByRole('heading', { name: /dosyalar/i }));
+    expect(listScroll).not.toContainElement(screen.getByTestId('task-file-dropzone'));
   });
 
   it('keeps the upload icon inline with its label and helper text below', () => {
@@ -167,9 +194,17 @@ describe('TaskFilesPanel', () => {
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: 'brief.pdf indir' }));
-    expect(downloadMock).toHaveBeenCalledWith({ taskId: 'task-1', fileId: 'file-1' });
+    expect(downloadMock).toHaveBeenCalledWith({ taskId: 'task-1', fileId: 'file-1', filename: 'brief.pdf' });
     expect(screen.getByRole('button', { name: 'brief.pdf sil' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'readme.txt sil' })).not.toBeInTheDocument();
+  });
+
+  it('shows an accessible error when preparing a file download fails', () => {
+    downloadError = new Error('storage unavailable');
+    files = [file()];
+    render(<TaskFilesPanel taskId="task-1" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Dosya indirilemedi.');
   });
 
   it('confirms deletion inline, focuses Sil, and closes on Escape', async () => {

@@ -317,6 +317,7 @@ describe('Topbar notification bell', () => {
   afterEach(() => {
     getSpy.mockRestore();
     patchSpy?.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('renders notification badge when unreadCount > 0', async () => {
@@ -395,6 +396,56 @@ describe('Topbar notification bell', () => {
     await user.click(await screen.findByTestId('notification-item-n1'));
     expect(patchSpy).toHaveBeenCalledWith('/notifications/n1/read');
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tasks/task-1'));
+  });
+
+  it('auto-marks a visible panel notification read after its dwell period', async () => {
+    const itemId = 'topbar-auto-read-1';
+    let observerCallback: IntersectionObserverCallback | undefined;
+    class MockIntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '0px';
+      readonly thresholds = [0.5];
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+
+      constructor(callback: IntersectionObserverCallback) {
+        observerCallback = callback;
+      }
+
+      takeRecords = () => [] as IntersectionObserverEntry[];
+    }
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+    getSpy.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: itemId,
+            type: 'task_assigned',
+            payload: { taskId: 'task-1', taskTitle: 'Task', actorName: 'Ada' },
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        unreadCount: 1,
+        nextCursor: null,
+      },
+    } as never);
+    patchSpy = vi.spyOn(api, 'patch').mockResolvedValue({ data: null } as never);
+    renderTopbar(member);
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    const item = await screen.findByTestId(`notification-item-${itemId}`);
+    expect(observerCallback).toBeDefined();
+    expect(document.visibilityState).toBe('visible');
+    act(() => {
+      observerCallback?.(
+        [{ target: item, isIntersecting: true, intersectionRatio: 0.75 } as unknown as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+
+    await waitFor(() => expect(patchSpy).toHaveBeenCalledWith(`/notifications/${itemId}/read`), { timeout: 3_000 });
+    expect(patchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('navigates read task notification without single-read PATCH', async () => {

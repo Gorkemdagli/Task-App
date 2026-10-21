@@ -21,6 +21,33 @@ import {
 export const NOTIFICATIONS_PAGE_SIZE = 10;
 export const NOTIFICATIONS_KEY = queryKeys.notifications('tenant-test', 'user-1');
 
+const failedAutomaticReads = new Set<string>();
+const pendingAutomaticReadIds = new Set<string>();
+const automaticReadQueue: Array<{ id: string; read: () => Promise<unknown> }> = [];
+let processingAutomaticReads = false;
+
+export function queueAutomaticNotificationRead(id: string, read: () => Promise<unknown>) {
+  if (failedAutomaticReads.has(id) || pendingAutomaticReadIds.has(id) || pendingAutomaticReadIds.size >= 100) return;
+  pendingAutomaticReadIds.add(id);
+  automaticReadQueue.push({ id, read });
+  if (processingAutomaticReads) return;
+
+  processingAutomaticReads = true;
+  void (async () => {
+    while (automaticReadQueue.length > 0) {
+      const next = automaticReadQueue.shift()!;
+      try {
+        await next.read();
+      } catch {
+        failedAutomaticReads.add(next.id);
+      } finally {
+        pendingAutomaticReadIds.delete(next.id);
+      }
+    }
+    processingAutomaticReads = false;
+  })();
+}
+
 interface NotificationBase {
   id: string;
   readAt: string | null;
@@ -47,7 +74,7 @@ export interface NotificationsPageData {
   nextCursor: string | null;
 }
 
-export function useNotifications(enabled?: boolean) {
+export function useNotifications(enabled?: boolean, polling = true) {
   const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const readiness = useRouteDataReadiness();
@@ -61,7 +88,7 @@ export function useNotifications(enabled?: boolean) {
       return response.data;
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    refetchInterval: 30_000,
+    refetchInterval: polling ? 10_000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: 3,
