@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskPriority } from '@prisma/client';
+import type { Prisma, TaskStatus, TaskPriority } from '@prisma/client';
 import type { TenantDb } from '../db/types';
 import { AppError } from '../lib/appError';
 import {
@@ -177,7 +177,11 @@ export async function listTasks(
   query: ListTasksQuery,
   actor: Actor,
   timing?: RequestTimingRecorder,
-): Promise<{ tasks: TaskWithRelations[]; total: number }> {
+): Promise<{
+  tasks: TaskWithRelations[];
+  total: number;
+  workflowCounts?: { pending: number; upcoming: number; today: number; overdue: number; archived: number };
+}> {
   const tenantId = actor.tenantId;
   if (tenantId === null) return { tasks: [], total: 0 };
 
@@ -185,9 +189,8 @@ export async function listTasks(
 
   const teamFilter = isAdmin ? { tenantId } : { tenantId, members: { some: { userId: actor.id } } };
 
-  const where = {
+  const scopeWhere: Prisma.TaskWhereInput = {
     team: teamFilter,
-    ...(query.status?.length && { status: { in: query.status } }),
     ...(query.priority?.length && { priority: { in: query.priority } }),
     ...(query.teamId && { teamId: query.teamId }),
     ...(query.assigneeIds?.length && {
@@ -201,23 +204,117 @@ export async function listTasks(
           },
         }
       : {}),
-    ...(query.includeArchived ? {} : { archivedAt: null }),
   };
 
-  const [tasks, total] = await Promise.all([
+  const archiveFilter: Prisma.TaskWhereInput = query.archivedOnly
+    ? { archivedAt: { not: null } }
+    : query.includeArchived
+      ? {}
+      : { archivedAt: null };
+  const today = query.workflowFilter || query.includeWorkflowCounts ? startOfUtcToday() : undefined;
+  const workflowFilter: Prisma.TaskWhereInput | undefined = query.workflowFilter
+    ? {
+        archivedAt: null,
+        ...(query.workflowFilter === 'pending'
+          ? { pendingStatus: { not: null } }
+          : {
+              deadline:
+                query.workflowFilter === 'today'
+                  ? today
+                  : query.workflowFilter === 'overdue'
+                    ? { lt: today }
+                    : { gt: today },
+              ...(query.workflowFilter === 'overdue' && {
+                OR: [
+                  {
+                    status: { not: 'done' },
+                    OR: [
+                      { pendingStatus: null },
+                      { pendingProposedBy: null },
+                      { pendingProposedBy: { not: actor.id } },
+                    ],
+                  },
+                  { pendingStatus: { not: 'done' }, pendingProposedBy: actor.id },
+                ],
+              }),
+            }),
+      }
+    : undefined;
+  const effectiveStatusFilter: Prisma.TaskWhereInput | undefined = query.displayStatus
+    ? {
+        OR: [
+          {
+            status: query.displayStatus,
+            OR: [
+              { pendingStatus: null },
+              { pendingProposedBy: null },
+              { pendingProposedBy: { not: actor.id } },
+            ],
+          },
+          { pendingStatus: query.displayStatus, pendingProposedBy: actor.id },
+        ],
+      }
+    : undefined;
+  const where: Prisma.TaskWhereInput = {
+    ...scopeWhere,
+    ...(query.status?.length && { status: { in: query.status } }),
+    AND: [archiveFilter, ...(workflowFilter ? [workflowFilter] : []), ...(effectiveStatusFilter ? [effectiveStatusFilter] : [])],
+  };
+
+  const workflowCountsPromise = query.includeWorkflowCounts && today
+    ? Promise.all([
+        db.task.count({ where: { ...scopeWhere, archivedAt: null, pendingStatus: { not: null } } }),
+        db.task.count({ where: { ...scopeWhere, archivedAt: null, deadline: { gt: today } } }),
+        db.task.count({ where: { ...scopeWhere, archivedAt: null, deadline: today } }),
+        db.task.count({
+          where: {
+            ...scopeWhere,
+            archivedAt: null,
+            deadline: { lt: today },
+            OR: [
+              {
+                status: { not: 'done' },
+                OR: [
+                  { pendingStatus: null },
+                  { pendingProposedBy: null },
+                  { pendingProposedBy: { not: actor.id } },
+                ],
+              },
+              { pendingStatus: { not: 'done' }, pendingProposedBy: actor.id },
+            ],
+          },
+        }),
+        db.task.count({ where: { ...scopeWhere, archivedAt: { not: null } } }),
+      ])
+    : Promise.resolve(undefined);
+
+  const [tasks, total, workflowCounts] = await Promise.all([
     measureRequestStage(timing, 'task_list_find_many_elapsed_ms', () =>
       db.task.findMany({
         where,
         include: TASK_INCLUDE,
-        orderBy: [{ deadline: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: [{ deadline: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }, { id: 'asc' }],
         take: query.limit,
         skip: query.offset,
       }),
     ),
     measureRequestStage(timing, 'task_list_count_elapsed_ms', () => db.task.count({ where })),
+    workflowCountsPromise,
   ]);
 
-  return { tasks: tasks as TaskWithRelations[], total };
+  return {
+    tasks: tasks as TaskWithRelations[],
+    total,
+    ...(workflowCounts && {
+      workflowCounts: {
+        pending: workflowCounts[0],
+        upcoming: workflowCounts[1],
+        today: workflowCounts[2],
+        overdue: workflowCounts[3],
+        archived: workflowCounts[4],
+      },
+    }),
+  };
 }
 
 /** Tek görev. Yetkisiz → 403/404. Cross-tenant → 404. */

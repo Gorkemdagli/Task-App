@@ -106,6 +106,10 @@ export interface TaskHistoryPage {
 
 export interface ListTasksFilters {
   status?: TaskStatus[];
+  displayStatus?: TaskStatus;
+  archivedOnly?: boolean;
+  workflowFilter?: 'pending' | 'overdue' | 'today' | 'upcoming';
+  includeWorkflowCounts?: boolean;
   priority?: TaskPriority[];
   teamId?: string;
   assigneeIds?: string[];
@@ -119,6 +123,10 @@ export interface ListTasksFilters {
 function toQuery(filters: ListTasksFilters | undefined): string {
   if (!filters) return '';
   const sp = appendTaskFilterParams(new URLSearchParams(), filters);
+  if (filters.displayStatus) sp.set('displayStatus', filters.displayStatus);
+  if (filters.archivedOnly) sp.set('archivedOnly', 'true');
+  if (filters.workflowFilter) sp.set('workflowFilter', filters.workflowFilter);
+  if (filters.includeWorkflowCounts) sp.set('includeWorkflowCounts', 'true');
   if (filters.limit) sp.set('limit', String(filters.limit));
   if (filters.offset) sp.set('offset', String(filters.offset));
   const qs = sp.toString();
@@ -163,8 +171,45 @@ export function useTasks(filters?: ListTasksFilters, options?: { enabled?: boole
   const query = useQuery({
     queryKey: queryKeys.tasks.list(tenantId ?? 'tenantless', filters),
     queryFn: async () => {
-      const r = await api.get<{ tasks: Task[]; total: number }>(`/tasks${toQuery(filters)}`);
+      const r = await api.get<{
+        tasks: Task[];
+        total: number;
+        workflowCounts?: { pending: number; upcoming: number; today: number; overdue: number; archived: number };
+      }>(`/tasks${toQuery(filters)}`);
       return r.data;
+    },
+    enabled: Boolean(tenantId) && (options?.enabled ?? true),
+  });
+  useEffect(() => {
+    if (
+      readiness.phase === 'tasks' &&
+      (query.data !== undefined || (options?.enabled === false && query.fetchStatus === 'idle'))
+    ) {
+      readiness.completePhase('tasks');
+    }
+  }, [options?.enabled, query.data, query.fetchStatus, readiness]);
+  return query;
+}
+
+export function useTaskPages(
+  filters: Omit<ListTasksFilters, 'limit' | 'offset'>,
+  options?: { enabled?: boolean },
+) {
+  const tenantId = useAuthStore((state) => state.user?.tenantId ?? null);
+  const readiness = useRouteDataReadiness();
+  const pageSize = 10;
+  const query = useInfiniteQuery({
+    queryKey: [...queryKeys.tasks.list(tenantId ?? 'tenantless', { ...filters, limit: pageSize }), 'pages'],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const r = await api.get<{ tasks: Task[]; total: number }>(
+        `/tasks${toQuery({ ...filters, limit: pageSize, offset: pageParam })}`,
+      );
+      return r.data;
+    },
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((count, page) => count + page.tasks.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
     },
     enabled: Boolean(tenantId) && (options?.enabled ?? true),
   });

@@ -433,7 +433,7 @@ export function TeamDetailPage() {
             />
           </section>
 
-          <section className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <section data-testid="team-task-panel" className="flex h-[28rem] min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
             <div className="flex h-16 items-center justify-between border-b border-border px-5">
               <h2 className="text-lg font-semibold text-foreground">
                 {t('teams.detail.tasks')} <span className="text-secondary-foreground">({team.taskCount})</span>
@@ -450,11 +450,12 @@ export function TeamDetailPage() {
                 </Button>
               )}
             </div>
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {tasksLoading ? (
                 <div className="space-y-2 p-4">
-                  <Skeleton className="h-12 w-full rounded-md" />
-                  <Skeleton className="h-12 w-full rounded-md" />
+                  {Array.from({ length: PAGE_SIZE }, (_, index) => (
+                    <Skeleton key={index} className="h-12 w-full rounded-md" />
+                  ))}
                 </div>
               ) : tasksError ? (
                 <p role="alert" className="p-6 text-sm text-destructive">

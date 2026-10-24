@@ -220,6 +220,14 @@ describe('TeamDetailPage', () => {
     expect(screen.getByRole('heading', { name: /Görevler \(2\)/ })).toBeInTheDocument();
   });
 
+  it('keeps the task panel dimensions while its page is loading', () => {
+    mocks.useTasks.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    renderPage();
+
+    expect(screen.getByTestId('team-task-panel')).toHaveClass('h-[28rem]');
+    expect(screen.getByTestId('team-task-panel').querySelectorAll('.animate-pulse')).toHaveLength(8);
+  });
+
   it('shows a shared detail skeleton while the team is pending', () => {
     mocks.useTeam.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     renderPage();

@@ -102,6 +102,16 @@ export const listTasksQuerySchema = z.object({
     .transform((v) => (Array.isArray(v) ? v : v.split(',')))
     .pipe(z.array(taskStatusSchema))
     .optional(),
+  displayStatus: taskStatusSchema.optional(),
+  archivedOnly: z
+    .union([z.literal('true'), z.literal('false')])
+    .transform((v) => v === 'true')
+    .optional(),
+  workflowFilter: z.enum(['pending', 'overdue', 'today', 'upcoming']).optional(),
+  includeWorkflowCounts: z
+    .union([z.literal('true'), z.literal('false')])
+    .transform((v) => v === 'true')
+    .optional(),
   priority: z
     .union([z.string(), z.array(z.string())])
     .transform((v) => (Array.isArray(v) ? v : v.split(',')))

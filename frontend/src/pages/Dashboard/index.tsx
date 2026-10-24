@@ -26,7 +26,7 @@ import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 import { canCommentOnTask, canUpdateTaskStatus, isCompanyAdmin } from '@/lib/permissions';
 import { getDisplayStatus } from '@/lib/taskDisplay';
-import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
+import { formatCalendarDateDisplay } from '@/lib/calendarDate';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { CommentInput } from '@/components/comments/CommentInput';
 import { CommentList } from '@/components/comments/CommentList';
@@ -52,6 +52,7 @@ const COLUMNS: { status: TaskStatus; label: string; color: string; dropRing: str
 ];
 
 const EMPTY_TASKS: Task[] = [];
+const TASKS_PER_COLUMN = 10;
 
 type WorkflowFilter = 'overdue' | 'today' | 'pending' | 'upcoming' | 'archived';
 
@@ -91,33 +92,23 @@ const PRIORITY_BADGE_CLASS: Record<Task['priority'], string> = {
   low: 'border-priority-low/40 bg-priority-low/10 text-priority-low',
 };
 
-function matchesWorkflowFilter(
-  task: Task,
-  filter: WorkflowFilter,
-  currentUserId: string | undefined,
-): boolean {
-  const today = utcTodayCalendarDate();
-  const displayStatus = getDisplayStatus(task, currentUserId);
-
-  if (filter === 'archived') return task.archivedAt !== null;
-  if (task.archivedAt !== null) return false;
-  if (filter === 'pending') return task.pendingStatus !== null;
-  if (!task.deadline) return false;
-  if (filter === 'overdue') return task.deadline < today && displayStatus !== 'done';
-  if (filter === 'today') return task.deadline === today;
-  return task.deadline > today;
+function compareDashboardTasks(a: Task, b: Task) {
+  if (a.deadline !== b.deadline) {
+    if (a.deadline === null) return 1;
+    if (b.deadline === null) return -1;
+    return a.deadline.localeCompare(b.deadline);
+  }
+  return b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id);
 }
 
 function WorkflowStrip({
-  tasks,
+  counts,
   activeFilter,
   onSelect,
-  currentUserId,
 }: {
-  tasks: Task[];
+  counts: { pending: number; upcoming: number; today: number; overdue: number; archived: number };
   activeFilter: WorkflowFilter | null;
   onSelect: (filter: WorkflowFilter) => void;
-  currentUserId?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -129,9 +120,6 @@ function WorkflowStrip({
         <span className="text-sm font-semibold text-foreground">{t('İş Akışı')}</span>
       </div>
       {WORKFLOW_ITEMS.map((item) => {
-        const count = tasks.filter((task) =>
-          matchesWorkflowFilter(task, item.id, currentUserId),
-        ).length;
         const active = activeFilter === item.id;
 
         return (
@@ -153,7 +141,7 @@ function WorkflowStrip({
               data-testid={`workflow-count-${item.id}`}
               className="text-xs text-muted-foreground tabular-nums"
             >
-              {count}
+              {counts[item.id]}
             </span>
           </button>
         );
@@ -167,6 +155,7 @@ function StatusColumn({
   tasks,
   isLoading,
   userId,
+  teamId,
   showTeam,
   selectedTaskId,
   onSelectTask,
@@ -176,6 +165,7 @@ function StatusColumn({
   tasks: Task[];
   isLoading: boolean;
   userId?: string;
+  teamId?: string | null;
   showTeam?: boolean;
   selectedTaskId?: string | null;
   onSelectTask?: (taskId: string) => void;
@@ -184,7 +174,6 @@ function StatusColumn({
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
   const taskListRef = useRef<HTMLDivElement>(null);
-  const hasDesktopTaskOverflow = tasks.length > 3;
 
   const scrollTasks = (direction: -1 | 1) => {
     const taskList = taskListRef.current;
@@ -198,12 +187,8 @@ function StatusColumn({
       id={column.status}
       data-testid={`column-${column.status}`}
       data-status={column.status}
-      className={`min-w-0 rounded-md border-t-4 bg-card/30 p-4 ${column.color} ${
+      className={`min-w-0 rounded-md border-t-4 bg-card/30 p-4 ${column.color} lg:flex lg:h-full lg:min-h-0 lg:flex-col ${
         isOver ? `ring-2 ring-inset ${column.dropRing}` : ''
-      } ${
-        hasDesktopTaskOverflow
-          ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col'
-          : ''
       }`}
     >
       <div className="mb-3 flex items-center justify-between">
@@ -211,9 +196,7 @@ function StatusColumn({
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
       <div
-        className={`min-h-[200px] ${
-          hasDesktopTaskOverflow ? 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : ''
-        }`}
+        className="min-h-[200px] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
       >
         {isLoading ? (
           <div className="space-y-3" aria-label={t('Görevler yükleniyor')}>
@@ -223,20 +206,12 @@ function StatusColumn({
         ) : tasks.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t('Boş')}</p>
         ) : (
-          <div
-            className={
-              hasDesktopTaskOverflow ? 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : undefined
-            }
-          >
+          <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <div
               ref={taskListRef}
               id={`task-carousel-${column.status}`}
               data-testid={`task-carousel-${column.status}`}
-              className={`flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:block md:space-y-3 md:overflow-visible md:pb-0 ${
-                hasDesktopTaskOverflow
-                  ? 'lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain'
-                  : ''
-              }`}
+              className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:block md:space-y-3 md:overflow-visible md:pb-0 lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain"
             >
               {tasks.map((task) => (
                 <div key={task.id} className="min-w-full snap-start md:min-w-0">
@@ -274,6 +249,14 @@ function StatusColumn({
           </div>
         )}
       </div>
+      {!isLoading && tasks.length > 0 && (
+        <Link
+          to={`/tasks?status=${column.status}&displayStatus=${column.status}${teamId ? `&teamId=${encodeURIComponent(teamId)}` : ''}`}
+          className="mt-3 inline-flex min-h-9 items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {t('Daha fazlasını gör')}
+        </Link>
+      )}
     </div>
   );
 }
@@ -535,32 +518,38 @@ export function DashboardPage() {
     ? {
         ...(teamId ? { teamId } : {}),
         assigneeIds: user?.id ? [user.id] : [],
-        limit: MAX_RENDERED_RECORDS,
       }
-    : {
-        ...(teamId ? { teamId } : {}),
-        includeArchived: true,
-        limit: MAX_RENDERED_RECORDS,
-      };
+    : { ...(teamId ? { teamId } : {}) };
 
-  const tasksQuery = useTasks(taskFilters, {
-    enabled:
-      Boolean(user?.tenantId) && readiness.tasksEnabled &&
-      (isCompanyAdmin(user) || Boolean(teamId && currentTeamMember)),
-  });
-  const tasksData = tasksQuery.data;
-  const isLoading =
-    tasksQuery.isLoading ||
-    readiness.phase === 'teams' || readiness.phase === 'team-detail' ||
-    (readiness.phase === 'tasks' && tasksQuery.fetchStatus === 'idle' && tasksData === undefined);
-  const tasks = tasksData?.tasks ?? EMPTY_TASKS;
-  const activeTasks = useMemo(() => tasks.filter((task) => !task.archivedAt), [tasks]);
-  const archivedTasks = useMemo(() => tasks.filter((task) => task.archivedAt), [tasks]);
-  const visibleTasks = useMemo(() => {
-    if (workflowFilter === 'archived') return archivedTasks;
-    if (!workflowFilter) return activeTasks;
-    return activeTasks.filter((task) => matchesWorkflowFilter(task, workflowFilter, user?.id));
-  }, [activeTasks, archivedTasks, user?.id, workflowFilter]);
+  const tasksEnabled =
+    Boolean(user?.tenantId) && readiness.tasksEnabled &&
+    (isCompanyAdmin(user) || Boolean(teamId && currentTeamMember));
+  const dashboardTaskFilters = {
+    ...taskFilters,
+    ...(workflowFilter === 'archived'
+      ? { includeArchived: true, archivedOnly: true }
+      : workflowFilter
+        ? { workflowFilter }
+        : {}),
+    limit: TASKS_PER_COLUMN,
+  };
+  const todoTasksQuery = useTasks(
+    { ...dashboardTaskFilters, displayStatus: 'todo', includeWorkflowCounts: !isMemberSurface },
+    { enabled: tasksEnabled },
+  );
+  const inProgressTasksQuery = useTasks(
+    { ...dashboardTaskFilters, displayStatus: 'in_progress' },
+    { enabled: tasksEnabled },
+  );
+  const doneTasksQuery = useTasks(
+    { ...dashboardTaskFilters, displayStatus: 'done' },
+    { enabled: tasksEnabled },
+  );
+  const taskQueries = [todoTasksQuery, inProgressTasksQuery, doneTasksQuery];
+  const tasksData = taskQueries.map((query) => query.data);
+  const tasks = taskQueries.flatMap((query) => query.data?.tasks ?? EMPTY_TASKS);
+  const visibleTasks = tasks;
+  const visibleTaskCount = taskQueries.reduce((total, query) => total + (query.data?.total ?? 0), 0);
 
   const selectedTaskQuery = useTask(selectedTaskId ?? undefined);
   const commentsQuery = useTaskComments(selectedTaskId ?? undefined);
@@ -573,10 +562,34 @@ export function DashboardPage() {
     for (const t of visibleTasks) {
       map[getDisplayStatus(t, user?.id)].push(t);
     }
+    for (const status of Object.keys(map) as TaskStatus[]) {
+      map[status].sort(compareDashboardTasks);
+    }
     return map;
   }, [user?.id, visibleTasks]);
 
+  const isLoading =
+    taskQueries.some((query) => query.isLoading) ||
+    readiness.phase === 'teams' || readiness.phase === 'team-detail' ||
+    (readiness.phase === 'tasks' && taskQueries.some((query, index) =>
+      query.fetchStatus === 'idle' && tasksData[index] === undefined,
+    ));
+  const visibleColumns = useMemo(() => {
+    const result: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
+    for (const status of Object.keys(grouped) as TaskStatus[]) {
+      result[status] = grouped[status].slice(0, TASKS_PER_COLUMN);
+    }
+    return result;
+  }, [grouped]);
+
   const canCreate = isCompanyAdmin(user) || isTeamAdminOfThisTeam;
+  const workflowCounts = todoTasksQuery.data?.workflowCounts ?? {
+    pending: 0,
+    upcoming: 0,
+    today: 0,
+    overdue: 0,
+    archived: 0,
+  };
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -650,7 +663,7 @@ export function DashboardPage() {
       <div className="mb-6 flex min-h-[150px] flex-col gap-4 xl:min-h-0 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
         <div>
           <h1 className="text-2xl font-semibold">{heading}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('{{count}} görev', { count: visibleTasks.length })}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('{{count}} görev', { count: visibleTaskCount })}</p>
         </div>
         {canCreate && teamId && (
           <button
@@ -669,12 +682,11 @@ export function DashboardPage() {
       )}
       {!isMemberSurface && (
         <WorkflowStrip
-          tasks={tasks}
+          counts={workflowCounts}
           activeFilter={workflowFilter}
           onSelect={(filter) =>
             setWorkflowFilter((current) => (current === filter ? null : filter))
           }
-          currentUserId={user?.id}
         />
       )}
       {sortedTeams.length > 1 || isCompanyAdmin(user) ? (
@@ -718,9 +730,10 @@ export function DashboardPage() {
               <StatusColumn
                 key={column.status}
                 column={column}
-                tasks={grouped[column.status]}
+                tasks={visibleColumns[column.status]}
                 isLoading={isLoading}
                 userId={user?.id}
+                teamId={teamId}
                 showTeam={isAllTeamScope}
                 selectedTaskId={selectedTaskId}
                 onSelectTask={handleTaskSelect}

@@ -12,6 +12,7 @@ import {
   useCreateTask,
   usePrefetchTask,
   useTask,
+  useTaskPages,
   useTasks,
   useUpdateTaskStatus,
 } from './tasks';
@@ -81,6 +82,10 @@ describe('task query and mutation hooks', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
     const filters: ListTasksFilters = {
       status: ['todo'],
+      displayStatus: 'done',
+      archivedOnly: true,
+      workflowFilter: 'pending',
+      includeWorkflowCounts: true,
       priority: ['high'],
       teamId: 'team-a',
       assigneeIds: ['user-1'],
@@ -99,6 +104,10 @@ describe('task query and mutation hooks', () => {
     expect(request.split('?')[0]).toBe('/tasks');
     expect(Object.fromEntries(params)).toEqual({
       status: 'todo',
+      displayStatus: 'done',
+      archivedOnly: 'true',
+      workflowFilter: 'pending',
+      includeWorkflowCounts: 'true',
       priority: 'high',
       teamId: 'team-a',
       assigneeIds: 'user-1',
@@ -109,6 +118,30 @@ describe('task query and mutation hooks', () => {
       offset: '20',
     });
     expect(queryClient.getQueryData(queryKeys.tasks.list(tenantId, filters))).toEqual(data);
+  });
+
+  it('loads task pages in batches of ten with the existing filters', async () => {
+    const firstPage = Array.from({ length: 10 }, (_, index) => ({ ...task(), id: `task-${index}` }));
+    const lastPage = [{ ...task(), id: 'task-10' }, { ...task(), id: 'task-11' }];
+    const get = vi.spyOn(api, 'get')
+      .mockResolvedValueOnce({ data: { tasks: firstPage, total: 12 } } as never)
+      .mockResolvedValueOnce({ data: { tasks: lastPage, total: 12 } } as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const { result } = renderHook(
+      () => useTaskPages({ status: ['todo'], teamId: 'team-a', includeArchived: true }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.hasNextPage).toBe(true);
+    await act(async () => { await result.current.fetchNextPage(); });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+
+    expect(get.mock.calls.map(([url]) => url)).toEqual([
+      '/tasks?status=todo&teamId=team-a&includeArchived=true&limit=10',
+      '/tasks?status=todo&teamId=team-a&includeArchived=true&limit=10&offset=10',
+    ]);
+    expect(result.current.hasNextPage).toBe(false);
   });
 
   it('does not fetch task data when the user has no tenant or task id', () => {

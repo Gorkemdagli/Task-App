@@ -53,7 +53,8 @@ export function TasksPage() {
   const queryArgs = useMemo(() => {
     const { from, to } = buildDeadlineRange(filters);
     return {
-      status: filters.status.length ? filters.status : undefined,
+      status: filters.displayStatus ? undefined : filters.status.length ? filters.status : undefined,
+      displayStatus: filters.displayStatus ?? undefined,
       priority: filters.priority.length ? filters.priority : undefined,
       teamId: filters.teamId ?? undefined,
       assigneeIds: filters.assigneeIds.length ? filters.assigneeIds : undefined,
