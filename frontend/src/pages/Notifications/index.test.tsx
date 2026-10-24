@@ -95,6 +95,22 @@ describe('NotificationsPage', () => {
     expect(getSpy).toHaveBeenCalledWith('/notifications?limit=10');
   });
 
+  it('shows the initial loading state until notifications arrive', async () => {
+    let resolveRequest!: (value: unknown) => void;
+    getSpy.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }) as never);
+    renderPage();
+
+    expect(await screen.findByRole('status', { name: 'Sayfa yükleniyor' })).toBeInTheDocument();
+    expect(screen.queryByTestId('notifications-page-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('empty-notifications')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRequest({ data: { items: [makeItem('n1')], unreadCount: 1, nextCursor: null } });
+    });
+    expect(await screen.findByTestId('notification-item-n1')).toBeInTheDocument();
+    expect(screen.queryByTestId('notifications-page-skeleton')).not.toBeInTheDocument();
+  });
+
   it('loads next page only after Daha fazla click', async () => {
     getSpy
       .mockResolvedValueOnce({

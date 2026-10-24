@@ -245,7 +245,7 @@ describe('CompanyDashboard', () => {
       refetch: vi.fn(),
     });
     const loadingView = renderDashboard();
-    expect(screen.getByTestId('company-dashboard-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', 'detail');
     loadingView.unmount();
 
     const refetch = vi.fn();

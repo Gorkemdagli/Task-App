@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -711,6 +712,12 @@ def _self_check() -> None:
     _, excluded = exclusion_subtrees(["c"], {"r": root_tokens, "c": child_tokens}, {"r": ["c"]})
     assert excluded == {"c"} and token_accounting(root_tokens, [])[2] == "10"
     assert within_after(moment, moment + timedelta(seconds=300)) and not within_after(moment, moment + timedelta(seconds=301))
+    observed_wait = Session(
+        function_events={("wait-1", moment, "wait_agent", '{"timeout_ms":300000}')},
+        function_results={("wait-1", moment + timedelta(seconds=1), "done", False)},
+    )
+    assert observed_wait_spans_ms(observed_wait) == [1000]
+    assert pearson_correlation([(1.0, 2.0), (2.0, 4.0), (3.0, 6.0)]) == 1.0
     assert is_source_read("rtk rg backend/src frontend/src")
     assert not is_source_read("rtk git grep backend/src")
     assert not is_source_read("rtk docker run backend/src")
@@ -1210,6 +1217,292 @@ def render_session_flow_analysis(
     return "\n".join(output)
 
 
+HISTORICAL_GROUP_A_START = datetime.fromisoformat("2026-10-03T22:09:12+00:00")
+HISTORICAL_GROUP_CUTOFF = datetime.fromisoformat("2026-10-11T00:38:00+00:00")
+HISTORICAL_EXCLUDED_SESSIONS = {
+    "01a12863-bdd9-7ce3-97d8-621bba0b41e7",
+    "01a12866-f6c5-7481-8516-e3df186c02d6",
+}
+HISTORICAL_EXCLUSION_PATTERN = re.compile(
+    r"\b(agent[- ]metrics|token[- ]analysis|session[- ]log analysis|"
+    r"session/token analysis|metrics script|configuration audit|config(?:uration)? optimization|"
+    r"config(?:uration)? version audit|subagent system analysis|"
+    r"(?:agent|subagent|subagnet)\b.{0,80}\b(?:timing|metrics?|measurement|logs?|configuration|config)\b)",
+    re.I,
+)
+
+
+def historical_exclusion_reason(root: Session, current_id: str | None) -> str | None:
+    if root.thread_id in HISTORICAL_EXCLUDED_SESSIONS:
+        return "explicitly excluded session ID"
+    if root.thread_id and root.thread_id == current_id:
+        return "current session from CODEX_SESSION_ID"
+    message = root.first_user_message or ""
+    if HISTORICAL_EXCLUSION_PATTERN.search(message):
+        return "first user message identifies measurement/log-analysis/configuration work"
+    return None
+
+
+def logged_tool_errors(root: Session, tool_name: str) -> int:
+    events = {call_id for call_id, _, name, _ in root.function_events if name == tool_name}
+    return sum(
+        call_id in events and (is_error or bool(re.search(r"\b(error|failed|failure|exception|unable)\b", text, re.I)))
+        for call_id, _, text, is_error in root.function_results
+    )
+
+
+def observed_wait_spans_ms(root: Session) -> list[int]:
+    result_times = {call_id: when for call_id, when, _, _ in root.function_results if when is not None}
+    return [
+        int((result_times[call_id] - when).total_seconds() * 1000)
+        for call_id, when, name, _ in root.function_events
+        if name == "wait_agent" and when is not None and call_id in result_times and result_times[call_id] >= when
+    ]
+
+
+def median_number(values: list[int]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return float(ordered[middle]) if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def pearson_correlation(pairs: list[tuple[float, float]]) -> float | None:
+    if len(pairs) < 2:
+        return None
+    xs, ys = zip(*pairs)
+    mean_x, mean_y = sum(xs) / len(xs), sum(ys) / len(ys)
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in pairs)
+    denominator = math.sqrt(sum((x - mean_x) ** 2 for x in xs) * sum((y - mean_y) ** 2 for y in ys))
+    return numerator / denominator if denominator else None
+
+
+def render_historical_agent_analysis(
+    roots: list[Session], threads: dict[str, Session], children: dict[str, list[str]],
+    workspace: str, current_id: str | None,
+) -> str:
+    excluded_roots: dict[str, str] = {}
+    no_spawn_roots = 0
+    eligible: list[Session] = []
+    for root in roots:
+        reason = historical_exclusion_reason(root, current_id)
+        if reason:
+            excluded_roots[root.thread_id or "NOT AVAILABLE"] = reason
+        elif not any(name == "spawn_agent" for _, _, name, _ in root.function_events):
+            no_spawn_roots += 1
+        else:
+            eligible.append(root)
+
+    a_roots = [root for root in eligible if root.started and HISTORICAL_GROUP_A_START <= root.started <= HISTORICAL_GROUP_CUTOFF]
+    b_roots = [root for root in eligible if root.started and root.started > HISTORICAL_GROUP_CUTOFF]
+    dropped_unassigned = len(eligible) - len(a_roots) - len(b_roots)
+    a_candidates = sum(bool(root.started and HISTORICAL_GROUP_A_START <= root.started <= HISTORICAL_GROUP_CUTOFF) for root in roots)
+    b_candidates = sum(bool(root.started and root.started > HISTORICAL_GROUP_CUTOFF) for root in roots)
+    excluded_ids = set(excluded_roots)
+    excluded_threads: set[str] = set(excluded_ids) | HISTORICAL_EXCLUDED_SESSIONS
+    if current_id:
+        excluded_threads.add(current_id)
+    for root_id in excluded_threads.copy():
+        if root_id != "NOT AVAILABLE":
+            excluded_threads.update(descendants(root_id, children)[0])
+
+    groups = (("A", a_roots), ("B", b_roots))
+    decision_metrics: dict[str, dict[str, Any]] = {}
+    output = [
+        "Historical agent session and token analysis",
+        f"Workspace: {workspace}",
+        f"Group A: {HISTORICAL_GROUP_A_START.isoformat()} through {HISTORICAL_GROUP_CUTOFF.isoformat()} inclusive.",
+        f"Group B: strictly after {HISTORICAL_GROUP_CUTOFF.isoformat()} through the current log snapshot.",
+        "Only workspace roots with at least one logged response_item/function_call named spawn_agent are included.",
+        "Current session, the two supplied session IDs, and roots whose first user message identifies measurement/log-analysis/configuration work are excluded with their descendants.",
+        "Root duration is first-to-last observed root-log timestamp and includes idle time; it is not active compute time.",
+        "Token counts use the latest cumulative thread_token_usage.total_tokens snapshot per thread. Root and descendant totals are summed only when every included thread has a known total.",
+        "Request counts use distinct response_id usage records. Averages use all included threads; missing usage is disclosed in coverage.",
+        "Poll attribution maps each wait_agent call to the first later root response with known input tokens, then allocates a shared response once to its latest preceding wait. The ratio denominator is distinct known root response usage.input_tokens; this is an attribution estimate, not proof the wait caused the request.",
+        "Observed wait spans are matched wait_agent function-call to function-call-output timestamp deltas; they are a logged proxy for elapsed time, may include tool overhead, and are distinct from requested timeout_ms.",
+        "Reasoning effort is reported only when present in a logged spawn_agent argument. Sandbox/approval policy is NOT AVAILABLE in the parsed session event fields; configuration files do not prove an effective per-session policy.",
+        "Root source reads/searches are logged root exec/custom-tool calls or completed CommandExecution events matched by the existing source-read classifier. Nested commands inside exec payloads are not counted individually.",
+        f"Root disposition: {len(roots)} workspace roots at/after the Group A start; date-window candidates A={a_candidates}, B={b_candidates}; {len(excluded_roots)} excluded by ID/current-session/first-message; {no_spawn_roots} dropped with no logged spawn_agent; {dropped_unassigned} eligible roots have missing/out-of-range starts; total dropped before analysis={len(excluded_roots)+no_spawn_roots+dropped_unassigned}.",
+        "Excluded roots:",
+    ]
+    output.extend(f"  {session_id}: {reason}" for session_id, reason in sorted(excluded_roots.items()))
+    if not excluded_roots:
+        output.append("  none")
+
+    for label, cohort in groups:
+        cohort_threads: dict[str, Session] = {}
+        root_wait_input = root_input_denominator = 0
+        timeout_totals: dict[str, int] = defaultdict(int)
+        call_totals: dict[str, int] = defaultdict(int)
+        send_input_names: dict[str, int] = defaultdict(int)
+        spawn_errors = close_errors = 0
+        source_reads = 0
+        observed_wait_count = 0
+        observed_wait_durations: list[int] = []
+        root_wait_duration_pairs: list[tuple[float, float]] = []
+        tester_wait_duration_pairs: list[tuple[float, float]] = []
+        for root in cohort:
+            child_ids, _ = descendants(root.thread_id or "", children)
+            included = [root] + [threads[child_id] for child_id in child_ids if child_id in threads and child_id not in excluded_threads]
+            cohort_threads.update((thread.thread_id, thread) for thread in included if thread.thread_id)
+            for _, _, name, raw_arguments in root.function_events:
+                if name in {"spawn_agent", "wait_agent", "send_message", "send_input", "followup_task", "close_agent"}:
+                    call_totals[name] += 1
+                if name in {"send_message", "send_input", "followup_task"}:
+                    send_input_names[name] += 1
+                if name == "wait_agent":
+                    try:
+                        arguments = json.loads(raw_arguments) if raw_arguments else {}
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    timeout = arguments.get("timeout_ms") if isinstance(arguments, dict) else None
+                    key = str(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) else "NOT AVAILABLE"
+                    timeout_totals[key] += 1
+            spawn_errors += logged_tool_errors(root, "spawn_agent")
+            close_errors += logged_tool_errors(root, "close_agent")
+            source_reads += sum(is_source_read(command) for _, command, _, _ in exec_commands(root))
+            _by_timeout, _mapped, allocated, denominator, _mappings = root_wait_attribution(root)
+            root_wait_input += allocated
+            root_input_denominator += denominator
+            wait_spans = observed_wait_spans_ms(root)
+            observed_wait_count += len(wait_spans)
+            observed_wait_durations.extend(wait_spans)
+            root_duration = session_duration(root)
+            if root_duration is not None and wait_spans:
+                root_wait_duration_pairs.append((median_number(wait_spans) or 0, root_duration))
+            tester_durations = [
+                duration
+                for child_id in child_ids
+                if child_id in threads and child_id not in excluded_threads
+                and child_role(threads[child_id]) == "tester"
+                and (duration := session_duration(threads[child_id])) is not None
+            ]
+            tester_duration = median_number(tester_durations)
+            if tester_duration is not None and wait_spans:
+                tester_wait_duration_pairs.append((median_number(wait_spans) or 0, tester_duration))
+
+        output.extend(["", f"Group {label}: {len(cohort)} roots, {len(cohort_threads)} included threads"])
+        role_groups: dict[str, list[Session]] = defaultdict(list)
+        for thread in cohort_threads.values():
+            role = "root" if not thread.parent_id else child_role(thread)
+            role_groups[role].append(thread)
+        output.append("  role | threads | requests | average requests/thread | request usage coverage")
+        for role in ["root", *CHILD_ROLES, "unknown"]:
+            role_threads = role_groups.get(role, [])
+            if not role_threads:
+                continue
+            summaries = [request_summary(thread) for thread in role_threads]
+            requests = sum(item[0] for item in summaries)
+            known = sum(item[2] for item in summaries)
+            total = sum(item[0] for item in summaries)
+            output.append(f"    {role} | {len(role_threads)} | {requests} | {requests / len(role_threads):.2f} | {known}/{total} requests with input usage")
+
+        durations = [session_duration(root) for root in cohort]
+        known_durations = [duration for duration in durations if duration is not None]
+        sorted_durations = sorted(known_durations)
+        median_duration = ((sorted_durations[(len(sorted_durations) - 1) // 2] + sorted_durations[len(sorted_durations) // 2]) / 2) if sorted_durations else None
+        output.append(f"  root wall duration median: {format_duration(int(median_duration)) if median_duration is not None else 'NOT AVAILABLE'} ({len(known_durations)}/{len(cohort)} roots have timestamps)")
+        output.append("  root token totals (thread cumulative totals):")
+        root_known = [root.tokens for root in cohort if root.tokens is not None]
+        descendant_values: list[int] = []
+        descendant_missing = 0
+        all_descendant_count = 0
+        for root in cohort:
+            child_ids, _ = descendants(root.thread_id or "", children)
+            descendant_threads = [threads[child_id] for child_id in child_ids if child_id in threads and child_id not in excluded_threads]
+            all_descendant_count += len(descendant_threads)
+            known_values = [thread.tokens for thread in descendant_threads if thread.tokens is not None]
+            descendant_values.extend(known_values)
+            descendant_missing += len(descendant_threads) - len(known_values)
+            root_text, children_text, total_text = token_accounting(root, descendant_threads)
+            output.append(f"    {root.thread_id} | root={root_text} | descendants={children_text} | total={total_text}")
+        output.append(f"  cohort root tokens: {sum(root_known)} known across {len(root_known)}/{len(cohort)} roots")
+        output.append(f"  cohort descendant tokens: {sum(descendant_values)} known across {all_descendant_count-descendant_missing}/{all_descendant_count} threads")
+        output.append("  wait_agent timeout buckets (ms | calls): " + (", ".join(f"{key} | {timeout_totals[key]}" for key in sorted(timeout_totals, key=lambda value: (value == "NOT AVAILABLE", int(value) if value.isdigit() else 0))) or "NOT AVAILABLE"))
+        ratio = root_wait_input / root_input_denominator * 100 if root_input_denominator else None
+        output.append(f"  poll-attributed known request input: {root_wait_input}/{root_input_denominator} = {ratio:.2f}%" if ratio is not None else f"  poll-attributed known request input: NOT AVAILABLE ({root_wait_input}/{root_input_denominator})")
+        output.append(f"  logged tool calls: spawn_agent={call_totals['spawn_agent']}; wait_agent={call_totals['wait_agent']}; send_input-family={sum(send_input_names.values())}; close_agent={call_totals['close_agent']}")
+        output.append("  send_input-family raw names: " + (", ".join(f"{name}={send_input_names[name]}" for name in ("send_input", "send_message", "followup_task") if send_input_names[name]) or "NOT AVAILABLE"))
+        output.append(f"  logged errors: spawn_agent={spawn_errors}; close_agent={close_errors}")
+        output.append(f"  root app-source read/search records: {source_reads}")
+        output.append("  Tester threads (duration includes idle time | request records):")
+        testers = sorted((thread for thread in cohort_threads.values() if thread.parent_id and child_role(thread) == "tester"), key=lambda item: (item.started or datetime.max.replace(tzinfo=timezone.utc), item.thread_id or ""))
+        for tester in testers:
+            requests, _, known, _ = request_summary(tester)
+            output.append(f"    {tester.thread_id}: {format_duration(session_duration(tester))}; {requests} requests ({known} with input usage)")
+        if not testers:
+            output.append("    NOT AVAILABLE (no Tester threads)")
+        waits_per_root = call_totals["wait_agent"] / len(cohort) if cohort else None
+        decision_metrics[label] = {
+            "root_count": len(cohort), "wait_input": root_wait_input, "input_denominator": root_input_denominator,
+            "wait_calls": call_totals["wait_agent"], "waits_per_root": waits_per_root,
+            "wait_spans": observed_wait_count, "wait_median_ms": median_number(observed_wait_durations),
+            "root_wait_r": pearson_correlation(root_wait_duration_pairs), "root_wait_n": len(root_wait_duration_pairs),
+            "tester_wait_r": pearson_correlation(tester_wait_duration_pairs), "tester_wait_n": len(tester_wait_duration_pairs),
+            "spawn_errors": spawn_errors, "close_errors": close_errors, "close_calls": call_totals["close_agent"],
+        }
+
+    if not a_candidates:
+        output.extend(["", "Group A historical evidence gap: no workspace root with a start timestamp in the requested Group A interval is present in the available session logs. Group A metrics are therefore NOT AVAILABLE; this does not establish that no sessions ran during that interval."])
+
+    output.extend(["", "Logged reasoning_effort in spawn_agent arguments by target role:"])
+    for label, cohort in groups:
+        efforts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for root in cohort:
+            child_ids, _ = descendants(root.thread_id or "", children)
+            for parent in [root, *(threads[child_id] for child_id in child_ids if child_id in threads and child_id not in excluded_threads)]:
+                for _, _, name, raw_arguments in parent.function_events:
+                    if name != "spawn_agent":
+                        continue
+                    try:
+                        arguments = json.loads(raw_arguments) if raw_arguments else {}
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(arguments, dict) and arguments.get("reasoning_effort"):
+                        efforts[str(arguments.get("agent_type") or "unknown")][str(arguments["reasoning_effort"])] += 1
+        rendered = [f"{role}: {', '.join(f'{effort}={count}' for effort, count in sorted(values.items()))}" for role, values in sorted(efforts.items())]
+        output.append(f"  Group {label}: " + ("; ".join(rendered) if rendered else "NOT AVAILABLE (no logged reasoning_effort values)"))
+    policy_roles = ["root", *CHILD_ROLES, "unknown"]
+    output.extend(["", "Effective sandbox/approval policy by runtime role (no value found in the inspected session_meta event fields):"])
+    output.extend(f"  {role}: NOT AVAILABLE (effective policy is not present in the parsed session event fields)" for role in policy_roles)
+    config_paths = [Path(workspace) / ".codex" / "config.toml"] + [Path(workspace) / ".codex" / "agents" / f"{role}.toml" for role in CHILD_ROLES]
+    output.append("Configuration file modification times (UTC; policy provenance only, not runtime evidence):")
+    config_mtimes: list[tuple[Path, datetime]] = []
+    for path in config_paths:
+        try:
+            config_mtimes.append((path, datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)))
+        except OSError:
+            output.append(f"  {path.relative_to(workspace)}: NOT AVAILABLE")
+    for path, modified in config_mtimes:
+        output.append(f"  {path.relative_to(workspace)}: {modified.isoformat()}{' (newer than Group A cutoff)' if modified > HISTORICAL_GROUP_CUTOFF else ''}")
+    newer = [path.relative_to(workspace) for path, modified in config_mtimes if modified > HISTORICAL_GROUP_CUTOFF]
+    output.append("  Mixed configuration flag: " + (f"yes; newer files exist: {', '.join(map(str, newer))}. Session-level settings cannot be assigned from these files." if newer else "no files newer than Group A cutoff were found."))
+
+    a, b = decision_metrics["A"], decision_metrics["B"]
+    def poll_summary(metrics: dict[str, Any]) -> str:
+        if not metrics["root_count"]:
+            return "NOT AVAILABLE (Group A baseline has no roots in available logs)"
+        share = metrics["wait_input"] / metrics["input_denominator"] * 100 if metrics["input_denominator"] else None
+        share_text = f"{metrics['wait_input']}/{metrics['input_denominator']} input tokens ({share:.2f}%)" if share is not None else "NOT AVAILABLE"
+        return f"{share_text}; {metrics['wait_calls']}/{metrics['root_count']} wait_agent calls/root ({metrics['waits_per_root']:.2f})"
+
+    def correlation_text(name: str, metrics: dict[str, Any]) -> str:
+        value = metrics[name]
+        return f"r={value:.2f}, n={metrics[name.replace('_r', '_n')]} roots" if value is not None else "NOT AVAILABLE (insufficient matched observations)"
+
+    decision_lines = [
+        f"1. Poll-attributed input share / wait_agent calls per root: A: {poll_summary(a)}; B: {poll_summary(b)}.",
+        f"2. Long waits and wall duration: matched waits B {b['wait_spans']}/{b['wait_calls']}; median observed call-to-result span {b['wait_median_ms']/1000:.1f}s. Pearson correlation of per-root median wait span with root wall duration: {correlation_text('root_wait_r', b)}; with median Tester wall duration per root: {correlation_text('tester_wait_r', b)}. Descriptive association only; small sample and wall spans include idle time.",
+        "3. Read-only role sandbox policy: NOT AVAILABLE in inspected session metadata; enforcement cannot be verified from these logs. Missing metadata does not establish that policy was ignored.",
+        f"4. Spawn errors / close handling: B logged {b['spawn_errors']} spawn errors and {b['close_errors']} close errors; {b['close_calls']} close_agent calls. No spawn error was logged, so matching close handling is NOT APPLICABLE.",
+        "5. Configuration: mixed Group B configuration; config/role files changed at or just after the boundary, and architect.toml changed later. Mtime cannot map an effective version to each root.",
+    ]
+    output[4:4] = ["", "Decision summary", *decision_lines, ""]
+    output.extend(["", "Interpretation limits:", "  Results are descriptive counts from the logged roots and threads, not estimates for all TaskFlow sessions. Root durations include idle time, request events omit attempts without a usage response, and wait-to-request attribution is temporal only.", "  Cohort comparisons are confounded by configuration changes at/after the boundary and later in Group B; no causal effect or stable per-role performance difference can be concluded."])
+    return "\n".join(output)
+
+
 def analysis_average(total: int, count: int, complete: bool) -> str:
     if not count:
         return "NOT AVAILABLE"
@@ -1456,6 +1749,7 @@ def main() -> int:
     parser.add_argument("--rtk-gain", action="store_true", help="capture one timestamped global `rtk gain` snapshot as supplementary data")
     parser.add_argument("--token-analysis", action="store_true", help="print request, tool, tester-command, reviewer-spawn, and per-root analysis")
     parser.add_argument("--session-flow-analysis", action="store_true", help="compare root orchestration and wait-input usage before/after --analysis-cutoff")
+    parser.add_argument("--historical-agent-analysis", action="store_true", help="report the fixed historical Group A/Group B agent and token analysis")
     parser.add_argument("--analysis-cutoff", type=cutoff, help="cutoff for --session-flow-analysis (default: historical baseline cutoff)")
     args = parser.parse_args()
     try:
@@ -1478,7 +1772,7 @@ def main() -> int:
         Path.home() / ".codex" / "archived_sessions",
     ]
     threads, errors = load_sessions(roots)
-    if not args.token_analysis and not args.session_flow_analysis:
+    if not args.token_analysis and not args.session_flow_analysis and not args.historical_agent_analysis:
         print_reconstruction_audit(threads, errors)
     workspace = normalized_path(args.workspace)
     children: dict[str, list[str]] = defaultdict(list)
@@ -1489,6 +1783,14 @@ def main() -> int:
     exclusion_details, excluded_threads = exclusion_subtrees(exclusion_ids, threads, children)
     all_roots = [thread for thread in threads.values() if not thread.parent_id]
     all_workspace_roots = [thread for thread in all_roots if normalized_path(thread.cwd) == workspace]
+    if args.historical_agent_analysis:
+        historical_roots = [
+            root for root in all_workspace_roots
+            if root.started is not None and root.started >= HISTORICAL_GROUP_A_START
+        ]
+        sys.stdout.reconfigure(encoding="utf-8")
+        print(render_historical_agent_analysis(historical_roots, threads, children, args.workspace, current_id))
+        return 0
     excluded_workspace_roots = [thread for thread in all_workspace_roots if thread.thread_id in excluded_threads]
     roots_without_cwd = sum(thread.cwd is None for thread in all_roots)
     roots_outside_workspace = len(all_roots) - roots_without_cwd - len(all_workspace_roots)

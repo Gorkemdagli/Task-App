@@ -13,6 +13,7 @@ import * as teamsService from '@/services/teams';
 import type * as TaskModule from '@/hooks/tasks';
 import type * as TeamQueriesModule from '@/hooks/queries/useTeams';
 import { utcTodayCalendarDate } from '@/lib/calendarDate';
+import { getDisplayStatus } from '@/lib/taskDisplay';
 
 const { useDroppableMock, useSensorMock, useSensorsMock, realQueries } = vi.hoisted(() => ({
   useDroppableMock: vi.fn(() => ({ setNodeRef: vi.fn(), isOver: false })),
@@ -64,10 +65,36 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
     useTasks: (filters?: TaskModule.ListTasksFilters, options?: { enabled?: boolean }) => {
       if (realQueries.tasks) return actual.useTasks(filters, options);
       lastTaskFilters = filters;
+      const userId = useAuthStore.getState().user?.id;
+      const today = utcTodayCalendarDate();
+      const scopedTasks = mockTasks.filter((task) => {
+        if (filters?.status && !filters.status.includes(task.status)) return false;
+        if (filters?.displayStatus && getDisplayStatus(task, userId) !== filters.displayStatus) return false;
+        if (filters?.archivedOnly ? !task.archivedAt : !filters?.includeArchived && task.archivedAt) return false;
+        if (filters?.workflowFilter === 'pending' && !task.pendingStatus) return false;
+        if (filters?.workflowFilter === 'overdue' && (!task.deadline || task.deadline >= today || getDisplayStatus(task, userId) === 'done')) return false;
+        if (filters?.workflowFilter === 'today' && task.deadline !== today) return false;
+        if (filters?.workflowFilter === 'upcoming' && (!task.deadline || task.deadline <= today)) return false;
+        if (filters?.workflowFilter && task.archivedAt) return false;
+        return true;
+      });
+      const sortedTasks = [...scopedTasks].sort((a, b) =>
+        (a.deadline ?? '9999-12-31').localeCompare(b.deadline ?? '9999-12-31') ||
+        b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id),
+      );
+      const workflowCounts = {
+        pending: mockTasks.filter((task) => !task.archivedAt && task.pendingStatus).length,
+        upcoming: mockTasks.filter((task) => !task.archivedAt && task.deadline && task.deadline > today).length,
+        today: mockTasks.filter((task) => !task.archivedAt && task.deadline === today).length,
+        overdue: mockTasks.filter((task) => !task.archivedAt && task.deadline && task.deadline < today && getDisplayStatus(task, userId) !== 'done').length,
+        archived: mockTasks.filter((task) => task.archivedAt).length,
+      };
+      const limit = filters?.limit ?? sortedTasks.length;
       return {
-        data: { tasks: mockTasks, total: mockTasks.length },
+        data: { tasks: sortedTasks.slice(0, limit), total: sortedTasks.length, workflowCounts },
         isLoading: false,
         isError: false,
+        fetchStatus: 'idle',
       };
     },
     useTask: () => ({ data: mockSelectedTask, isLoading: false, isError: false }),
@@ -408,7 +435,7 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('task-card-t3')).toBeInTheDocument();
   });
 
-  it('bounds and scrolls a desktop status column when it has more than three tasks', () => {
+  it('keeps desktop status columns at a stable height and scrolls their task list', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     mockTasks = Array.from({ length: 4 }, (_, index) =>
       makeTask({ id: `todo-${index}`, status: 'todo' }),
@@ -427,13 +454,122 @@ describe('DashboardPage', () => {
     );
   });
 
-  it('keeps status columns in natural flow with three or fewer tasks', () => {
+  it('keeps status columns at a stable height with three or fewer tasks', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     mockTasks = [makeTask({ id: 'todo-1' }), makeTask({ id: 'todo-2' }), makeTask({ id: 'todo-3' })];
     renderDashboard();
 
-    expect(screen.getByTestId('column-todo')).not.toHaveClass('lg:h-full');
-    expect(screen.getByTestId('task-carousel-todo')).not.toHaveClass('lg:overflow-y-auto');
+    expect(screen.getByTestId('column-todo')).toHaveClass('lg:h-full', 'lg:min-h-0');
+    expect(screen.getByTestId('task-carousel-todo')).toHaveClass('lg:overflow-y-auto');
+  });
+
+  it('shows the ten nearest deadline tasks per status and links to that status filter', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    mockTasks = Array.from({ length: 12 }, (_, index) =>
+      makeTask({
+        id: `todo-${index}`,
+        status: 'todo',
+        deadline: `2026-11-${String(index + 1).padStart(2, '0')}`,
+      }),
+    ).concat(
+      makeTask({
+        id: 'pending-to-done',
+        status: 'todo',
+        pendingStatus: 'done',
+        pendingProposer: { id: 'u1', displayId: 'AAAAA', fullName: 'Admin', avatarUrl: null },
+        deadline: '2026-10-31',
+      }),
+      ...(['in_progress', 'done'] as const).flatMap((status) =>
+        Array.from({ length: 12 }, (_, index) =>
+          makeTask({
+            id: `${status}-${index}`,
+            status,
+            deadline: `2026-11-${String(index + 1).padStart(2, '0')}`,
+          }),
+        ),
+      ),
+    );
+    renderDashboard();
+
+    const todoColumn = screen.getByTestId('column-todo');
+    expect(within(todoColumn).getAllByTestId(/^task-card-todo-/)).toHaveLength(10);
+    expect(within(todoColumn).getByTestId('task-card-todo-0')).toBeInTheDocument();
+    expect(within(todoColumn).queryByTestId('task-card-todo-11')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('column-in_progress')).getAllByTestId(/^task-card-in_progress-/)).toHaveLength(10);
+    expect(within(screen.getByTestId('column-done')).getAllByTestId(/^task-card-done-/)).toHaveLength(9);
+    expect(screen.getByTestId('task-card-pending-to-done')).toBeInTheDocument();
+    expect(screen.getByTestId('column-done')).toContainElement(screen.getByTestId('task-card-pending-to-done'));
+    expect(within(todoColumn).getByRole('link', { name: 'Daha fazlasını gör' })).toHaveAttribute(
+      'href',
+      '/tasks?status=todo&displayStatus=todo&teamId=team-1',
+    );
+  });
+
+  it('requests the nearest archived tasks per displayed status with one ten-task request per column', async () => {
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    const dateAt = (index: number) => new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10);
+    mockTasks = (['todo', 'in_progress', 'done'] as const).flatMap((status) => [
+      ...Array.from({ length: 110 }, (_, index) =>
+        makeTask({ id: `${status}-active-${index}`, status, deadline: dateAt(index) }),
+      ),
+      ...Array.from({ length: 12 }, (_, index) =>
+        makeTask({
+          id: `${status}-archived-${index}`,
+          status,
+          archivedAt: '2026-09-01T00:00:00.000Z',
+          deadline: dateAt(150 + index),
+        }),
+      ),
+    ]).concat(
+      makeTask({
+        id: 'todo-pending-archived',
+        status: 'todo',
+        pendingStatus: 'done',
+        pendingProposer: { id: 'u1', displayId: 'AAAAA', fullName: 'Admin', avatarUrl: null },
+        archivedAt: '2026-09-01T00:00:00.000Z',
+        deadline: dateAt(149),
+      }),
+    );
+    const get = vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      const displayStatus = params.get('displayStatus') as TaskModule.TaskStatus | null;
+      const archivedOnly = params.get('archivedOnly') === 'true';
+      const pageSize = Number(params.get('limit'));
+      const matches = mockTasks
+        .filter((item) => getDisplayStatus(item, 'u1') === displayStatus)
+        .filter((item) => archivedOnly ? Boolean(item.archivedAt) : !item.archivedAt)
+        .sort((a, b) => (a.deadline ?? '9999-12-31').localeCompare(b.deadline ?? '9999-12-31') ||
+          b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+      return { data: { tasks: matches.slice(0, pageSize), total: matches.length } } as never;
+    });
+    renderDashboard();
+
+    fireEvent.click(screen.getByTestId('workflow-filter-archived'));
+    await waitFor(() => expect(screen.getByTestId('task-card-todo-archived-0')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('task-card-todo-pending-archived')).toBeInTheDocument());
+
+    const todoCards = within(screen.getByTestId('column-todo')).getAllByTestId(/^task-card-todo-archived-/);
+    const doneColumn = screen.getByTestId('column-done');
+    expect(todoCards).toHaveLength(10);
+    expect(within(doneColumn).getByTestId('task-card-todo-pending-archived')).toBeInTheDocument();
+    expect(within(doneColumn).getByTestId('task-card-done-archived-0')).toBeInTheDocument();
+    expect(within(doneColumn).getAllByTestId(/^task-card-/).slice(0, 2).map((card) => card.dataset.testid)).toEqual([
+      'task-card-todo-pending-archived',
+      'task-card-done-archived-0',
+    ]);
+    const archivedRequests = get.mock.calls
+      .map(([url]) => new URLSearchParams(String(url).split('?')[1]))
+      .filter((params) => params.get('archivedOnly') === 'true');
+    expect(archivedRequests).toHaveLength(3);
+    expect(archivedRequests.map((params) => params.get('displayStatus')).sort()).toEqual([
+      'done',
+      'in_progress',
+      'todo',
+    ]);
+    expect(get.mock.calls.every(([url]) => !String(url).includes('offset='))).toBe(true);
+    expect(get.mock.calls.every(([url]) => String(url).includes('limit=10'))).toBe(true);
+    expect(screen.queryByTestId('task-card-todo-active-109')).not.toBeInTheDocument();
   });
 
   it('shows empty placeholder when column has no tasks', () => {
@@ -594,12 +730,13 @@ describe('DashboardPage', () => {
 
     renderDashboard();
 
-    expect(lastTaskFilters).toMatchObject({ includeArchived: true });
+    expect(lastTaskFilters).toMatchObject({ limit: 10 });
     expect(screen.getByTestId('workflow-filter-archived')).toBeInTheDocument();
     expect(screen.getByTestId('workflow-count-archived')).toHaveTextContent('1');
 
     fireEvent.click(screen.getByTestId('workflow-filter-archived'));
 
+    expect(lastTaskFilters).toMatchObject({ includeArchived: true, archivedOnly: true });
     expect(screen.getByTestId('task-card-archived-task')).toBeInTheDocument();
     expect(screen.queryByTestId('task-card-active-task')).toBeNull();
     expect(screen.getByTestId('task-card-archived-task')).not.toHaveAttribute('role', 'button');
@@ -615,7 +752,7 @@ describe('DashboardPage', () => {
     renderDashboard();
 
     expect(screen.getByTestId('team-tab-all')).toBeInTheDocument();
-    expect(lastTaskFilters).toMatchObject({ includeArchived: true });
+    expect(lastTaskFilters).toMatchObject({ limit: 10 });
 
     fireEvent.click(screen.getByTestId('team-tab-team-2'));
 
@@ -630,7 +767,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('workflow-strip')).toBeNull();
   });
 
-  it('waits for the current team role before issuing one TeamAdmin-scoped task request', async () => {
+  it('waits for the current team role before issuing status-scoped TeamAdmin task requests', async () => {
     realQueries.teams = true;
     realQueries.tasks = true;
     useAuthStore.setState({ accessToken: 't', user: member });
@@ -646,12 +783,12 @@ describe('DashboardPage', () => {
     expect(taskUrls).toEqual([]);
 
     await act(async () => detail.resolve(makeTeamDetail('teamAdmin')));
-    await waitFor(() => expect(taskUrls).toHaveLength(1));
-    expect(taskUrls[0]).toContain('teamId=team-1');
-    expect(taskUrls[0]).not.toContain('assigneeIds');
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
+    expect(taskUrls.every((url) => url.includes('teamId=team-1'))).toBe(true);
+    expect(taskUrls.every((url) => !url.includes('assigneeIds'))).toBe(true);
   });
 
-  it('keeps a Member task request scoped to their own team and assignments', async () => {
+  it('keeps status-scoped Member task requests scoped to their team and assignments', async () => {
     realQueries.teams = true;
     realQueries.tasks = true;
     useAuthStore.setState({ accessToken: 't', user: member });
@@ -662,9 +799,9 @@ describe('DashboardPage', () => {
     const taskUrls = watchTaskRequests();
     renderLiveDashboard();
 
-    await waitFor(() => expect(taskUrls).toHaveLength(1));
-    expect(taskUrls[0]).toContain('teamId=team-1');
-    expect(taskUrls[0]).toContain('assigneeIds=u1');
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
+    expect(taskUrls.every((url) => url.includes('teamId=team-1'))).toBe(true);
+    expect(taskUrls.every((url) => url.includes('assigneeIds=u1'))).toBe(true);
   });
 
   it('uses a cached current-team role while the detail refresh is pending', async () => {
@@ -682,10 +819,10 @@ describe('DashboardPage', () => {
     renderLiveDashboard(client);
 
     await waitFor(() => expect(getTeam).toHaveBeenCalledWith('team-1'));
-    await waitFor(() => expect(taskUrls).toHaveLength(1));
-    expect(taskUrls[0]).not.toContain('assigneeIds');
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
+    expect(taskUrls.every((url) => !url.includes('assigneeIds'))).toBe(true);
     await act(async () => detailRefresh.resolve(makeTeamDetail('teamAdmin')));
-    await waitFor(() => expect(taskUrls).toHaveLength(1));
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
   });
 
   it('ends role resolution safely after a missing team detail without broadening task access', async () => {

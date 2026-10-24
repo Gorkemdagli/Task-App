@@ -105,6 +105,45 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('dashboard-route-skeleton')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['/tasks', 'table'],
+    ['/notifications', 'list'],
+    ['/tasks/task-1', 'detail'],
+    ['/profile', 'form'],
+    ['/company', 'board'],
+    ['/chat/thread-1', 'communication'],
+  ] as const)('keeps the app shell and uses the %s content skeleton', (path, variant) => {
+    useAuthStore.setState({ accessToken: 't', user: baseUser });
+    const pending = new Promise<void>(() => {});
+    function SuspendedDestination(): never {
+      throw pending;
+    }
+
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: 0 } } })}>
+        <MemoryRouter initialEntries={[path]}>
+          <LogoutCoordinatorProvider>
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route path="*" element={<SuspendedDestination />} />
+              </Route>
+            </Routes>
+          </LogoutCoordinatorProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+    expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', variant);
+    expect(screen.queryByTestId('route-shell-skeleton')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAccessibleName('Sayfa yükleniyor');
+    expect(screen.getByTestId('page-loading-skeleton').querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(screen.getByTestId('page-loading-skeleton').querySelectorAll('a, button')).toHaveLength(0);
+    for (const skeleton of container.querySelectorAll('[class*="animate-pulse"]')) {
+      expect(skeleton).toHaveClass('motion-reduce:animate-none');
+    }
+  });
+
   it('announces sidebar team loading without visible loading text', async () => {
     useAuthStore.setState({ accessToken: 't', user: baseUser });
     mockTeamsLoading = true;

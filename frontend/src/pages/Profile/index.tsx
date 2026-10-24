@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
 import { useLogout } from '@/components/auth/LogoutCoordinator';
 import { useProfile, useUpdateProfile, useUploadAvatar } from '@/hooks/queries/useProfile';
 import type { CurrentUserProfile, UpdateProfileInput } from '@/services/profile';
@@ -90,16 +90,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function FieldError({ message }: { message?: string }) {
   const { i18n, t } = useTranslation();
   return message ? <p className="text-xs text-priority-high">{i18n.exists(message, { lng: 'en' }) ? t(message) : message}</p> : null;
-}
-
-function ProfileLoading() {
-  return (
-    <div className="space-y-3 rounded-lg border border-border bg-card p-6">
-      <Skeleton className="h-4 w-2/3" />
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-full" />
-    </div>
-  );
 }
 
 export function ProfilePage() {
@@ -245,20 +235,24 @@ export function ProfilePage() {
     setCopied(true);
   };
 
+  if (profileQuery.isLoading) {
+    return (
+      <div className="mx-auto max-w-[760px] pb-8 pt-4 md:pt-5">
+        <PageLoadingSkeleton variant="form" />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[760px] pb-8 pt-4 md:pt-5">
       <header className="mb-6">
           <h1 className="text-3xl font-bold leading-10 text-foreground">{t('Profil')}</h1>
       </header>
 
-      {profileQuery.isLoading ? <ProfileLoading /> : null}
-
       {profileQuery.isError || !profile ? (
-        !profileQuery.isLoading && (
-          <section className="rounded-lg border border-border bg-card p-6">
+        <section className="rounded-lg border border-border bg-card p-6">
           <p className="text-sm text-priority-high">{t('Profil yüklenemedi.')}</p>
-          </section>
-        )
+        </section>
       ) : (
         <>
           <section aria-label={t('Hesap kimliği')} className="flex flex-wrap items-center gap-x-6 gap-y-4 pb-6">

@@ -5,6 +5,7 @@ import { appendTaskFilterParams } from '@/lib/taskFilterParams';
 
 export interface TaskFilters {
   status: TaskStatus[];
+  displayStatus: TaskStatus | null;
   priority: TaskPriority[];
   teamId: string | null;
   assigneeIds: string[];
@@ -17,6 +18,7 @@ export interface TaskFilters {
 
 export const EMPTY_FILTERS: TaskFilters = {
   status: [],
+  displayStatus: null,
   priority: [],
   teamId: null,
   assigneeIds: [],
@@ -29,12 +31,19 @@ export const EMPTY_FILTERS: TaskFilters = {
 
 function readFromSearch(sp: URLSearchParams): TaskFilters {
   const status = sp.get('status')?.split(',').filter(Boolean) as TaskStatus[] | undefined;
+  const rawDisplayStatus = sp.get('displayStatus');
+  const displayStatus =
+    status?.length === 1 && status[0] === rawDisplayStatus &&
+    ['todo', 'in_progress', 'done'].includes(rawDisplayStatus ?? '')
+      ? rawDisplayStatus as TaskStatus
+      : null;
   const priority = sp.get('priority')?.split(',').filter(Boolean) as TaskPriority[] | undefined;
   const assigneeIds = sp.get('assigneeIds')?.split(',').filter(Boolean) ?? [];
   const rawPage = sp.get('page');
   const parsedPage = rawPage && /^[1-9]\d*$/.test(rawPage) ? Number(rawPage) : 1;
   return {
     status: status ?? [],
+    displayStatus,
     priority: priority ?? [],
     teamId: sp.get('teamId'),
     assigneeIds,
@@ -48,6 +57,7 @@ function readFromSearch(sp: URLSearchParams): TaskFilters {
 
 function writeToSearch(filters: TaskFilters): URLSearchParams {
   const sp = appendTaskFilterParams(new URLSearchParams(), filters);
+  if (filters.displayStatus) sp.set('displayStatus', filters.displayStatus);
   if (filters.deadline && filters.deadline !== 'all') sp.set('deadline', filters.deadline);
   if (filters.page > 1) sp.set('page', String(filters.page));
   return sp;
@@ -58,7 +68,11 @@ export function useTaskFilters() {
   const filters = useMemo(() => readFromSearch(searchParams), [searchParams]);
 
   const updateFilters = (next: TaskFilters) => {
-    setSearchParams(writeToSearch({ ...next, page: 1 }), { replace: true });
+    const statusChanged = next.status.join(',') !== filters.status.join(',');
+    setSearchParams(
+      writeToSearch({ ...next, displayStatus: statusChanged ? null : next.displayStatus, page: 1 }),
+      { replace: true },
+    );
   };
 
   const resetFilters = () => {

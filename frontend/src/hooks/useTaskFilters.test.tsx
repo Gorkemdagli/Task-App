@@ -23,6 +23,7 @@ describe('useTaskFilters', () => {
 
     expect(result.current.filters).toEqual({
       status: ['todo', 'in_progress'],
+      displayStatus: null,
       priority: ['high'],
       teamId: 'team-a',
       assigneeIds: ['user-1', 'user-2'],
@@ -46,6 +47,25 @@ describe('useTaskFilters', () => {
     act(() => result.current.resetFilters());
     await waitFor(() => expect(result.current.search).toBe(''));
     expect(result.current.filters).toEqual(EMPTY_FILTERS);
+  });
+
+  it('uses the displayed-status marker only while its selected status stays unchanged', async () => {
+    const { result } = renderFilters('/tasks?status=in_progress&displayStatus=in_progress&teamId=team-a');
+
+    expect(result.current.filters.displayStatus).toBe('in_progress');
+    act(() => result.current.updateFilters({ ...result.current.filters, priority: ['high'] }));
+    await waitFor(() => {
+      const params = new URLSearchParams(result.current.search);
+      expect(params.get('displayStatus')).toBe('in_progress');
+      expect(params.get('priority')).toBe('high');
+    });
+
+    act(() => result.current.updateFilters({ ...result.current.filters, status: ['done'] }));
+    await waitFor(() => {
+      const params = new URLSearchParams(result.current.search);
+      expect(params.get('status')).toBe('done');
+      expect(params.has('displayStatus')).toBe(false);
+    });
   });
 
   it.each(['0', '-2', '1.5', '9007199254740992', 'bad'])('uses page 1 for malformed page=%s', (page) => {

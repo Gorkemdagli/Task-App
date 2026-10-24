@@ -135,6 +135,13 @@ describe('ProfilePage', () => {
     logoutSpy = undefined;
   });
 
+  it('shows a shared form skeleton while the profile is pending', () => {
+    useProfileMock.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    renderPage();
+
+    expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', 'form');
+  });
+
   it('renders editable profile, read-only display ID, password, and preferences', () => {
     renderPage();
 

@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { MobileSidebar } from './MobileSidebar';
 import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
 import { RouteDataReadinessProvider } from './RouteDataReadiness';
-import { RouteFallback } from './RouteFallback';
+import { getProtectedRouteSkeletonVariant, RouteFallback } from './RouteFallback';
 
 /**
  * AppShell: authenticated app chrome.
@@ -21,6 +21,8 @@ import { RouteFallback } from './RouteFallback';
  */
 export function AppShell() {
   const { pathname } = useLocation();
+  const routeSkeletonVariant = getProtectedRouteSkeletonVariant(pathname);
+  const fallbackVariant = routeSkeletonVariant === 'dashboard' ? 'dashboard-content' : routeSkeletonVariant;
   useQueryScopeCleanup();
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
-          <Suspense fallback={<RouteFallback variant={pathname === '/dashboard' ? 'dashboard-content' : undefined} />}>
+          <Suspense fallback={<RouteFallback variant={fallbackVariant} contentOnly />}>
             <Outlet />
           </Suspense>
         </main>

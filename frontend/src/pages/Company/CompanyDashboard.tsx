@@ -5,6 +5,7 @@ import { useTeams } from '@/hooks/queries/useTeams';
 import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
 import type { CompanyDashboardRange, DashboardComparison } from '@/services/companyDashboard';
 import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
+import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
 import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
 import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
@@ -138,17 +139,7 @@ export function CompanyDashboard() {
   }, [selectedTeamId, teams]);
 
   if (dashboard.isLoading) {
-    return (
-      <div data-testid="company-dashboard-skeleton" className="space-y-4" aria-busy="true">
-        <div className="h-10 w-1/3 animate-pulse rounded-md bg-secondary" />
-        <div className="grid gap-4 md:grid-cols-3">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="h-24 animate-pulse rounded-lg bg-secondary" />
-          ))}
-        </div>
-        <div className="h-64 animate-pulse rounded-lg bg-secondary" />
-      </div>
-    );
+    return <PageLoadingSkeleton variant="detail" />;
   }
 
   if (dashboard.isError || !dashboard.data) {

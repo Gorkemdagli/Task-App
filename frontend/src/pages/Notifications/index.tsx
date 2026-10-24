@@ -157,7 +157,7 @@ export function NotificationsPage() {
       {companyInvitations.isPending && companyInvitations.fetchStatus !== 'idle' && (
         <div
           data-testid="company-invitations-loading"
-          className="h-20 animate-pulse rounded-md bg-secondary"
+          className="h-20 animate-pulse rounded-md bg-secondary motion-reduce:animate-none"
         />
       )}
 
@@ -183,11 +183,18 @@ export function NotificationsPage() {
       )}
 
       {isNotificationLoading ? (
-        <ul data-testid="notifications-page-skeleton" className="flex flex-col gap-2" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <li key={i} className="h-14 animate-pulse rounded-md bg-secondary" />
-          ))}
-        </ul>
+        <div
+          data-testid="notifications-page-skeleton"
+          role="status"
+          aria-label={t('Sayfa yükleniyor')}
+          aria-busy="true"
+        >
+          <ul className="flex flex-col gap-2" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="h-14 animate-pulse rounded-md bg-secondary motion-reduce:animate-none" />
+            ))}
+          </ul>
+        </div>
       ) : items.length > 0 ? (
         <>
           <ul data-testid="notifications-page-list" className="flex flex-col" role="list">

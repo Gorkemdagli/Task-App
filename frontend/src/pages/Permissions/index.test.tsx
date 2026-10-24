@@ -350,9 +350,23 @@ describe('PermissionsPage', () => {
     state.usersQuery.isLoading = true;
     const view = renderPage();
     expect(screen.getByTestId('permissions-loading')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Sayfa yükleniyor' })).toBeInTheDocument();
     expect(screen.queryByText('Yükleniyor…')).not.toBeInTheDocument();
 
+    state.users = [currentUser, makeUser()];
     state.usersQuery.isLoading = false;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <PermissionsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('listbox', { name: 'Kullanıcı defteri' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /User B/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('permissions-loading')).not.toBeInTheDocument();
+
+    state.users = undefined;
     state.usersQuery.isError = true;
     view.rerender(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

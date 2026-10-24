@@ -170,6 +170,7 @@ export const commonEnglish: Record<string, string> = {
   'Geçmiş': 'Overdue',
   'Daha azı': 'Show less',
   'Daha fazlası': 'Show more',
+  'Daha fazlasını gör': 'See more',
   'Takım filtresi': 'Team filter',
   'Arşivlenmiş': 'Archived',
   'Özel tarih aralığı': 'Custom date range',

@@ -53,7 +53,8 @@ export function TasksPage() {
   const queryArgs = useMemo(() => {
     const { from, to } = buildDeadlineRange(filters);
     return {
-      status: filters.status.length ? filters.status : undefined,
+      status: filters.displayStatus ? undefined : filters.status.length ? filters.status : undefined,
+      displayStatus: filters.displayStatus ?? undefined,
       priority: filters.priority.length ? filters.priority : undefined,
       teamId: filters.teamId ?? undefined,
       assigneeIds: filters.assigneeIds.length ? filters.assigneeIds : undefined,
@@ -102,7 +103,7 @@ export function TasksPage() {
           {isLoading ? (
             <div className="space-y-2" aria-busy="true">
               {[0, 1, 2, 3].map((item) => (
-                <div key={item} className="h-16 animate-pulse rounded-md bg-secondary" />
+                <div key={item} className="h-16 animate-pulse rounded-md bg-secondary motion-reduce:animate-none" />
               ))}
             </div>
           ) : !data || data.total === 0 ? (

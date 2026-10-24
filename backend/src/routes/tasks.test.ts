@@ -364,6 +364,86 @@ describe('listTasks', () => {
     expect(pages.flat()).toEqual(expectedIds);
   });
 
+  it('filters by viewer status, archive scope and workflow before limiting', async () => {
+    const { admin, member, team } = await makeTeamWithRegularMember();
+    const crowdedTasks = [];
+    for (let index = 0; index < 101; index += 1) {
+      crowdedTasks.push(await tasksService.createTask(
+        {
+          title: `Pending crowd ${index}`,
+          priority: 'low',
+          assigneeIds: [member.id],
+          teamId: team.id,
+          deadline: new Date(Date.UTC(2030, 0, index + 1)),
+        },
+        admin,
+      ));
+    }
+    await prisma.task.updateMany({
+      where: { id: { in: crowdedTasks.map(({ id }) => id) } },
+      data: { pendingStatus: 'done', pendingProposedBy: admin.id },
+    });
+    const archivedIds = crowdedTasks.filter((_, index) => index % 2 === 0).map(({ id }) => id);
+    await prisma.task.updateMany({
+      where: { id: { in: archivedIds } },
+      data: { archivedAt: new Date() },
+    });
+
+    const regularTasks = [];
+    for (let index = 0; index < 10; index += 1) {
+      regularTasks.push(await tasksService.createTask(
+        {
+          title: `Regular todo ${index}`,
+          priority: 'low',
+          assigneeIds: [member.id],
+          teamId: team.id,
+          deadline: new Date(Date.UTC(2031, 0, index + 1)),
+        },
+        admin,
+      ));
+    }
+    const noDeadlineTask = await tasksService.createTask(
+      { title: 'No deadline todo', priority: 'low', assigneeIds: [member.id], teamId: team.id },
+      admin,
+    );
+
+    const adminTodo = await tasksService.listTasks(
+      { displayStatus: 'todo', includeWorkflowCounts: true, limit: 10, offset: 0 } as never,
+      admin,
+    );
+    expect(adminTodo.total).toBe(11);
+    expect(adminTodo.tasks.map(({ id }) => id)).toEqual(regularTasks.map(({ id }) => id));
+    expect(adminTodo.workflowCounts).toMatchObject({ pending: 50, archived: 51 });
+
+    const adminDone = await tasksService.listTasks(
+      { displayStatus: 'done', workflowFilter: 'pending', limit: 10, offset: 0 } as never,
+      admin,
+    );
+    expect(adminDone.total).toBe(50);
+    expect(adminDone.tasks.every(({ pendingStatus }) => pendingStatus === 'done')).toBe(true);
+
+    const archivedDone = await tasksService.listTasks(
+      {
+        displayStatus: 'done',
+        includeArchived: true,
+        archivedOnly: true,
+        limit: 10,
+        offset: 0,
+      } as never,
+      admin,
+    );
+    expect(archivedDone.total).toBe(51);
+    expect(archivedDone.tasks.every(({ archivedAt }) => archivedAt !== null)).toBe(true);
+
+    const memberTodo = await tasksService.listTasks(
+      { displayStatus: 'todo', limit: 200, offset: 0 } as never,
+      member,
+    );
+    expect(memberTodo.total).toBe(61);
+    expect(memberTodo.tasks.map(({ id }) => id)).toContain(noDeadlineTask.id);
+    expect(memberTodo.tasks.at(-1)?.id).toBe(noDeadlineTask.id);
+  });
+
   it('admin sees all tasks in tenant', async () => {
     const { admin, member, team } = await makeTeamWithRegularMember();
     await tasksService.createTask(

@@ -63,12 +63,15 @@ function TeamPreview({
     return (
       <div
         data-testid="team-preview-loading"
+        role="status"
+        aria-label={t('Sayfa yükleniyor')}
+        aria-busy="true"
         className={cn('rounded-lg border border-border bg-card p-6', className)}
       >
-        <Skeleton className="h-16 w-16 rounded-full" />
-        <Skeleton className="mt-5 h-7 w-2/5" />
-        <Skeleton className="mt-3 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-4/5" />
+        <Skeleton className="h-16 w-16 rounded-full motion-reduce:animate-none" />
+        <Skeleton className="mt-5 h-7 w-2/5 motion-reduce:animate-none" />
+        <Skeleton className="mt-3 h-4 w-full motion-reduce:animate-none" />
+        <Skeleton className="mt-2 h-4 w-4/5 motion-reduce:animate-none" />
       </div>
     );
   }
@@ -189,9 +192,14 @@ export function TeamsPage() {
       </header>
 
       {isLoading && (
-        <div className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
-          <Skeleton className="h-96 w-full rounded-lg" />
-          <Skeleton className="h-96 w-full rounded-lg" />
+        <div
+          role="status"
+          aria-label={t('Sayfa yükleniyor')}
+          aria-busy="true"
+          className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]"
+        >
+          <Skeleton className="h-96 w-full rounded-lg motion-reduce:animate-none" />
+          <Skeleton className="h-96 w-full rounded-lg motion-reduce:animate-none" />
         </div>
       )}
 

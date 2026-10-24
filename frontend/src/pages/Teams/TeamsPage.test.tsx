@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Team, TeamDetail } from '@/services/teams';
@@ -141,6 +141,30 @@ describe('TeamsPage directory', () => {
       'src',
       '/avatars/deniz.png',
     );
+  });
+
+  it('shows the initial loading state until the teams arrive', () => {
+    mocks.useTeams.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    const { rerender } = renderPage();
+
+    expect(screen.getByRole('heading', { name: /^Tak/ })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Sayfa yükleniyor' })).toBeInTheDocument();
+    expect(screen.queryByTestId('team-directory')).not.toBeInTheDocument();
+
+    mocks.useTeams.mockReturnValue({ data: teams, isLoading: false, isError: false });
+    act(() => {
+      rerender(
+        <MemoryRouter initialEntries={['/teams']}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/teams" element={<TeamsPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+
+    expect(screen.getByTestId('team-directory')).toBeInTheDocument();
+    expect(screen.getByTestId('team-preview-team-1')).toHaveTextContent('Product');
   });
 
   it('renders the team directory in English when selected', async () => {
