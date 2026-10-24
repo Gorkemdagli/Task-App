@@ -548,7 +548,6 @@ export function DashboardPage() {
   const taskQueries = [todoTasksQuery, inProgressTasksQuery, doneTasksQuery];
   const tasksData = taskQueries.map((query) => query.data);
   const tasks = taskQueries.flatMap((query) => query.data?.tasks ?? EMPTY_TASKS);
-  const visibleTasks = tasks;
   const visibleTaskCount = taskQueries.reduce((total, query) => total + (query.data?.total ?? 0), 0);
 
   const selectedTaskQuery = useTask(selectedTaskId ?? undefined);
@@ -557,16 +556,13 @@ export function DashboardPage() {
   const updateStatusDirect = useUpdateTaskStatus();
   const proposeStatus = useProposeTaskStatus();
 
-  const grouped = useMemo(() => {
-    const map: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
-    for (const t of visibleTasks) {
-      map[getDisplayStatus(t, user?.id)].push(t);
-    }
-    for (const status of Object.keys(map) as TaskStatus[]) {
-      map[status].sort(compareDashboardTasks);
-    }
-    return map;
-  }, [user?.id, visibleTasks]);
+  const grouped: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
+  for (const t of tasks) {
+    grouped[getDisplayStatus(t, user?.id)].push(t);
+  }
+  for (const status of Object.keys(grouped) as TaskStatus[]) {
+    grouped[status].sort(compareDashboardTasks);
+  }
 
   const isLoading =
     taskQueries.some((query) => query.isLoading) ||
@@ -574,13 +570,10 @@ export function DashboardPage() {
     (readiness.phase === 'tasks' && taskQueries.some((query, index) =>
       query.fetchStatus === 'idle' && tasksData[index] === undefined,
     ));
-  const visibleColumns = useMemo(() => {
-    const result: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
-    for (const status of Object.keys(grouped) as TaskStatus[]) {
-      result[status] = grouped[status].slice(0, TASKS_PER_COLUMN);
-    }
-    return result;
-  }, [grouped]);
+  const visibleColumns: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
+  for (const status of Object.keys(grouped) as TaskStatus[]) {
+    visibleColumns[status] = grouped[status].slice(0, TASKS_PER_COLUMN);
+  }
 
   const canCreate = isCompanyAdmin(user) || isTeamAdminOfThisTeam;
   const workflowCounts = todoTasksQuery.data?.workflowCounts ?? {
