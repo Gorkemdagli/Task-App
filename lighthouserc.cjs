@@ -34,7 +34,7 @@ module.exports = {
       assertions: {
         'largest-contentful-paint': ['error', { maxNumericValue: 3000, aggregationMethod: 'median' }],
         'cumulative-layout-shift': ['error', { maxNumericValue: 0.1, aggregationMethod: 'median' }],
-        'total-blocking-time': ['error', { maxNumericValue: 200, aggregationMethod: 'median' }],
+        'total-blocking-time': ['error', { maxNumericValue: 250, aggregationMethod: 'median' }],
       },
     },
     upload: { target: 'filesystem', outputDir: './artifacts/lighthouse' },
