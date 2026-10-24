@@ -5,7 +5,7 @@ import App from '../App';
 import { api, authApi, getMe } from '../lib/api';
 import { queryClient } from '../lib/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { RouteFallback } from '../components/layout/RouteFallback';
+import { getProtectedRouteSkeletonVariant, RouteFallback } from '../components/layout/RouteFallback';
 import { clearGlobalError, getGlobalError } from '../lib/globalError';
 import { queryKeys } from '../lib/queryKeys';
 import { preloadDashboardRoute } from '../lib/preloadDashboardRoute';
@@ -102,18 +102,63 @@ describe('AuthBootstrap canonical flow', () => {
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
   });
 
-  it.each(['/tasks', '/dashboard/other'])(
-    'keeps the generic fallback outside the exact dashboard route (%s)',
-    (path) => {
+  it.each([
+    ['/tasks', 'table'],
+    ['/tasks/task-1', 'detail'],
+    ['/teams', 'table'],
+    ['/teams/team-1', 'detail'],
+    ['/notifications', 'list'],
+    ['/chat/thread-1', 'communication'],
+    ['/profile', 'form'],
+    ['/permissions', 'table'],
+    ['/company', 'board'],
+    ['/company/settings', 'board'],
+  ] as const)(
+    'shows the data-free %s page shape before authenticated routes mount',
+    (path, variant) => {
       window.history.pushState({}, '', path);
       refreshSpy.mockReturnValue(new Promise(() => {}) as never);
+      const apiGet = vi.spyOn(api, 'get');
 
       render(<App />);
 
-      expect(screen.getByTestId('route-fallback').querySelector('.animate-spin')).toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-route-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('route-shell-skeleton')).toBeInTheDocument();
+      expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', variant);
+      expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+      expect(apiGet).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ['/dashboard', 'dashboard'],
+    ['/tasks', 'table'],
+    ['/tasks/task-1', 'detail'],
+    ['/teams', 'table'],
+    ['/teams/team-1', 'detail'],
+    ['/notifications', 'list'],
+    ['/chat/thread-1', 'communication'],
+    ['/profile', 'form'],
+    ['/permissions', 'table'],
+    ['/company', 'board'],
+    ['/company/settings', 'board'],
+  ] as const)('maps %s to its protected-route skeleton family', (path, variant) => {
+    expect(getProtectedRouteSkeletonVariant(path)).toBe(variant);
+  });
+
+  it.each(['/', '/login', '/register', '/unknown', '/dashboard/other', '/teams/team-1/extra', '/company/settings/extra'])(
+    'keeps %s outside protected-route skeleton selection',
+    (path) => expect(getProtectedRouteSkeletonVariant(path)).toBeUndefined(),
+  );
+
+  it('keeps the generic fallback for unknown route chunks', () => {
+    window.history.pushState({}, '', '/dashboard/other');
+    refreshSpy.mockReturnValue(new Promise(() => {}) as never);
+
+    render(<App />);
+
+    expect(screen.getByTestId('route-fallback').querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-route-skeleton')).not.toBeInTheDocument();
+  });
 
   it('preloads dashboard code during auth restore but waits for canonical user before mounting it', async () => {
     window.history.pushState({}, '', '/dashboard');

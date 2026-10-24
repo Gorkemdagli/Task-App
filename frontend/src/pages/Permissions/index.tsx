@@ -433,14 +433,20 @@ export function PermissionsPage() {
       )}
 
       {usersLoading && (
-        <div data-testid="permissions-loading" className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+        <div
+          data-testid="permissions-loading"
+          role="status"
+          aria-label={t('Sayfa yükleniyor')}
+          aria-busy="true"
+          className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]"
+        >
           <div className="space-y-2 rounded-lg border border-border bg-card p-4">
-            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-5 w-36 motion-reduce:animate-none" />
             {Array.from({ length: PAGE_SIZE }, (_, index) => (
-              <Skeleton key={index} className="h-14 w-full rounded-md" />
+              <Skeleton key={index} className="h-14 w-full rounded-md motion-reduce:animate-none" />
             ))}
           </div>
-          <Skeleton className="h-96 w-full rounded-lg" />
+          <Skeleton className="h-96 w-full rounded-lg motion-reduce:animate-none" />
         </div>
       )}
 

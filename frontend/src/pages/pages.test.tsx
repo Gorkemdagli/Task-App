@@ -214,6 +214,7 @@ describe('placeholder pages', () => {
     expect(screen.getByRole("status")).toHaveClass("sr-only");
     expect(screen.getByTestId("tasks-page").querySelector("[aria-busy=true]")).toBeInTheDocument();
     expect(screen.getByTestId("tasks-page").querySelectorAll(".animate-pulse")).toHaveLength(4);
+    expect(screen.getByTestId("tasks-page").querySelectorAll(".motion-reduce\\:animate-none")).toHaveLength(4);
   });
 
   it('keeps the desktop task workspace fixed with independently scrolling panels', () => {

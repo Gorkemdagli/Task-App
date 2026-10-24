@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog';
 import { TaskPagination } from '@/components/tasks/TaskPagination';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
 import { cn } from '@/lib/utils';
 import { formatCalendarDateDisplay, utcTodayCalendarDate } from '@/lib/calendarDate';
 import { MemberList } from './MemberList';
@@ -107,13 +108,8 @@ function TeamTaskRow({ task }: { task: Task }) {
 
 function TeamDetailLoading() {
   return (
-    <section className="mx-auto w-full max-w-6xl space-y-5">
-      <Skeleton className="h-8 w-40" />
-      <Skeleton className="h-40 w-full rounded-lg" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-[28rem] w-full rounded-lg" />
-        <Skeleton className="h-[28rem] w-full rounded-lg" />
-      </div>
+    <section className="mx-auto w-full max-w-6xl">
+      <PageLoadingSkeleton variant="detail" />
     </section>
   );
 }

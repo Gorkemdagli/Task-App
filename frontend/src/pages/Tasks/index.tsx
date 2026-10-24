@@ -102,7 +102,7 @@ export function TasksPage() {
           {isLoading ? (
             <div className="space-y-2" aria-busy="true">
               {[0, 1, 2, 3].map((item) => (
-                <div key={item} className="h-16 animate-pulse rounded-md bg-secondary" />
+                <div key={item} className="h-16 animate-pulse rounded-md bg-secondary motion-reduce:animate-none" />
               ))}
             </div>
           ) : !data || data.total === 0 ? (

@@ -40,6 +40,7 @@ import {
   isCompanyAdmin,
 } from '@/lib/permissions';
 import { StatusDropdown } from '@/components/tasks/StatusDropdown';
+import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
 import { PriorityDropdown } from '@/components/tasks/PriorityDropdown';
 import { DeadlinePicker } from '@/components/tasks/DeadlinePicker';
 import { PendingStatusBadge } from '@/components/tasks/PendingStatusBadge';
@@ -120,18 +121,8 @@ export function TaskDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-8" aria-busy="true">
-        <p role="status" className="sr-only">
-          {t('tasks.detail.loading')}
-        </p>
-        <div aria-hidden="true" className="space-y-6">
-          <div className="h-8 w-48 rounded bg-secondary" />
-          <div className="h-32 max-w-2xl rounded-md bg-secondary" />
-          <div className="grid max-w-4xl gap-6 md:grid-cols-2">
-            <div className="h-40 rounded-md bg-secondary" />
-            <div className="h-40 rounded-md bg-secondary" />
-          </div>
-        </div>
+      <div className="p-8">
+        <PageLoadingSkeleton variant="detail" />
       </div>
     );
   }

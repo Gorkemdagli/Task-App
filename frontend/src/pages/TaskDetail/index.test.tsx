@@ -212,14 +212,18 @@ describe('TaskDetailPage — approved workbench', () => {
     }
   });
 
-  it('shows a non-motion skeleton with a screen-reader loading status while pending', () => {
+  it('shows an accessible detail skeleton with reduced-motion support while pending', () => {
     mockTaskIsLoading = true;
     const { container } = renderTaskDetail();
 
-    expect(screen.getByRole('status')).toHaveClass('sr-only');
-    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+    expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', 'detail');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-label');
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
-    expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
+    expect(
+      [...container.querySelectorAll('*')].some((element) =>
+        element.classList.contains('motion-reduce:animate-none'),
+      ),
+    ).toBe(true);
   });
 
   it.each([401, 403, 404])('hides cached task data after a denied or missing response (%i)', (status) => {

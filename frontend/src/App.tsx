@@ -1,6 +1,6 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { RouteFallback } from './components/layout/RouteFallback';
+import { getProtectedRouteSkeletonVariant, RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe } from './lib/api';
@@ -143,7 +143,7 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     pathname !== '/' &&
     pathname !== '/login' &&
     !loginEstablishedDuringBootstrap
-  ) return <RouteFallback variant={pathname === '/dashboard' ? 'dashboard' : undefined} />;
+  ) return <RouteFallback variant={getProtectedRouteSkeletonVariant(pathname)} />;
   return <AuthBootstrapContext.Provider value={bootstrapped}>{children}</AuthBootstrapContext.Provider>;
 }
 
@@ -157,6 +157,7 @@ function RootRoute({ hasGlobalError }: { hasGlobalError: boolean }) {
 function AppRoutes() {
   const globalError = useSyncExternalStore(subscribeGlobalError, getGlobalError);
   const { pathname } = useLocation();
+  const routeSkeletonVariant = getProtectedRouteSkeletonVariant(pathname);
 
   if (globalError && pathname !== '/') {
     return (
@@ -167,7 +168,7 @@ function AppRoutes() {
   }
 
   return (
-    <Suspense fallback={<RouteFallback variant={pathname === '/dashboard' ? 'dashboard' : undefined} />}>
+    <Suspense fallback={<RouteFallback variant={routeSkeletonVariant} />}>
       <Routes>
         <Route path="/" element={<RootRoute hasGlobalError={Boolean(globalError)} />} />
         <Route element={<AuthLayout />}>
