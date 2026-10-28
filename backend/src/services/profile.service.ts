@@ -7,12 +7,14 @@ import { revokeAllUserSessions } from '../lib/sessionStore';
 import { transformAvatar } from '../lib/media';
 import { createMediaStorage, deleteOwnedAvatar, type MediaStorage } from '../lib/mediaStorage';
 import type {
+  CreateCurrentUserCompanyInput,
   DeleteCurrentUserInput,
   UpdateCurrentUserInput,
 } from '../schemas/users.schema';
 import { withTenantContext } from '../db/withTenant';
 import { withUserContext } from '../db/withUser';
 import { cancelPendingStatusesForDeletedUser } from './tasks.service';
+import { companyNameKey, slugify } from './tenant.service';
 
 const profileSelect = {
   id: true,
@@ -76,6 +78,39 @@ export async function getCurrentProfile(userId: string): Promise<CurrentUserProf
       )
     : null;
   return toProfile(user, tenant);
+}
+
+export async function createCompanyForCurrentUser(
+  userId: string,
+  input: CreateCurrentUserCompanyInput,
+): Promise<CurrentUserProfile> {
+  const tenantId = randomUUID();
+  try {
+    await withTenantContext(userId, tenantId, async (tx) => {
+      await tx.tenant.create({
+        data: {
+          id: tenantId,
+          slug: slugify(input.companyName),
+          nameKey: companyNameKey(input.companyName),
+          name: input.companyName,
+        },
+      });
+      const claimed = await tx.user.updateMany({
+        where: { id: userId, tenantId: null, role: 'member', deletedAt: null },
+        data: { tenantId, role: 'companyAdmin' },
+      });
+      if (claimed.count !== 1) {
+        throw new AppError(409, 'Account already belongs to a company', 'COMPANY_ALREADY_ASSIGNED');
+      }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new AppError(409, 'Company name already in use', 'CONFLICT_SLUG');
+    }
+    throw error;
+  }
+
+  return getCurrentProfile(userId);
 }
 
 export async function updateCurrentProfile(
