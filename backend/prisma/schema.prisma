@@ -109,6 +109,8 @@ model User {
   notifyTaskAssigned    Boolean @default(true) @map("notify_task_assigned")
   notifyTaskCommented   Boolean @default(true) @map("notify_task_commented")
   notifyMessageReceived Boolean @default(true) @map("notify_message_received")
+  // Keep shared records and historical author relations while disabling this account.
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

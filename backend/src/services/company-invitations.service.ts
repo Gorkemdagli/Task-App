@@ -41,6 +41,7 @@ const invitationSelect = {
   status: true,
   companyName: true,
   inviterName: true,
+  inviter: { select: { deletedAt: true } },
   createdAt: true,
   expiresAt: true,
   respondedAt: true,
@@ -61,6 +62,7 @@ type InvitationRow = {
   status: CompanyInvitationStatus;
   companyName: string;
   inviterName: string;
+  inviter: { deletedAt: Date | null };
   createdAt: Date;
   expiresAt: Date;
   respondedAt: Date | null;
@@ -71,7 +73,7 @@ function toInvitationDTO(invitation: InvitationRow): CompanyInvitationDTO {
     id: invitation.id,
     tenantId: invitation.tenantId,
     companyName: invitation.companyName,
-    inviterName: invitation.inviterName,
+    inviterName: invitation.inviter.deletedAt ? 'Silinmiş kullanıcı' : invitation.inviterName,
     status: invitation.status,
     createdAt: invitation.createdAt.toISOString(),
     expiresAt: invitation.expiresAt.toISOString(),
@@ -198,15 +200,40 @@ export async function createInvitation(
   input: AddCompanyInvitationInput,
 ): Promise<CompanyInvitationAdminDTO> {
   const tenantId = assertCompanyAdmin(actor);
+  const activeActor = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM users
+    WHERE id = ${actor.id}::uuid
+      AND tenant_id = ${tenantId}::uuid
+      AND role = 'companyAdmin'
+      AND deleted_at IS NULL
+    FOR SHARE
+  `;
+  if (activeActor.length !== 1) {
+    throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+  }
   const identifier = identifierWhere(input);
-  const recipient = await db.user.findFirst({
-    where: { ...identifier, tenantId: null },
-    select: { id: true, displayId: true, email: true, fullName: true },
+  const candidate = await db.user.findFirst({
+    where: { ...identifier, tenantId: null, deletedAt: null },
+    select: { id: true },
   });
+  const lockedCandidate = candidate
+    ? await db.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users
+        WHERE id = ${candidate.id}::uuid AND deleted_at IS NULL
+        FOR SHARE
+      `
+    : [];
+  const recipient =
+    lockedCandidate.length === 1
+      ? await db.user.findFirst({
+          where: { id: candidate!.id, tenantId: null, deletedAt: null },
+          select: { id: true, displayId: true, email: true, fullName: true },
+        })
+      : null;
 
   if (!recipient) {
     const sameCompanyUser = await db.user.findFirst({
-      where: { ...identifier, tenantId },
+      where: { ...identifier, tenantId, deletedAt: null },
       select: { id: true },
     });
     if (sameCompanyUser) {
@@ -350,7 +377,7 @@ export async function acceptInvitation(
   await db.$executeRaw`SELECT set_config('app.tenant_id', ${invitation.tenantId}, true)`;
   await db.$executeRaw`SAVEPOINT company_invitation_claim`;
   const claimed = await db.user.updateMany({
-    where: { id: actor.id, tenantId: null },
+    where: { id: actor.id, tenantId: null, deletedAt: null },
     data: { tenantId: invitation.tenantId, role: 'member' },
   });
   if (claimed.count !== 1) {
@@ -393,7 +420,7 @@ export async function acceptInvitation(
   const accepted = await loadRecipientInvitation(db, actor.id, invitation.id);
 
   const user = await db.user.findFirst({
-    where: { id: actor.id, tenantId: invitation.tenantId },
+    where: { id: actor.id, tenantId: invitation.tenantId, deletedAt: null },
     select: {
       id: true,
       displayId: true,

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as profileService from '@/services/profile';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
+import { useTeamStore } from '@/stores/teamStore';
 
 function toAuthUser(profile: profileService.CurrentUserProfile): AuthUser {
   return {
@@ -45,6 +46,22 @@ export function useUpdateProfile() {
         return;
       }
       syncProfile(result, queryClient);
+    },
+  });
+}
+
+export function useDeleteAccount() {
+  return useMutation({ mutationFn: profileService.deleteProfileAccount });
+}
+
+export function useCreateCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: profileService.createCompany,
+    onSuccess: (profile) => {
+      queryClient.clear();
+      useTeamStore.getState().clearActiveTeam();
+      syncProfile(profile, queryClient);
     },
   });
 }

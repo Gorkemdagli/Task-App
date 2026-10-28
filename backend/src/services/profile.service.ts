@@ -1,12 +1,18 @@
 import { Prisma } from '@prisma/client';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { AppError } from '../lib/appError';
+import { logger } from '../lib/logger';
 import { revokeAllUserSessions } from '../lib/sessionStore';
 import { transformAvatar } from '../lib/media';
 import { createMediaStorage, deleteOwnedAvatar, type MediaStorage } from '../lib/mediaStorage';
-import type { UpdateCurrentUserInput } from '../schemas/users.schema';
+import type {
+  DeleteCurrentUserInput,
+  UpdateCurrentUserInput,
+} from '../schemas/users.schema';
 import { withTenantContext } from '../db/withTenant';
 import { withUserContext } from '../db/withUser';
+import { cancelPendingStatusesForDeletedUser } from './tasks.service';
 
 const profileSelect = {
   id: true,
@@ -60,7 +66,7 @@ function toProfile(user: UserProfileRow, tenant: ProfileRow['tenant'] = null): C
 
 export async function getCurrentProfile(userId: string): Promise<CurrentUserProfile> {
   const user = await withUserContext(userId, (tx) =>
-    tx.user.findUnique({ where: { id: userId }, select: userProfileSelect }),
+    tx.user.findFirst({ where: { id: userId, deletedAt: null }, select: userProfileSelect }),
   );
   if (!user) throw new AppError(404, 'User not found', 'NOT_FOUND');
   const tenantId = user.tenantId;
@@ -77,8 +83,8 @@ export async function updateCurrentProfile(
   input: UpdateCurrentUserInput,
 ): Promise<{ profile?: CurrentUserProfile; sessionRevoked: boolean }> {
   const current = await withUserContext(userId, (tx) =>
-    tx.user.findUnique({
-      where: { id: userId },
+    tx.user.findFirst({
+      where: { id: userId, deletedAt: null },
       select: { tenantId: true, passwordHash: true, email: true },
     }),
   );
@@ -115,7 +121,11 @@ export async function updateCurrentProfile(
 
   try {
     const update = async (transaction: Prisma.TransactionClient) => {
-      await transaction.user.update({ where: { id: userId }, data });
+      const updated = await transaction.user.updateMany({
+        where: { id: userId, deletedAt: null },
+        data,
+      });
+      if (updated.count !== 1) throw new AppError(404, 'User not found', 'NOT_FOUND');
       if (sessionRevoked) await revokeAllUserSessions(userId);
     };
     if (current.tenantId) await withTenantContext(userId, current.tenantId, update);
@@ -141,7 +151,10 @@ export async function replaceAvatar(
   }
 
   const current = await withUserContext(userId, (tx) =>
-    tx.user.findUnique({ where: { id: userId }, select: { avatarUrl: true, tenantId: true } }),
+    tx.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { avatarUrl: true, tenantId: true },
+    }),
   );
   if (!current) throw new AppError(404, 'User not found', 'NOT_FOUND');
 
@@ -150,12 +163,13 @@ export async function replaceAvatar(
   const uploaded = await mediaStorage.uploadAvatar(userId, transformed);
 
   try {
-    const update = (tx: Prisma.TransactionClient) =>
-      tx.user.update({
-        where: { id: userId },
+    const update = async (tx: Prisma.TransactionClient) => {
+      const result = await tx.user.updateMany({
+        where: { id: userId, deletedAt: null },
         data: { avatarUrl: uploaded.url },
-        select: userProfileSelect,
       });
+      if (result.count !== 1) throw new AppError(404, 'User not found', 'NOT_FOUND');
+    };
     if (current.tenantId) await withTenantContext(userId, current.tenantId, update);
     else await withUserContext(userId, update);
   } catch (error) {
@@ -170,4 +184,112 @@ export async function replaceAvatar(
   const profile = await getCurrentProfile(userId);
   await deleteOwnedAvatar(mediaStorage, current.avatarUrl, userId);
   return profile;
+}
+
+export async function deleteCurrentAccount(
+  userId: string,
+  input: DeleteCurrentUserInput,
+): Promise<void> {
+  const current = await withUserContext(userId, (tx) =>
+    tx.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { tenantId: true, email: true },
+    }),
+  );
+  if (!current) throw new AppError(404, 'User not found', 'NOT_FOUND');
+
+  const matchesEmail = (email: string) => input.confirmationEmail === email;
+  if (!matchesEmail(current.email)) {
+    throw new AppError(400, 'Confirmation email does not match', 'CONFIRMATION_EMAIL_MISMATCH');
+  }
+
+  const replacementId = randomUUID();
+  const replacementPasswordHash = await hashPassword(randomBytes(32).toString('hex'));
+  const deletedAt = new Date();
+  const anonymize = async (tx: Prisma.TransactionClient) => {
+    const rows = await tx.$queryRaw<
+      Array<{ tenantId: string | null; email: string; avatarUrl: string | null; role: string }>
+    >`
+      SELECT tenant_id AS "tenantId", email, avatar_url AS "avatarUrl", role
+      FROM users
+      WHERE id = ${userId}::uuid AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+    const locked = rows[0];
+    if (!locked) throw new AppError(404, 'User not found', 'NOT_FOUND');
+    if (locked.tenantId !== current.tenantId) {
+      throw new AppError(409, 'Account state changed; retry deletion', 'ACCOUNT_STATE_CHANGED');
+    }
+    if (!matchesEmail(locked.email)) {
+      throw new AppError(400, 'Confirmation email does not match', 'CONFIRMATION_EMAIL_MISMATCH');
+    }
+
+    if (locked.tenantId) {
+      if (
+        locked.role === 'companyAdmin' &&
+        (await tx.user.count({
+          where: { tenantId: locked.tenantId, role: 'companyAdmin', deletedAt: null },
+        })) < 2
+      ) {
+        throw new AppError(
+          409,
+          'A company must have another administrator before this account can be deleted',
+          'LAST_COMPANY_ADMIN_REQUIRED',
+        );
+      }
+
+      await cancelPendingStatusesForDeletedUser(tx, userId);
+      await tx.teamMember.deleteMany({ where: { userId } });
+      await tx.companyInvitation.updateMany({
+        where: { recipientUserId: userId, status: 'pending' },
+        data: { status: 'cancelled', cancelledAt: deletedAt },
+      });
+    } else {
+      await tx.companyInvitation.updateMany({
+        where: { recipientUserId: userId, status: 'pending' },
+        data: { status: 'cancelled', cancelledAt: deletedAt },
+      });
+    }
+    await tx.notification.deleteMany({ where: { userId } });
+
+    const result = await tx.user.updateMany({
+      where: { id: userId, deletedAt: null },
+      data: {
+        email: `deleted-${replacementId}@account.invalid`,
+        displayId: `deleted-${replacementId}`,
+        fullName: 'Silinmiş kullanıcı',
+        avatarUrl: null,
+        passwordHash: replacementPasswordHash,
+        role: 'member',
+        notifyTaskAssigned: false,
+        notifyTaskCommented: false,
+        notifyMessageReceived: false,
+        deletedAt,
+      },
+    });
+    if (result.count !== 1) throw new AppError(404, 'User not found', 'NOT_FOUND');
+    return locked.avatarUrl;
+  };
+
+  const avatarUrl = current.tenantId
+    ? await withTenantContext(userId, current.tenantId, async (tx) => {
+        const tenantRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM tenants WHERE id = ${current.tenantId}::uuid FOR UPDATE
+        `;
+        if (tenantRows.length !== 1) throw new AppError(404, 'Tenant not found', 'NOT_FOUND');
+        return anonymize(tx);
+      })
+    : await withUserContext(userId, anonymize);
+
+  // Database tombstones deny access and refresh even if Redis is temporarily unavailable.
+  try {
+    await revokeAllUserSessions(userId);
+  } catch (error) {
+    // The account is already unusable through the database auth check.
+    logger.error(
+      { error: error instanceof Error ? error.message : 'unknown' },
+      'account deletion session cleanup failed',
+    );
+  }
+  await deleteOwnedAvatar(createMediaStorage(), avatarUrl, userId);
 }

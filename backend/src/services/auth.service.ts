@@ -91,7 +91,9 @@ function isUniqueConstraint(error: unknown, column: string): boolean {
 }
 
 async function findUserById(userId: string) {
-  return withUserContext(userId, (tx) => tx.user.findUnique({ where: { id: userId } }));
+  return withUserContext(userId, (tx) =>
+    tx.user.findFirst({ where: { id: userId, deletedAt: null } }),
+  );
 }
 
 async function findTenantName(userId: string, tenantId: string | null): Promise<string | null> {

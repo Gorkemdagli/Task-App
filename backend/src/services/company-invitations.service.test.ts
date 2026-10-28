@@ -23,6 +23,7 @@ function invitation(overrides: Record<string, unknown> = {}) {
     status: 'pending',
     companyName: 'Acme',
     inviterName: 'Admin A',
+    inviter: { deletedAt: null },
     createdAt: new Date('2026-08-19T10:00:00.000Z'),
     expiresAt: new Date('2026-08-26T10:00:00.000Z'),
     respondedAt: null,
@@ -53,6 +54,7 @@ function mockDb() {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    $queryRaw: vi.fn().mockResolvedValue([{ id: 'user-b' }]),
     $executeRaw: vi.fn(),
   } as unknown as TenantDb;
 }
@@ -96,7 +98,7 @@ describe('company invitations service', () => {
       code: 'USER_NOT_FOUND',
     });
     expect(db.user.findFirst).toHaveBeenLastCalledWith({
-      where: { displayId: 'KMU24', tenantId: 'tenant-a' },
+      where: { displayId: 'KMU24', tenantId: 'tenant-a', deletedAt: null },
       select: { id: true },
     });
   });
@@ -116,6 +118,7 @@ describe('company invitations service', () => {
   it('creates an invitation without changing tenantless recipient membership', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({ id: 'user-b' } as never)
       .mockResolvedValueOnce({
         id: 'user-b',
         displayId: 'KMU24',
@@ -147,6 +150,7 @@ describe('company invitations service', () => {
   it('creates invitations with an exact seven-day lifetime', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({ id: 'user-b' } as never)
       .mockResolvedValueOnce({
         id: 'user-b',
         displayId: 'KMU24',
@@ -168,6 +172,7 @@ describe('company invitations service', () => {
   it('expires a stale pending invitation before creating a replacement', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({ id: 'user-b' } as never)
       .mockResolvedValueOnce({
         id: 'user-b',
         displayId: 'KMU24',
@@ -196,6 +201,7 @@ describe('company invitations service', () => {
   it('maps duplicate pending invitations to a conflict', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({ id: 'user-b' } as never)
       .mockResolvedValueOnce({
         id: 'user-b',
         displayId: 'KMU24',
@@ -241,6 +247,33 @@ describe('company invitations service', () => {
         where: expect.objectContaining({ recipientUserId: 'user-b', status: 'pending' }),
       }),
     );
+  });
+
+  it('uses the deleted inviter label in recipient and admin invitation reads', async () => {
+    const deletedInvitation = invitation({
+      inviterName: 'Historic Admin Name',
+      inviter: { deletedAt: now },
+    });
+    const adminDb = mockDb();
+    vi.mocked(adminDb.companyInvitation.findMany).mockResolvedValue([deletedInvitation] as never);
+    const recipientDb = mockDb();
+    vi.mocked(recipientDb.companyInvitation.findMany).mockResolvedValue([deletedInvitation] as never);
+
+    await expect(listCompanyInvitations(adminDb, admin)).resolves.toMatchObject([
+      { inviterName: 'Silinmiş kullanıcı' },
+    ]);
+    await expect(listMyInvitations(recipientDb, recipient)).resolves.toMatchObject([
+      { inviterName: 'Silinmiş kullanıcı' },
+    ]);
+
+    for (const db of [adminDb, recipientDb]) {
+      expect(db.companyInvitation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ inviter: { select: { deletedAt: true } } }),
+        }),
+      );
+    }
+    expect(deletedInvitation.inviterName).toBe('Historic Admin Name');
   });
 
   it('cancels only a pending tenant invitation', async () => {
@@ -468,7 +501,7 @@ describe('company invitations service', () => {
       expect.objectContaining({ where: { id: 'invitation-a', recipientUserId: 'user-b' } }),
     );
     expect(db.user.updateMany).toHaveBeenCalledWith({
-      where: { id: 'user-b', tenantId: null },
+      where: { id: 'user-b', tenantId: null, deletedAt: null },
       data: { tenantId: 'tenant-a', role: 'member' },
     });
     expect(db.companyInvitation.updateMany).toHaveBeenNthCalledWith(1, {

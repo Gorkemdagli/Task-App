@@ -40,6 +40,18 @@ export const updateCurrentUserSchema = z
 
 export type UpdateCurrentUserInput = z.infer<typeof updateCurrentUserSchema>;
 
+export const deleteCurrentUserSchema = z
+  .object({ confirmationEmail: z.string().email().max(255) })
+  .strict();
+
+export type DeleteCurrentUserInput = z.infer<typeof deleteCurrentUserSchema>;
+
+export const createCurrentUserCompanySchema = z
+  .object({ companyName: z.string().trim().min(2).max(100) })
+  .strict();
+
+export type CreateCurrentUserCompanyInput = z.infer<typeof createCurrentUserCompanySchema>;
+
 export const companyTeamRoleSchema = z.object({
   teamId: z.string().uuid(),
   role: z.enum(['member', 'teamAdmin']),

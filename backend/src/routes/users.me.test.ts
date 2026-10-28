@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, inject, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import sharp from 'sharp';
 import request from 'supertest';
 import { createApp } from '../app';
+import { withTenantContext } from '../db/withTenant';
 import { env } from '../env';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import { verifyAccessToken, verifyRefreshToken } from '../lib/jwt';
+import { registerIssuedTokens } from '../lib/sessionStore';
+import { acceptInvitation } from '../services/company-invitations.service';
+import * as profileService from '../services/profile.service';
 import type * as MediaStorage from '../lib/mediaStorage';
 
 declare module 'vitest' {
@@ -18,6 +24,7 @@ declare module 'vitest' {
 async function cleanDb() {
   await prisma.taskComment.deleteMany();
   await prisma.message.deleteMany();
+  await prisma.companyInvitation.deleteMany();
   await prisma.task.deleteMany();
   await prisma.teamMember.deleteMany();
   await prisma.team.deleteMany();
@@ -497,5 +504,442 @@ describe('POST /api/v1/users/me/avatar', () => {
       (await prisma.user.findUniqueOrThrow({ where: { id: registerResponse.body.user.id } }))
         .avatarUrl,
     ).toBeNull();
+  });
+});
+
+describe('DELETE /api/v1/users/me', () => {
+  beforeEach(cleanDb);
+
+  it('requires authentication and an exact email confirmation, ignoring any supplied target ID', async () => {
+    const account = await registerUser({ email: 'delete-owner@example.com' });
+    const other = await registerUser({ email: 'delete-other@example.com' });
+
+    expect(
+      (await request(createApp()).delete('/api/v1/users/me').send({
+        confirmationEmail: 'delete-owner@example.com',
+      })).status,
+    ).toBe(401);
+
+    const wrongEmail = await request(createApp())
+      .delete('/api/v1/users/me')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ confirmationEmail: 'delete-other@example.com' });
+    expect(wrongEmail.status).toBe(400);
+    expect(wrongEmail.body.error).toBe('CONFIRMATION_EMAIL_MISMATCH');
+
+    const injectedTarget = await request(createApp())
+      .delete('/api/v1/users/me')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ confirmationEmail: 'delete-owner@example.com', userId: other.body.user.id });
+    expect(injectedTarget.status).toBe(400);
+
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } })).deletedAt)
+      .toBeNull();
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: other.body.user.id } })).deletedAt)
+      .toBeNull();
+  });
+
+  it('blocks deleting the last active company admin', async () => {
+    const account = await registerUser({
+      email: 'last-admin@example.com',
+      companyName: 'Last Admin Company',
+    });
+
+    const response = await request(createApp())
+      .delete('/api/v1/users/me')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ confirmationEmail: 'last-admin@example.com' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('LAST_COMPANY_ADMIN_REQUIRED');
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } })).deletedAt)
+      .toBeNull();
+  });
+
+  it('serializes self-deletion with company-admin demotion so one active admin remains', async () => {
+    const account = await registerUser({
+      email: 'concurrent-delete@example.com',
+      companyName: 'Concurrent Admin Company',
+    });
+    const secondAdmin = await prisma.user.create({
+      data: {
+        tenantId: account.body.user.tenantId,
+        email: 'concurrent-second-admin@example.com',
+        fullName: 'Second Admin',
+        passwordHash: 'not-used',
+        displayId: `DEL-${randomUUID()}`,
+        role: 'companyAdmin',
+      },
+    });
+
+    const [deletion, demotion] = await Promise.all([
+      request(createApp())
+        .delete('/api/v1/users/me')
+        .set('Authorization', `Bearer ${account.body.accessToken}`)
+        .send({ confirmationEmail: 'concurrent-delete@example.com' }),
+      request(createApp())
+        .patch(`/api/v1/users/${secondAdmin.id}/permissions`)
+        .set('Authorization', `Bearer ${account.body.accessToken}`)
+        .send({ role: 'member', teamRoles: [] }),
+    ]);
+
+    expect([deletion.status, demotion.status].filter((status) => status < 300)).toHaveLength(1);
+    expect(
+      await prisma.user.count({
+        where: { tenantId: account.body.user.tenantId, role: 'companyAdmin', deletedAt: null },
+      }),
+    ).toBe(1);
+  });
+
+  it('anonymizes the account and preserves shared records and author labels', async () => {
+    const account = await registerUser({
+      fullName: 'Delete Me',
+      email: 'preserve-account@example.com',
+      companyName: 'Preserved Content Company',
+    });
+    const otherTenant = await registerUser({
+      fullName: 'Other Tenant Admin',
+      email: 'other-tenant-admin@example.com',
+      companyName: 'Unchanged Other Company',
+    });
+    const secondAdmin = await prisma.user.create({
+      data: {
+        tenantId: account.body.user.tenantId,
+        email: 'preserved-second-admin@example.com',
+        fullName: 'Second Admin',
+        passwordHash: 'not-used',
+        displayId: `DEL-${randomUUID()}`,
+        role: 'companyAdmin',
+      },
+    });
+    const retainedInvitation = await prisma.companyInvitation.create({
+      data: {
+        tenantId: account.body.user.tenantId!,
+        recipientUserId: secondAdmin.id,
+        invitedByUserId: account.body.user.id,
+        companyName: 'Preserved Content Company',
+        inviterName: 'Historic Inviter Snapshot',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const team = await prisma.team.create({
+      data: { tenantId: account.body.user.tenantId, name: 'Preserved Team' },
+    });
+    await prisma.teamMember.create({
+      data: { teamId: team.id, userId: account.body.user.id, role: 'teamAdmin' },
+    });
+    const task = await prisma.task.create({
+      data: {
+        teamId: team.id,
+        title: 'Preserved task',
+        priority: 'medium',
+        assignerId: account.body.user.id,
+        pendingStatus: 'done',
+        pendingVersion: 1,
+        pendingProposedBy: secondAdmin.id,
+        pendingProposedAt: new Date(),
+        assignees: { create: { userId: account.body.user.id } },
+      },
+    });
+    await prisma.taskStatusAck.create({
+      data: {
+        taskId: task.id,
+        userId: secondAdmin.id,
+        proposedStatus: 'done',
+        pendingVersion: 1,
+      },
+    });
+    await prisma.taskComment.create({
+      data: { taskId: task.id, authorId: account.body.user.id, body: 'Retained comment' },
+    });
+    await prisma.taskFile.create({
+      data: {
+        tenantId: account.body.user.tenantId,
+        taskId: task.id,
+        uploaderId: account.body.user.id,
+        originalName: 'retained.txt',
+        objectPath: `${account.body.user.tenantId}/${task.id}/retained.txt`,
+        mimeType: 'text/plain',
+        sizeBytes: 8,
+      },
+    });
+    await prisma.message.create({
+      data: {
+        senderId: account.body.user.id,
+        receiverId: secondAdmin.id,
+        body: 'Retained message',
+      },
+    });
+    await prisma.taskEvent.create({
+      data: { taskId: task.id, actorId: account.body.user.id, eventType: 'task_created' },
+    });
+
+    const cookie = account.headers['set-cookie']![0];
+    const refreshToken = cookie.match(/refreshToken=([^;]+)/)![1];
+    const accessPayload = verifyAccessToken(account.body.accessToken);
+    const refreshPayload = verifyRefreshToken(refreshToken);
+    const session = JSON.parse((await redis.get(`session:${refreshPayload.jti}`))!);
+
+    const deleted = await withRestrictedRuntimeApp((app) =>
+      request(app)
+        .delete('/api/v1/users/me')
+        .set('Authorization', `Bearer ${account.body.accessToken}`)
+        .send({ confirmationEmail: 'preserve-account@example.com' }),
+    );
+
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ deleted: true });
+    expect(deleted.headers['set-cookie']?.[0]).toMatch(/refreshToken=;/);
+
+    const tombstone = await prisma.user.findUniqueOrThrow({
+      where: { id: account.body.user.id },
+    });
+    expect(tombstone).toMatchObject({
+      tenantId: account.body.user.tenantId,
+      fullName: 'Silinmiş kullanıcı',
+      role: 'member',
+      avatarUrl: null,
+    });
+    expect(tombstone.deletedAt).toBeInstanceOf(Date);
+    expect(tombstone.email).not.toBe('preserve-account@example.com');
+    expect(tombstone.displayId).not.toBe(account.body.user.displayId);
+    expect(await prisma.teamMember.count({ where: { userId: tombstone.id } })).toBe(0);
+    expect(
+      await prisma.companyInvitation.findUniqueOrThrow({ where: { id: retainedInvitation.id } }),
+    ).toMatchObject({
+      inviterName: 'Historic Inviter Snapshot',
+      invitedByUserId: tombstone.id,
+      status: 'pending',
+    });
+
+    const retainedTask = await prisma.task.findUniqueOrThrow({
+      where: { id: task.id },
+      include: {
+        assigner: true,
+        assignees: { include: { user: true } },
+        comments: { include: { author: true } },
+        files: { include: { uploader: true } },
+      },
+    });
+    expect(retainedTask.assigner.fullName).toBe('Silinmiş kullanıcı');
+    expect(retainedTask.assignees[0].user.fullName).toBe('Silinmiş kullanıcı');
+    expect(retainedTask.comments[0]).toMatchObject({
+      body: 'Retained comment',
+      author: { fullName: 'Silinmiş kullanıcı' },
+    });
+    expect(retainedTask.files[0]).toMatchObject({
+      originalName: 'retained.txt',
+      uploader: { fullName: 'Silinmiş kullanıcı' },
+    });
+    expect(retainedTask.pendingStatus).toBeNull();
+    expect(retainedTask.pendingProposedBy).toBeNull();
+    expect(await prisma.taskStatusAck.count({ where: { taskId: task.id } })).toBe(0);
+    expect(
+      await prisma.taskEvent.count({ where: { taskId: task.id, eventType: 'status_change_rejected' } }),
+    ).toBe(1);
+    expect(
+      await prisma.message.findFirstOrThrow({
+        where: { senderId: tombstone.id },
+        include: { sender: true },
+      }),
+    ).toMatchObject({ body: 'Retained message', sender: { fullName: 'Silinmiş kullanıcı' } });
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: otherTenant.body.user.id } })).deletedAt,
+    ).toBeNull();
+
+    // Recreate the old Redis session to prove the database tombstone is still authoritative.
+    await redis.del(`blacklist:jti:${accessPayload.jti}`, `blacklist:jti:${refreshPayload.jti}`);
+    await registerIssuedTokens(
+      account.body.accessToken,
+      refreshToken,
+      tombstone.id,
+      session.familyId,
+      session.sessionExpiresAt,
+    );
+    expect(
+      (
+        await request(createApp())
+          .get('/api/v1/users/me')
+          .set('Authorization', `Bearer ${account.body.accessToken}`)
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await request(createApp()).post('/api/v1/auth/refresh').set('Cookie', cookie)
+      ).status,
+    ).toBe(401);
+    await redis.del(`session:${refreshPayload.jti}`);
+  });
+});
+
+describe('POST /api/v1/users/me/company', () => {
+  beforeEach(cleanDb);
+
+  it('creates a company for the authenticated companyless account without replacing the account', async () => {
+    const account = await registerUser();
+
+    const response = await request(createApp())
+      .post('/api/v1/users/me/company')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ companyName: 'New Company' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: account.body.user.id,
+      email: 'ali-me@example.com',
+      tenantName: 'New Company',
+      role: 'companyAdmin',
+    });
+    expect(response.body.tenantId).toEqual(expect.any(String));
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } })).toMatchObject({
+      id: account.body.user.id,
+      tenantId: response.body.tenantId,
+      email: 'ali-me@example.com',
+      role: 'companyAdmin',
+      deletedAt: null,
+    });
+    expect(await prisma.tenant.count()).toBe(1);
+  });
+
+  it('requires authentication and rejects invalid company names without writing a tenant', async () => {
+    const account = await registerUser();
+
+    expect(
+      (await request(createApp()).post('/api/v1/users/me/company').send({ companyName: 'Acme' }))
+        .status,
+    ).toBe(401);
+
+    const invalid = await request(createApp())
+      .post('/api/v1/users/me/company')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ companyName: '  ' });
+
+    expect(invalid.status).toBe(400);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } })).toMatchObject({
+      tenantId: null,
+      role: 'member',
+    });
+    expect(await prisma.tenant.count()).toBe(0);
+  });
+
+  it('denies an already-affiliated account and rejects attempts to target another user', async () => {
+    const account = await registerUser({ companyName: 'Existing Company' });
+
+    const response = await request(createApp())
+      .post('/api/v1/users/me/company')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ companyName: 'Another Company' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('COMPANY_ALREADY_ASSIGNED');
+    expect(await prisma.tenant.count()).toBe(1);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } })).toMatchObject({
+      tenantId: account.body.user.tenantId,
+      role: 'companyAdmin',
+    });
+
+    const target = await registerUser({ email: 'target-companyless@example.com' });
+    const injectedTarget = await request(createApp())
+      .post('/api/v1/users/me/company')
+      .set('Authorization', `Bearer ${account.body.accessToken}`)
+      .send({ companyName: 'Injected Target Company', userId: target.body.user.id });
+
+    expect(injectedTarget.status).toBe(400);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: target.body.user.id } })).toMatchObject({
+      tenantId: null,
+      role: 'member',
+    });
+  });
+
+  it('returns the registration conflict for duplicate names and leaves the second account companyless', async () => {
+    const first = await registerUser();
+    const second = await registerUser({ email: 'second-companyless@example.com' });
+    const token = `Bearer ${first.body.accessToken}`;
+    const create = (accessToken: string, companyName: string) =>
+      request(createApp())
+        .post('/api/v1/users/me/company')
+        .set('Authorization', accessToken)
+        .send({ companyName });
+
+    expect((await create(token, 'Unique Company')).status).toBe(200);
+    const duplicate = await create(`Bearer ${second.body.accessToken}`, ' Unique   Company ');
+
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.error).toBe('CONFLICT_SLUG');
+    expect(await prisma.tenant.count()).toBe(1);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: second.body.user.id } })).toMatchObject({
+      tenantId: null,
+      role: 'member',
+    });
+  });
+
+  it('allows only one concurrent company creation and rolls back the losing tenant', async () => {
+    const account = await registerUser();
+    const create = (companyName: string) =>
+      request(createApp())
+        .post('/api/v1/users/me/company')
+        .set('Authorization', `Bearer ${account.body.accessToken}`)
+        .send({ companyName });
+
+    const responses = await Promise.all([create('Concurrent One'), create('Concurrent Two')]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: account.body.user.id } });
+    expect(user).toMatchObject({ role: 'companyAdmin', deletedAt: null });
+    expect(await prisma.tenant.count()).toBe(1);
+    expect(await prisma.tenant.findUniqueOrThrow({ where: { id: user.tenantId! } })).toMatchObject({
+      name: expect.stringMatching(/^Concurrent (One|Two)$/),
+    });
+  });
+
+  it('serializes company creation with invitation acceptance without creating an orphan tenant', async () => {
+    const admin = await registerUser({ companyName: 'Invitation Company' });
+    const recipient = await registerUser({ email: 'invitation-recipient@example.com' });
+    const invitation = await prisma.companyInvitation.create({
+      data: {
+        tenantId: admin.body.user.tenantId,
+        recipientUserId: recipient.body.user.id,
+        invitedByUserId: admin.body.user.id,
+        companyName: 'Invitation Company',
+        inviterName: 'Ali',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const [companyCreation, invitationAcceptance] = await Promise.allSettled([
+      profileService.createCompanyForCurrentUser(recipient.body.user.id, {
+        companyName: 'Recipient Company',
+      }),
+      withTenantContext(recipient.body.user.id, admin.body.user.tenantId, (tx) =>
+        acceptInvitation(tx, recipient.body.user, invitation.id),
+      ),
+    ]);
+
+    expect([companyCreation.status, invitationAcceptance.status].filter((status) => status === 'fulfilled'))
+      .toHaveLength(1);
+    const recipientUser = await prisma.user.findUniqueOrThrow({
+      where: { id: recipient.body.user.id },
+    });
+    expect(recipientUser.tenantId).not.toBeNull();
+    const currentInvitation = await prisma.companyInvitation.findUniqueOrThrow({
+      where: { id: invitation.id },
+    });
+    if (companyCreation.status === 'fulfilled') {
+      expect(recipientUser).toMatchObject({ role: 'companyAdmin' });
+      expect(currentInvitation.status).toBe('expired');
+      expect(
+        (
+          await prisma.tenant.findMany({
+            select: { name: true },
+            orderBy: { name: 'asc' },
+          })
+        ).map(({ name }) => name),
+      ).toEqual(['Invitation Company', 'Recipient Company']);
+    } else {
+      expect(recipientUser).toMatchObject({ tenantId: admin.body.user.tenantId, role: 'member' });
+      expect(currentInvitation.status).toBe('accepted');
+      expect((await prisma.tenant.findMany({ select: { name: true } })).map(({ name }) => name)).toEqual([
+        'Invitation Company',
+      ]);
+    }
   });
 });

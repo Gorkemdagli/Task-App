@@ -11,16 +11,18 @@ import { queryClient } from '@/lib/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { useTeamStore } from '@/stores/teamStore';
 
-const { useProfileMock, updateMock, uploadMock } = vi.hoisted(() => ({
+const { useProfileMock, updateMock, uploadMock, deleteMock } = vi.hoisted(() => ({
   useProfileMock: vi.fn(),
   updateMock: vi.fn(),
   uploadMock: vi.fn(),
+  deleteMock: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/useProfile', () => ({
   useProfile: useProfileMock,
   useUpdateProfile: () => updateMock(),
   useUploadAvatar: () => uploadMock(),
+  useDeleteAccount: () => deleteMock(),
 }));
 
 const profile: CurrentUserProfile = {
@@ -124,6 +126,10 @@ describe('ProfilePage', () => {
       isError: false,
       error: null,
     });
+    deleteMock.mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: false,
+    });
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -159,6 +165,50 @@ describe('ProfilePage', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /Görünen ID kopyala/ }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ABCDE'));
+  });
+
+  it('requires the exact profile email and shows the localized last-admin error', async () => {
+    const mutateAsync = vi.fn().mockRejectedValue({
+      response: { data: { error: 'LAST_COMPANY_ADMIN_REQUIRED' } },
+    });
+    deleteMock.mockReturnValue({ mutateAsync, isPending: false });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hesabı sil' }));
+    const confirm = screen.getByRole('button', { name: 'Hesabı kalıcı olarak sil' });
+    const emailInput = screen.getByLabelText('Onaylamak için hesap e-posta adresinizi girin');
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(emailInput, { target: { value: 'different@example.com' } });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(emailInput, { target: { value: profile.email } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    expect(await screen.findByText(/Şirketin son yöneticisi hesabını silemez/i)).toBeInTheDocument();
+    expect(mutateAsync).toHaveBeenCalledWith(profile.email);
+  });
+
+  it('uses the existing logout path after successful account deletion', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    deleteMock.mockReturnValue({ mutateAsync, isPending: false });
+    logoutSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ data: null } as never);
+    useTeamStore.getState().setActiveTeamId('team-1');
+    queryClient.setQueryData(['delete-private-data'], { value: 'cached' });
+    renderProtectedPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hesabı sil' }));
+    fireEvent.change(screen.getByLabelText('Onaylamak için hesap e-posta adresinizi girin'), {
+      target: { value: profile.email },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Hesabı kalıcı olarak sil' }));
+
+    await waitFor(() => expect(screen.getByTestId('public-landing')).toBeInTheDocument());
+    expect(mutateAsync).toHaveBeenCalledWith(profile.email);
+    expect(logoutSpy).toHaveBeenCalledWith('/logout');
+    expect(useAuthStore.getState()).toMatchObject({ accessToken: null, user: null });
+    expect(useTeamStore.getState().activeTeamId).toBeNull();
+    expect(queryClient.getQueryData(['delete-private-data'])).toBeUndefined();
   });
 
   it('guards avatar files over 25 MB on client', () => {
