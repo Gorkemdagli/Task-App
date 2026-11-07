@@ -103,7 +103,7 @@ artifacts/
 .fallow
 
 # Project documentation (kept local, not on remote)
-
+.freebuff
 CLAUDE.md
 PROJECT.md
 FRONTEND.md
