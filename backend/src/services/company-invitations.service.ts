@@ -33,7 +33,7 @@ export type AcceptCompanyInvitationResult = {
   user: AuthUser;
 };
 
-const invitationSelect = {
+const invitationRecordSelect = {
   id: true,
   tenantId: true,
   recipientUserId: true,
@@ -41,11 +41,15 @@ const invitationSelect = {
   status: true,
   companyName: true,
   inviterName: true,
-  inviter: { select: { deletedAt: true } },
   createdAt: true,
   expiresAt: true,
   respondedAt: true,
   cancelledAt: true,
+} as const;
+
+const invitationSelect = {
+  ...invitationRecordSelect,
+  inviter: { select: { deletedAt: true } },
 } as const;
 
 const adminInvitationSelect = {
@@ -55,25 +59,28 @@ const adminInvitationSelect = {
   },
 } as const;
 
-type InvitationRow = {
+type InvitationRecord = {
   id: string;
   tenantId: string;
   recipientUserId: string;
+  invitedByUserId: string;
   status: CompanyInvitationStatus;
   companyName: string;
   inviterName: string;
-  inviter: { deletedAt: Date | null };
   createdAt: Date;
   expiresAt: Date;
   respondedAt: Date | null;
 };
+
+type InvitationRow = InvitationRecord & { inviter: { deletedAt: Date | null } | null };
 
 function toInvitationDTO(invitation: InvitationRow): CompanyInvitationDTO {
   return {
     id: invitation.id,
     tenantId: invitation.tenantId,
     companyName: invitation.companyName,
-    inviterName: invitation.inviter.deletedAt ? 'Silinmiş kullanıcı' : invitation.inviterName,
+    inviterName:
+      invitation.inviter?.deletedAt === null ? invitation.inviterName : 'Silinmiş kullanıcı',
     status: invitation.status,
     createdAt: invitation.createdAt.toISOString(),
     expiresAt: invitation.expiresAt.toISOString(),
@@ -119,14 +126,14 @@ async function expireStaleInvitationAfterRace(
   db: TenantDb,
   where: { tenantId?: string; recipientUserId?: string },
   invitationId: string,
-  knownInvitation?: InvitationRow,
+  knownInvitation?: InvitationRecord,
 ): Promise<never> {
   const invitationWhere = { id: invitationId, ...where };
-  let current: InvitationRow | null = knownInvitation ?? null;
+  let current: InvitationRecord | null = knownInvitation ?? null;
   if (!current) {
     current = await db.companyInvitation.findFirst({
       where: invitationWhere,
-      select: invitationSelect,
+      select: invitationRecordSelect,
     });
   }
 
@@ -148,7 +155,7 @@ async function expireStaleInvitationAfterRace(
 
   current = await db.companyInvitation.findFirst({
     where: invitationWhere,
-    select: invitationSelect,
+    select: invitationRecordSelect,
   });
   if (!current) throwInvitationNotFound();
   if (current.status === 'expired') commitThenThrow(invitationExpiredError());
@@ -170,6 +177,20 @@ function invitationExpiredError(): AppError {
 async function loadRecipientInvitation(db: TenantDb, actorId: string, invitationId: string) {
   const invitation = await db.companyInvitation.findFirst({
     where: { id: invitationId, recipientUserId: actorId },
+    select: invitationRecordSelect,
+  });
+  if (!invitation) throwInvitationNotFound();
+  return invitation;
+}
+
+async function loadRecipientInvitationWithInviter(
+  db: TenantDb,
+  actorId: string,
+  invitationId: string,
+  tenantId: string,
+) {
+  const invitation = await db.companyInvitation.findFirst({
+    where: { id: invitationId, recipientUserId: actorId, tenantId },
     select: invitationSelect,
   });
   if (!invitation) throwInvitationNotFound();
@@ -298,7 +319,7 @@ export async function cancelInvitation(
   const tenantId = assertCompanyAdmin(actor);
   const existing = await db.companyInvitation.findFirst({
     where: { id: invitationId, tenantId },
-    select: invitationSelect,
+    select: invitationRecordSelect,
   });
   if (!existing) throwInvitationNotFound();
   if (existing.status !== 'pending') throwInvitationNotPending();
@@ -330,12 +351,41 @@ export async function listMyInvitations(
   actor: Actor,
 ): Promise<CompanyInvitationDTO[]> {
   await expireStaleInvitations(db, { recipientUserId: actor.id });
-  const invitations = await db.companyInvitation.findMany({
-    where: { recipientUserId: actor.id, status: 'pending', expiresAt: { gt: new Date() } },
-    select: invitationSelect,
+  const now = new Date();
+  const invitationRefs = await db.companyInvitation.findMany({
+    where: { recipientUserId: actor.id, status: 'pending', expiresAt: { gt: now } },
+    select: { id: true, tenantId: true },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
-  return invitations.map(toInvitationDTO);
+  const idsByTenant = new Map<string, string[]>();
+  for (const { id, tenantId } of invitationRefs) {
+    const ids = idsByTenant.get(tenantId) ?? [];
+    ids.push(id);
+    idsByTenant.set(tenantId, ids);
+  }
+
+  const invitationsById = new Map<string, CompanyInvitationDTO>();
+  for (const [tenantId, ids] of idsByTenant) {
+    await db.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    const invitations = await db.companyInvitation.findMany({
+      where: {
+        id: { in: ids },
+        tenantId,
+        recipientUserId: actor.id,
+        status: 'pending',
+        expiresAt: { gt: now },
+      },
+      select: invitationSelect,
+    });
+    for (const invitation of invitations) {
+      invitationsById.set(invitation.id, toInvitationDTO(invitation));
+    }
+  }
+
+  return invitationRefs.flatMap(({ id }) => {
+    const invitation = invitationsById.get(id);
+    return invitation ? [invitation] : [];
+  });
 }
 
 export async function rejectInvitation(
@@ -358,12 +408,17 @@ export async function rejectInvitation(
     return expireStaleInvitationAfterRace(db, { recipientUserId: actor.id }, invitation.id);
   }
 
-  const rejected = await loadRecipientInvitation(db, actor.id, invitation.id);
   const actorName =
     (actor as Actor & { fullName?: string }).fullName ??
     (await db.user.findFirst({ where: { id: actor.id }, select: { fullName: true } }))?.fullName ??
     'Davetli';
   await notifyCompanyInvitationOutcome(db, invitation, 'rejected', actorName);
+  const rejected = await loadRecipientInvitationWithInviter(
+    db,
+    actor.id,
+    invitation.id,
+    invitation.tenantId,
+  );
   return toInvitationDTO(rejected);
 }
 
@@ -417,7 +472,12 @@ export async function acceptInvitation(
     data: { status: 'expired' },
   });
 
-  const accepted = await loadRecipientInvitation(db, actor.id, invitation.id);
+  const accepted = await loadRecipientInvitationWithInviter(
+    db,
+    actor.id,
+    invitation.id,
+    invitation.tenantId,
+  );
 
   const user = await db.user.findFirst({
     where: { id: actor.id, tenantId: invitation.tenantId, deletedAt: null },

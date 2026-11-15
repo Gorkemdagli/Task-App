@@ -108,6 +108,10 @@ describe('task blocking', () => {
       email: 'blocking-outsider@example.com',
       password: 'hunter22',
     });
+    await prisma.user.update({
+      where: { id: outsiderResult.user.id },
+      data: { tenantId: admin.tenantId, role: 'member' },
+    });
     const outsider = { ...outsiderResult.user, role: 'member' as const, tenantId: admin.tenantId };
     await expect(
       inTenant(outsider, (db) =>

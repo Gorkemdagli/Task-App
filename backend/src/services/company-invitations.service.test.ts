@@ -233,7 +233,9 @@ describe('company invitations service', () => {
 
   it('lists recipient-owned pending invitations and expires stale rows', async () => {
     const db = mockDb();
-    vi.mocked(db.companyInvitation.findMany).mockResolvedValue([invitation()] as never);
+    vi.mocked(db.companyInvitation.findMany)
+      .mockResolvedValueOnce([{ id: 'invitation-a', tenantId: 'tenant-a' }] as never)
+      .mockResolvedValueOnce([invitation()] as never);
 
     await expect(listMyInvitations(db, recipient)).resolves.toHaveLength(1);
     expect(db.companyInvitation.updateMany).toHaveBeenCalledWith(
@@ -245,6 +247,18 @@ describe('company invitations service', () => {
     expect(db.companyInvitation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ recipientUserId: 'user-b', status: 'pending' }),
+        select: { id: true, tenantId: true },
+      }),
+    );
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(db.companyInvitation.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['invitation-a'] },
+          tenantId: 'tenant-a',
+          recipientUserId: 'user-b',
+        }),
+        select: expect.objectContaining({ inviter: { select: { deletedAt: true } } }),
       }),
     );
   });
@@ -257,7 +271,9 @@ describe('company invitations service', () => {
     const adminDb = mockDb();
     vi.mocked(adminDb.companyInvitation.findMany).mockResolvedValue([deletedInvitation] as never);
     const recipientDb = mockDb();
-    vi.mocked(recipientDb.companyInvitation.findMany).mockResolvedValue([deletedInvitation] as never);
+    vi.mocked(recipientDb.companyInvitation.findMany)
+      .mockResolvedValueOnce([{ id: 'invitation-a', tenantId: 'tenant-a' }] as never)
+      .mockResolvedValueOnce([deletedInvitation] as never);
 
     await expect(listCompanyInvitations(adminDb, admin)).resolves.toMatchObject([
       { inviterName: 'Silinmiş kullanıcı' },
@@ -274,6 +290,13 @@ describe('company invitations service', () => {
       );
     }
     expect(deletedInvitation.inviterName).toBe('Historic Admin Name');
+    expect(recipientDb.companyInvitation.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ select: { id: true, tenantId: true } }),
+    );
+    expect(recipientDb.companyInvitation.findMany.mock.invocationCallOrder[0]).toBeLessThan(
+      recipientDb.$executeRaw.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('cancels only a pending tenant invitation', async () => {
