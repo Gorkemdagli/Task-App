@@ -195,6 +195,105 @@ describe('Topbar', () => {
     await closeMenu(user);
   });
 
+  it('shows company creation only for a tenantless signed-in user', async () => {
+    const user = userEvent.setup();
+    const tenantlessRender = renderTopbar(tenantless);
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    expect(screen.getByRole('menuitem', { name: 'Şirket oluştur' })).toBeInTheDocument();
+    await closeMenu(user);
+    tenantlessRender.unmount();
+
+    renderTopbar(member);
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    expect(screen.queryByRole('menuitem', { name: 'Şirket oluştur' })).not.toBeInTheDocument();
+    await closeMenu(user);
+  });
+
+  it('creates the company, updates identity, and clears old private query and team state', async () => {
+    const user = userEvent.setup();
+    const profile = {
+      ...tenantless,
+      role: 'companyAdmin' as const,
+      tenantId: 'new-company-id',
+      tenantName: 'New Company',
+      tenantLogoUrl: null,
+      avatarUrl: null,
+      notifyTaskAssigned: true,
+      notifyTaskCommented: true,
+      notifyMessageReceived: true,
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(['old-tenant-private-data'], { value: 'stale' });
+    useTeamStore.getState().setActiveTeamId('old-team');
+    postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: profile } as never);
+    renderTopbar(tenantless, qc);
+
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Şirket oluştur' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Şirket oluştur' });
+    await user.type(within(dialog).getByLabelText('Şirket adı'), 'New Company');
+    await user.click(within(dialog).getByRole('button', { name: 'Şirketi oluştur' }));
+
+    await waitFor(() =>
+      expect(useAuthStore.getState().user).toMatchObject({
+        id: tenantless.id,
+        tenantId: 'new-company-id',
+        role: 'companyAdmin',
+      }),
+    );
+    expect(postSpy).toHaveBeenCalledWith('/users/me/company', { companyName: 'New Company' });
+    expect(qc.getQueryData(['old-tenant-private-data'])).toBeUndefined();
+    expect(qc.getQueryData(['profile', tenantless.id])).toMatchObject(profile);
+    expect(useTeamStore.getState().activeTeamId).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Åirket oluÅŸtur' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the company form disabled while submitting and shows duplicate-name errors accessibly', async () => {
+    const user = userEvent.setup();
+    let rejectCreation!: (error: unknown) => void;
+    postSpy = vi.spyOn(api, 'post').mockReturnValue(
+      new Promise((_, reject) => {
+        rejectCreation = reject;
+      }) as never,
+    );
+    renderTopbar(tenantless);
+
+    await user.click(screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Şirket oluştur' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Şirket oluştur' });
+    await user.type(within(dialog).getByLabelText('Şirket adı'), 'Taken Name');
+    const submit = within(dialog).getByRole('button', { name: 'Şirketi oluştur' });
+    await user.click(submit);
+    expect(submit).toBeDisabled();
+
+    rejectCreation({ response: { data: { error: 'CONFLICT_SLUG' } } });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Bu şirket adı zaten kullanılıyor.',
+    );
+    expect(submit).toBeEnabled();
+  });
+
+  it('returns focus to the profile-menu trigger when the company dialog closes by Escape or cancel', async () => {
+    const user = userEvent.setup();
+    renderTopbar(tenantless);
+    const trigger = screen.getByRole('button', { name: 'Kullanıcı menüsünü aç' });
+    const openDialog = async () => {
+      await user.click(trigger);
+      await user.click(await screen.findByRole('menuitem', { name: 'Şirket oluştur' }));
+      expect(await screen.findByRole('dialog', { name: 'Şirket oluştur' })).toBeInTheDocument();
+    };
+
+    await openDialog();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+
+    await openDialog();
+    await user.click(screen.getByRole('button', { name: 'İptal' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
   it('shows avatar with initials from full name', () => {
     renderTopbar(member);
     // Full name "Ada Yılmaz" → initials "AY"

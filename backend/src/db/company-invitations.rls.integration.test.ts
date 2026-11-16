@@ -5,6 +5,8 @@ import {
   acceptInvitation,
   cancelInvitation,
   createInvitation as createCompanyInvitation,
+  listMyInvitations,
+  rejectInvitation,
 } from '../services/company-invitations.service';
 import { withTenantContext } from './withTenant';
 import { withUserContext } from './withUser';
@@ -415,5 +417,44 @@ describe('company invitation update RLS', () => {
     await expect(
       prisma.teamMember.count({ where: { userId: concurrentAcceptRecipientId } }),
     ).resolves.toBe(0);
+  });
+
+  it('resolves a deleted inviter only after recipient-scoped row access', async () => {
+    const recipient = { id: recipientId, role: 'member' as const, tenantId: null };
+    const wrongUser = { id: rejectionRecipientId, role: 'member' as const, tenantId: null };
+    const wrongTenant = {
+      id: claimedRecipientId,
+      role: 'member' as const,
+      tenantId: tenantBId,
+    };
+
+    const wrongUserInvitations = await withUserContext(wrongUser.id, (db) =>
+      listMyInvitations(db, wrongUser),
+    );
+    expect(wrongUserInvitations.map(({ id }) => id)).not.toContain(invitationId);
+    await expect(
+      withTenantContext(wrongTenant.id, tenantBId, (db) =>
+        rejectInvitation(db, wrongTenant, invitationId),
+      ),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'INVITATION_NOT_FOUND' });
+
+    await prisma.user.update({
+      where: { id: inviterId },
+      data: { deletedAt: new Date() },
+    });
+    const invitations = await withUserContext(recipient.id, (db) =>
+      listMyInvitations(db, recipient),
+    );
+    expect(invitations).toMatchObject([
+      { id: invitationId, inviterName: 'Silinmiş kullanıcı', status: 'pending' },
+    ]);
+
+    await expect(
+      withUserContext(recipient.id, (db) => rejectInvitation(db, recipient, invitationId)),
+    ).resolves.toMatchObject({
+      id: invitationId,
+      inviterName: 'Silinmiş kullanıcı',
+      status: 'rejected',
+    });
   });
 });

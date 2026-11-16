@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 import sharp from 'sharp';
 import request from 'supertest';
@@ -39,6 +39,8 @@ function auth(token: string) {
 }
 
 describe('company settings routes', () => {
+  afterAll(cleanDb);
+
   beforeEach(async () => {
     await cleanDb();
     media.storage.uploadLogo.mockReset();

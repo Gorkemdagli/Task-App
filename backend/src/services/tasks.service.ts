@@ -99,6 +99,66 @@ const TASK_INCLUDE = {
   },
 } as const;
 
+async function assertActiveTaskActor(db: TenantDb, actor: Actor): Promise<void> {
+  const tenantId = requireTenant(actor);
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM users
+    WHERE id = ${actor.id}::uuid
+      AND tenant_id = ${tenantId}::uuid
+      AND deleted_at IS NULL
+    FOR SHARE
+  `;
+  if (rows.length !== 1) {
+    throw new AppError(401, 'Geçersiz veya süresi dolmuş oturum', 'UNAUTHORIZED');
+  }
+}
+
+export async function cancelPendingStatusesForDeletedUser(
+  db: TenantDb,
+  userId: string,
+): Promise<void> {
+  await db.$queryRaw<Array<{ id: string }>>`
+    SELECT task.id
+    FROM tasks task
+    JOIN teams team ON team.id = task.team_id
+    WHERE team.tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+      AND task.pending_status IS NOT NULL
+      AND (
+        task.pending_proposed_by = ${userId}::uuid
+        OR EXISTS (
+          SELECT 1 FROM task_assignees assignee
+          WHERE assignee.task_id = task.id AND assignee.user_id = ${userId}::uuid
+        )
+      )
+    FOR UPDATE OF task
+  `;
+  const pendingTasks = await db.task.findMany({
+    where: {
+      pendingStatus: { not: null },
+      OR: [{ pendingProposedBy: userId }, { assignees: { some: { userId } } }],
+    },
+    select: { id: true, status: true, pendingStatus: true },
+  });
+  if (pendingTasks.length === 0) return;
+
+  const taskIds = pendingTasks.map((task) => task.id);
+  await db.taskStatusAck.deleteMany({ where: { taskId: { in: taskIds } } });
+  await db.task.updateMany({
+    where: { id: { in: taskIds }, pendingStatus: { not: null } },
+    data: { pendingStatus: null, pendingProposedBy: null, pendingProposedAt: null },
+  });
+  await db.taskEvent.createMany({
+    data: pendingTasks.map((task) => ({
+      taskId: task.id,
+      actorId: null,
+      eventType: 'status_change_rejected' as const,
+      fromStatus: task.status,
+      toStatus: task.pendingStatus!,
+      metadata: { reason: 'account_deleted' },
+    })),
+  });
+}
+
 function taskPermissionInput(task: {
   id: string;
   teamId: string;
@@ -125,13 +185,14 @@ export async function createTask(
   input: CreateTaskInput,
   actor: Actor,
 ): Promise<TaskWithRelations> {
+  await assertActiveTaskActor(db, actor);
   const team = await loadTeamForActor(db, actor, input.teamId);
   await assertCanCreateTask(db, actor, team.id);
 
   // Tüm atananlar bu takımın üyesi olmalı (cross-tenant atama engellenir)
   const uniqueIds = Array.from(new Set(input.assigneeIds));
   const memberships = await db.teamMember.findMany({
-    where: { teamId: team.id, userId: { in: uniqueIds } },
+    where: { teamId: team.id, userId: { in: uniqueIds }, user: { is: { deletedAt: null } } },
     select: { userId: true },
   });
   if (memberships.length !== uniqueIds.length) {
@@ -394,6 +455,7 @@ async function loadTaskWithAssignees(
 
 async function lockTask(db: TenantDb, taskId: string, actor: Actor) {
   const tenantId = requireTenant(actor);
+  await assertActiveTaskActor(db, actor);
   const rows = await db.$queryRaw<Array<{ id: string }>>`
     SELECT task.id
     FROM tasks task
@@ -738,7 +800,11 @@ export async function updateTaskFields(
   if (input.assigneeIds !== undefined) {
     const uniqueIds = Array.from(new Set(input.assigneeIds));
     const memberships = await db.teamMember.findMany({
-      where: { teamId: task.teamId, userId: { in: uniqueIds } },
+      where: {
+        teamId: task.teamId,
+        userId: { in: uniqueIds },
+        user: { is: { deletedAt: null } },
+      },
       select: { userId: true },
     });
     if (memberships.length !== uniqueIds.length) {
@@ -790,7 +856,9 @@ export async function updateTaskFields(
     const affectedNames = new Map(affectedUsers.map((user) => [user.id, user.fullName]));
     const metadata = (userIds: string[]) => ({
       affectedUserIds: userIds,
-      affectedDisplayNames: userIds.map((userId) => affectedNames.get(userId) ?? 'Deleted user'),
+      affectedDisplayNames: userIds.map(
+        (userId) => affectedNames.get(userId) ?? 'Silinmiş kullanıcı',
+      ),
     });
     if (addedAssigneeIds.length > 0) {
       await appendTaskEvent(db, {

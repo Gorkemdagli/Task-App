@@ -10,6 +10,7 @@ import { requestLogger } from './middleware/requestLogger';
 
 export function createApp(): Application {
   const app = express();
+  if (process.env.TRUST_PROXY_HOPS === '1') app.set('trust proxy', 1);
 
   app.use(helmet());
   app.use(

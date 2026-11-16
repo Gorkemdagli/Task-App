@@ -1,0 +1,50 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: web
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/api/v1/ready]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: api
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      TRUST_PROXY_HOPS: '1'
+      DATABASE_URL: ${APP_DATABASE_URL:?}
+      APP_DATABASE_URL: ${APP_DATABASE_URL:?}
+      MAINTENANCE_DATABASE_URL: ${MAINTENANCE_DATABASE_URL:?}
+      REDIS_URL: ${REDIS_URL:?}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?}
+      CLIENT_URL: ${TASKFLOW_ORIGIN:?}
+      PUBLIC_API_ORIGIN: ${TASKFLOW_ORIGIN:?}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY:?}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY:?}
+      SUPABASE_URL: ${SUPABASE_URL:?}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?}
+      SUPABASE_TASK_FILES_BUCKET: ${SUPABASE_TASK_FILES_BUCKET:?}
+      SENTRY_DSN: ${SENTRY_DSN:?}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:?}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3001/api/v1/ready').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

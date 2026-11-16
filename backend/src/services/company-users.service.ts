@@ -70,7 +70,7 @@ export function assertCompanyAdmin(actor: Actor): string {
 export async function listCompanyUsers(db: TenantDb, actor: Actor): Promise<CompanyUser[]> {
   const tenantId = assertCompanyAdmin(actor);
   const users = await db.user.findMany({
-    where: { tenantId },
+    where: { tenantId, deletedAt: null },
     select: companyUserSelect(tenantId),
     orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
   });
@@ -88,11 +88,34 @@ export async function updateCompanyPermissions(
     throw new AppError(403, 'Kendi rolünüz değiştirilemez', 'SELF_ROLE_CHANGE_FORBIDDEN');
   }
 
-  const target = await db.user.findFirst({
-    where: { id: userId, tenantId },
+  const tenantRows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE
+  `;
+  if (tenantRows.length !== 1) throw new AppError(404, 'Şirket bulunamadı', 'NOT_FOUND');
+
+  const activeActor = await db.user.findFirst({
+    where: { id: actor.id, tenantId, role: 'companyAdmin', deletedAt: null },
     select: { id: true },
   });
+  if (!activeActor) throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
+
+  const target = await db.user.findFirst({
+    where: { id: userId, tenantId, deletedAt: null },
+    select: { id: true, role: true },
+  });
   if (!target) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+
+  if (
+    target.role === 'companyAdmin' &&
+    input.role === 'member' &&
+    (await db.user.count({ where: { tenantId, role: 'companyAdmin', deletedAt: null } })) < 2
+  ) {
+    throw new AppError(
+      409,
+      'A company must have another administrator before this role can be removed',
+      'LAST_COMPANY_ADMIN_REQUIRED',
+    );
+  }
 
   const teamIds = input.teamRoles.map((teamRole) => teamRole.teamId);
   const teams = await db.team.findMany({
@@ -103,10 +126,11 @@ export async function updateCompanyPermissions(
     throw new AppError(404, 'Takım bulunamadı', 'NOT_FOUND');
   }
 
-  await db.user.update({
-    where: { id: target.id },
+  const roleUpdate = await db.user.updateMany({
+    where: { id: target.id, tenantId, deletedAt: null },
     data: { role: input.role },
   });
+  if (roleUpdate.count !== 1) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
 
   await db.teamMember.deleteMany({
     where: {

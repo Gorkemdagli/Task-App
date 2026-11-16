@@ -21,6 +21,8 @@ export type UpdateProfileInput = {
 
 export type UpdateProfileResult = CurrentUserProfile | { sessionRevoked: true };
 
+export type CreateCompanyInput = { companyName: string };
+
 export async function getProfile(): Promise<CurrentUserProfile> {
   const response = await api.get<CurrentUserProfile>('/users/me');
   return response.data;
@@ -28,6 +30,15 @@ export async function getProfile(): Promise<CurrentUserProfile> {
 
 export async function updateProfile(input: UpdateProfileInput): Promise<UpdateProfileResult> {
   const response = await api.patch<UpdateProfileResult>('/users/me', input);
+  return response.data;
+}
+
+export async function deleteProfileAccount(confirmationEmail: string): Promise<void> {
+  await api.delete('/users/me', { data: { confirmationEmail } });
+}
+
+export async function createCompany(input: CreateCompanyInput): Promise<CurrentUserProfile> {
+  const response = await api.post<CurrentUserProfile>('/users/me/company', input);
   return response.data;
 }
 

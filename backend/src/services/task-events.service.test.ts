@@ -122,7 +122,7 @@ describe('task event history', () => {
     );
     expect(result.items.find((item) => item.actor.id === deletedUserId)?.actor).toEqual({
       id: deletedUserId,
-      name: 'Deleted user',
+      name: 'Silinmiş kullanıcı',
     });
   });
 

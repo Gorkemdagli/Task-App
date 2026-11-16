@@ -16,6 +16,8 @@ import { runTenantRequest } from '../http/runTenantRequest';
 import { measureRequestStage } from '../http/requestTiming';
 import {
   updateCompanyPermissionsSchema,
+  createCurrentUserCompanySchema,
+  deleteCurrentUserSchema,
   updateCurrentUserSchema,
   updateCompanySettingsSchema,
 } from '../schemas/users.schema';
@@ -52,6 +54,36 @@ usersRouter.patch(
         return;
       }
       res.json(result.profile);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+usersRouter.delete(
+  '/users/me',
+  requireAuth,
+  writeLimiter,
+  validateBody(deleteCurrentUserSchema),
+  async (req, res, next) => {
+    try {
+      await profileService.deleteCurrentAccount(req.user!.id, req.body);
+      clearRefreshCookie(res);
+      res.json({ deleted: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+usersRouter.post(
+  '/users/me/company',
+  requireAuth,
+  writeLimiter,
+  validateBody(createCurrentUserCompanySchema),
+  async (req, res, next) => {
+    try {
+      res.json(await profileService.createCompanyForCurrentUser(req.user!.id, req.body));
     } catch (error) {
       next(error);
     }

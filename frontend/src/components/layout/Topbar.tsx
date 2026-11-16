@@ -1,8 +1,27 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { useCallback, useState } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, Moon, Settings, Sun, User } from 'lucide-react';
+import { useCallback, useRef, useState, type FormEvent } from 'react';
+import {
+  Bell,
+  Building2,
+  ChevronDown,
+  LogOut,
+  Menu,
+  Moon,
+  Settings,
+  Sun,
+  User,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +35,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useLogout } from '@/components/auth/LogoutCoordinator';
+import { useCreateCompany } from '@/hooks/queries/useProfile';
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -56,6 +76,7 @@ function TopbarContent() {
   const logout = useLogout();
   const openMobileSheet = useUiStore((s) => s.openMobileSheet);
   const navigate = useNavigate();
+  const userMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const notifications = useNotifications();
   const items = notifications.data?.pages[0]?.items ?? [];
@@ -75,6 +96,29 @@ function TopbarContent() {
   );
   const markAllRead = useMarkAllRead();
   const [bellOpen, setBellOpen] = useState(false);
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [companyCreationError, setCompanyCreationError] = useState<string | null>(null);
+  const createCompany = useCreateCompany();
+
+  async function handleCreateCompany(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCompanyCreationError(null);
+    try {
+      await createCompany.mutateAsync({ companyName });
+    } catch (error) {
+      const data = (error as { response?: { data?: { error?: string; code?: string } } }).response
+        ?.data;
+      const code = data?.error ?? data?.code;
+      setCompanyCreationError(
+        code === 'CONFLICT_SLUG'
+          ? 'companyCreation.nameTaken'
+          : code === 'COMPANY_ALREADY_ASSIGNED'
+            ? 'companyCreation.alreadyAssigned'
+            : 'companyCreation.error',
+      );
+    }
+  }
 
   function handleNotificationSelect(item: NotificationItem) {
     if (
@@ -247,6 +291,7 @@ function TopbarContent() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
+              ref={userMenuTriggerRef}
               type="button"
               className="ml-1 inline-flex h-10 items-center gap-2 rounded-md px-2 text-sm hover:bg-secondary"
               aria-label={t('Kullanıcı menüsünü aç')}
@@ -295,6 +340,19 @@ function TopbarContent() {
                 {t('Profil')}
               </Link>
             </DropdownMenuItem>
+            {user?.tenantId === null && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  setCompanyName('');
+                  setCompanyCreationError(null);
+                  setCompanyDialogOpen(true);
+                }}
+                className="rounded-lg focus:bg-secondary"
+              >
+                <Building2 className="h-4 w-4" />
+                {t('companyCreation.open')}
+              </DropdownMenuItem>
+            )}
             {isCompanyAdmin && (
               <DropdownMenuItem asChild className="rounded-lg focus:bg-secondary">
                 <Link to="/company" className="flex w-full items-center gap-2 py-1">
@@ -313,6 +371,72 @@ function TopbarContent() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Dialog
+          open={companyDialogOpen}
+          onOpenChange={(open) => {
+            if (createCompany.isPending) return;
+            setCompanyDialogOpen(open);
+            if (!open) {
+              setCompanyName('');
+              setCompanyCreationError(null);
+            }
+          }}
+        >
+          <DialogContent
+            className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl border-border bg-card p-5 sm:p-6"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              userMenuTriggerRef.current?.focus();
+            }}
+          >
+            <form className="space-y-6" onSubmit={handleCreateCompany}>
+              <DialogHeader>
+                <DialogTitle>{t('companyCreation.title')}</DialogTitle>
+                <DialogDescription>{t('companyCreation.description')}</DialogDescription>
+              </DialogHeader>
+              <label htmlFor="new-company-name" className="block space-y-2 text-sm font-medium">
+                <span>{t('companyCreation.name')}</span>
+                <Input
+                  id="new-company-name"
+                  type="text"
+                  autoComplete="organization"
+                  maxLength={100}
+                  value={companyName}
+                  disabled={createCompany.isPending}
+                  aria-invalid={Boolean(companyCreationError)}
+                  aria-describedby={companyCreationError ? 'company-creation-error' : undefined}
+                  onChange={(event) => {
+                    setCompanyName(event.target.value);
+                    setCompanyCreationError(null);
+                  }}
+                />
+              </label>
+              {companyCreationError && (
+                <p id="company-creation-error" role="alert" className="text-sm text-destructive">
+                  {t(companyCreationError)}
+                </p>
+              )}
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={createCompany.isPending}
+                  onClick={() => setCompanyDialogOpen(false)}
+                >
+                  {t('companyCreation.cancel')}
+                </Button>
+                <Button
+                  type="submit"
+                  loading={createCompany.isPending}
+                  disabled={!companyName.trim() || createCompany.isPending}
+                >
+                  {t('companyCreation.submit')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </header>
   );

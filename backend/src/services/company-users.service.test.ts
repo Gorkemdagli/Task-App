@@ -8,10 +8,10 @@ function mockDb() {
       findMany: vi.fn(),
       findFirst: vi.fn(),
       updateMany: vi.fn(),
-      update: vi.fn(),
     },
     team: { findMany: vi.fn() },
     teamMember: { upsert: vi.fn(), deleteMany: vi.fn() },
+    $queryRaw: vi.fn().mockResolvedValue([{ id: 'tenant-a' }]),
   } as unknown as TenantDb;
 }
 
@@ -24,7 +24,7 @@ describe('company users service', () => {
 
     await expect(listCompanyUsers(db, admin)).resolves.toEqual([]);
     expect(db.user.findMany).toHaveBeenCalledWith({
-      where: { tenantId: 'tenant-a' },
+      where: { tenantId: 'tenant-a', deletedAt: null },
       select: {
         id: true,
         displayId: true,
@@ -48,7 +48,8 @@ describe('company users service', () => {
   it('assigns multiple tenant teams atomically and removes omitted memberships', async () => {
     const db = mockDb();
     vi.mocked(db.user.findFirst)
-      .mockResolvedValueOnce({ id: 'user-b' } as never)
+      .mockResolvedValueOnce({ id: 'admin' } as never)
+      .mockResolvedValueOnce({ id: 'user-b', role: 'member' } as never)
       .mockResolvedValueOnce({
         id: 'user-b',
         displayId: 'B1234',
@@ -62,18 +63,7 @@ describe('company users service', () => {
         ],
       } as never);
     vi.mocked(db.team.findMany).mockResolvedValue([{ id: 'team-a' }, { id: 'team-b' }] as never);
-    vi.mocked(db.user.update).mockResolvedValue({
-      id: 'user-b',
-      displayId: 'B1234',
-      email: 'b@example.com',
-      fullName: 'User B',
-      avatarUrl: null,
-      role: 'member',
-      teamMembers: [
-        { teamId: 'team-a', role: 'teamAdmin', team: { id: 'team-a', name: 'Alpha' } },
-        { teamId: 'team-b', role: 'member', team: { id: 'team-b', name: 'Beta' } },
-      ],
-    } as never);
+    vi.mocked(db.user.updateMany).mockResolvedValue({ count: 1 });
 
     await expect(
       updateCompanyPermissions(
@@ -94,7 +84,12 @@ describe('company users service', () => {
       where: { tenantId: 'tenant-a', id: { in: ['team-a', 'team-b'] } },
       select: { id: true },
     });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
     expect(db.teamMember.upsert).toHaveBeenCalledTimes(2);
+    expect(db.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'user-b', tenantId: 'tenant-a', deletedAt: null },
+      data: { role: 'member' },
+    });
     expect(db.teamMember.deleteMany).toHaveBeenCalledWith({
       where: {
         userId: 'user-b',
@@ -106,7 +101,9 @@ describe('company users service', () => {
 
   it('rejects a team outside actor tenant', async () => {
     const db = mockDb();
-    vi.mocked(db.user.findFirst).mockResolvedValue({ id: 'user-b' } as never);
+    vi.mocked(db.user.findFirst)
+      .mockResolvedValueOnce({ id: 'admin' } as never)
+      .mockResolvedValueOnce({ id: 'user-b', role: 'member' } as never);
     vi.mocked(db.team.findMany).mockResolvedValue([]);
 
     await expect(
@@ -117,6 +114,6 @@ describe('company users service', () => {
         admin,
       ),
     ).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.user.updateMany).not.toHaveBeenCalled();
   });
 });

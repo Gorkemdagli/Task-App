@@ -140,6 +140,24 @@ npm run ci:check
 
 Şirket logosu ve görev dosyaları için Supabase Storage, imzalı zamanlanmış işler için QStash, hata izleme için Sentry yapılandırılabilir. Bunlar ilgili özellik ve dağıtım yapılandırmasına bağlıdır. Gerekli ortam değişkenleri ve örnek değerler için [backend ortam şablonuna](backend/.env.example) ve [frontend ortam şablonuna](frontend/.env.example) bakın.
 
+### GitHub + Coolify ile production yayını
+
+Bu yayın akışı depo kökündeki `compose.coolify.yaml` dosyasını kullanır. Yerel geliştirme için `docker-compose.yml` ve yukarıdaki kurulum adımları geçerlidir; Coolify tanımı yerel akışın yerini almaz.
+
+1. Coolify'de GitHub deposunu ve yayımlanacak dalı seçin. Build Pack olarak Docker Compose, Base Directory olarak `/`, Compose dosyası olarak `/compose.coolify.yaml` kullanın. Alan adını ve TLS'yi yalnızca `web` servisine bağlayın; API için host portu açmayın.
+2. Coolify runtime ortamında `TASKFLOW_ORIGIN` değerini alan adının tam HTTPS origin'i olarak ayarlayın (ör. `https://<alan-adı>`; path veya port eklemeyin). `APP_DATABASE_URL`, `MAINTENANCE_DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_TASK_FILES_BUCKET`, `SENTRY_DSN` ve `SENTRY_RELEASE` değerlerini de runtime için tanımlayın. `SENTRY_ENVIRONMENT` isteğe bağlıdır; belirtilmezse `production` kullanılır.
+3. `APP_DATABASE_URL`, RLS politikalarına tabi olan uygulama rolünü kullanmalıdır; uygulama rolüne `BYPASSRLS` veya superuser yetkisi vermeyin. `MAINTENANCE_DATABASE_URL` arşiv işçisi için ayrı ve gerekli en az yetkili hesabı kullanmalıdır. Self-hosted PostgreSQL veya Redis seçilirse yalnızca ilgili URL'leri erişilebilir servis adreslerine yönlendirin; bu Compose dosyası PostgreSQL ya da Redis servisi oluşturmaz. Supabase Storage, QStash ve Sentry bu dağıtım akışında kullanılmaya devam eder.
+4. Gerçek sırları yalnızca Coolify runtime ortam değişkenlerinde saklayın; imajlara, build argümanlarına veya `VITE_` değişkenlerine koymayın. `VITE_API_URL` ayarlamayın. Git pull kaynak kodunu alır; tek başına uygulamayı yeniden kurduğunu veya migration çalıştırdığını göstermez. Seçilen commit'i inceleyip Coolify'de build ve yayını başlatın.
+5. Migration dosyaları değiştiyse önce yedek alın ve doğrulayın; yeni şemayla eski uygulama sürümünün uyumunu da kontrol edin. Migration için depo checkout'unda `npm ci` çalıştırın, yalnızca migration oturumuna yetkili `DIRECT_URL` verin ve backend dizininden migration'ı bilinçli olarak uygulayın:
+
+   ```sh
+   npm ci
+   cd backend
+   npx prisma migrate deploy
+   ```
+
+   `DIRECT_URL` migration oturumunda kullanılmalıdır; runtime `APP_DATABASE_URL` ile aynı yetkileri vermeyin. Gerçek ortam değerlerini örnek dosyalarla veya placeholder değerlerle değiştirmeyin. Yayın sonrasında siteyi ve `/api/v1/ready` sağlık adresini kontrol edin.
+
 ### Proje belgeleri
 
 - [Ürün davranışı ve mimari notları](PROJECT.md)

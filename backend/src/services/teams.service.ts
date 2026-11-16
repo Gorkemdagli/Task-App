@@ -192,6 +192,7 @@ export async function searchMemberCandidates(
   const users = await db.user.findMany({
     where: {
       tenantId,
+      deletedAt: null,
       teamMembers: { none: { teamId } },
       OR: [
         {
@@ -222,11 +223,18 @@ export async function addMemberByDisplayId(
   if (!actor.tenantId) {
     throw new AppError(403, 'Bu işlem için bir şirkete dahil olmalısınız', 'NO_TENANT');
   }
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM users
+    WHERE display_id = ${displayId}
+      AND tenant_id = ${actor.tenantId}::uuid
+      AND deleted_at IS NULL
+    FOR SHARE
+  `;
+  const userId = rows[0]?.id;
+  if (!userId) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+
   const user = await db.user.findFirst({
-    where: {
-      displayId,
-      tenantId: actor.tenantId,
-    },
+    where: { id: userId, tenantId: actor.tenantId, deletedAt: null },
     select: { id: true, displayId: true, fullName: true, avatarUrl: true, tenantId: true },
   });
   if (!user) throw new AppError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
@@ -291,6 +299,15 @@ export async function updateTeamMemberRole(
   if (!isCompanyAdmin(actor)) {
     throw new AppError(403, 'Bu işlem için yetkiniz bulunmuyor', 'FORBIDDEN');
   }
+
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM users
+    WHERE id = ${userId}::uuid
+      AND tenant_id = ${requireTenant(actor)}::uuid
+      AND deleted_at IS NULL
+    FOR SHARE
+  `;
+  if (rows.length !== 1) throw new AppError(404, 'Üye bulunamadı', 'NOT_FOUND');
 
   const member = await db.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } },

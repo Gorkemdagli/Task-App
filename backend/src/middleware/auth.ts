@@ -48,8 +48,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       withUserContext(
         p.sub,
         (tx) =>
-          tx.user.findUnique({
-            where: { id: p.sub },
+          tx.user.findFirst({
+            where: { id: p.sub, deletedAt: null },
             select: {
               id: true,
               displayId: true,

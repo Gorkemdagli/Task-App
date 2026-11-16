@@ -18,6 +18,7 @@ async function cleanDb() {
   await prisma.task.deleteMany();
   await prisma.teamMember.deleteMany();
   await prisma.team.deleteMany();
+  await prisma.companyInvitation.deleteMany();
   await prisma.user.deleteMany();
   await prisma.tenant.deleteMany();
   const bk = await redis.keys('blacklist:jti:*');

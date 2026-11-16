@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, KeyRound, LogOut, Save, User } from 'lucide-react';
+import { Check, Copy, KeyRound, LogOut, Save, Trash2, User } from 'lucide-react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -9,13 +16,19 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
 import { useLogout } from '@/components/auth/LogoutCoordinator';
-import { useProfile, useUpdateProfile, useUploadAvatar } from '@/hooks/queries/useProfile';
+import {
+  useDeleteAccount,
+  useProfile,
+  useUpdateProfile,
+  useUploadAvatar,
+} from '@/hooks/queries/useProfile';
 import type { CurrentUserProfile, UpdateProfileInput } from '@/services/profile';
 import { useTranslation } from '@/i18n';
 
@@ -46,7 +59,12 @@ function getErrorMessage(error: unknown): string {
   const root = recordOf(error);
   const response = recordOf(root?.response);
   const data = recordOf(response?.data);
-  const code = typeof data?.code === 'string' ? data.code : null;
+  const code =
+    typeof data?.code === 'string'
+      ? data.code
+      : typeof data?.error === 'string'
+        ? data.error
+        : null;
 
   switch (code) {
     case 'INVALID_CURRENT_PASSWORD':
@@ -57,6 +75,12 @@ function getErrorMessage(error: unknown): string {
       return 'Geçersiz görsel.';
     case 'FILE_TOO_LARGE':
       return 'Avatar dosyası 25 MB veya daha küçük olmalı.';
+    case 'LAST_COMPANY_ADMIN_REQUIRED':
+      return 'accountDeletion.lastAdmin';
+    case 'CONFIRMATION_EMAIL_MISMATCH':
+      return 'accountDeletion.mismatch';
+    case 'ACCOUNT_STATE_CHANGED':
+      return 'accountDeletion.changed';
     default:
       return typeof data?.message === 'string'
         ? data.message
@@ -99,6 +123,7 @@ export function ProfilePage() {
   const profileQuery = useProfile();
   const updateMutation = useUpdateProfile();
   const uploadMutation = useUploadAvatar();
+  const deleteAccountMutation = useDeleteAccount();
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isPasswordExpanded, setIsPasswordExpanded] = useState(false);
@@ -106,6 +131,9 @@ export function ProfilePage() {
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isAvatarPreviewOpen, setIsAvatarPreviewOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteConfirmationEmail, setDeleteConfirmationEmail] = useState('');
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const syncedProfileKey = useRef<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +217,18 @@ export function ProfilePage() {
       await logout();
     } finally {
       setIsLoggingOut(false);
+    }
+  };
+
+  const handleDeleteAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!profile || deleteConfirmationEmail !== profile.email) return;
+    setDeleteAccountError(null);
+    try {
+      await deleteAccountMutation.mutateAsync(deleteConfirmationEmail);
+      await handleLogout();
+    } catch (error) {
+      setDeleteAccountError(getErrorMessage(error));
     }
   };
 
@@ -448,6 +488,85 @@ export function ProfilePage() {
               {t('Çıkış Yap')}
             </Button>
           </Section>
+
+          <Section title="accountDeletion.title">
+            <div className="space-y-4">
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                {t('accountDeletion.description')}
+              </p>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={updateMutation.isPending || uploadMutation.isPending || isLoggingOut}
+                onClick={() => {
+                  setDeleteConfirmationEmail('');
+                  setDeleteAccountError(null);
+                  setIsDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                {t('accountDeletion.open')}
+              </Button>
+            </div>
+          </Section>
+
+          <Dialog
+            open={isDeleteDialogOpen}
+            onOpenChange={(open) => {
+              if (deleteAccountMutation.isPending) return;
+              setIsDeleteDialogOpen(open);
+              if (!open) {
+                setDeleteConfirmationEmail('');
+                setDeleteAccountError(null);
+              }
+            }}
+          >
+            <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl border-border bg-card p-5 sm:p-6">
+              <form className="space-y-6" onSubmit={handleDeleteAccount}>
+                <DialogHeader>
+                  <DialogTitle>{t('accountDeletion.title')}</DialogTitle>
+                  <DialogDescription>{t('accountDeletion.description')}</DialogDescription>
+                </DialogHeader>
+                <label className="block space-y-2 text-sm font-medium text-foreground">
+                  <span>{t('accountDeletion.confirmEmail')}</span>
+                  <Input
+                    type="email"
+                    autoComplete="off"
+                    value={deleteConfirmationEmail}
+                    disabled={deleteAccountMutation.isPending}
+                    onChange={(event) => {
+                      setDeleteConfirmationEmail(event.target.value);
+                      setDeleteAccountError(null);
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">{t('accountDeletion.mismatch')}</p>
+                <FieldError message={deleteAccountError ?? undefined} />
+                <DialogFooter className="gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={deleteAccountMutation.isPending}
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                  >
+                    {t('accountDeletion.cancel')}
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="destructive"
+                    loading={deleteAccountMutation.isPending || isLoggingOut}
+                    disabled={
+                      deleteConfirmationEmail !== profile.email ||
+                      deleteAccountMutation.isPending ||
+                      isLoggingOut
+                    }
+                  >
+                    {t('accountDeletion.confirm')}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

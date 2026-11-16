@@ -46,6 +46,7 @@ vi.mock('@/hooks/queries/useProfile', () => ({
   }),
   useUpdateProfile: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
   useUploadAvatar: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
+  useDeleteAccount: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/queries/useCompanySettings', () => ({

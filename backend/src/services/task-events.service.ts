@@ -112,7 +112,7 @@ export async function listTaskHistory(
     id: event.id,
     taskId: event.taskId,
     actor: event.actorId
-      ? { id: event.actorId, name: names.get(event.actorId) ?? 'Deleted user' }
+      ? { id: event.actorId, name: names.get(event.actorId) ?? 'Silinmiş kullanıcı' }
       : null,
     eventType: event.eventType,
     fromStatus: event.fromStatus,
