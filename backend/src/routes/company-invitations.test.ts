@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
@@ -26,6 +26,7 @@ function auth(token: string) {
 
 describe('company invitation routes', () => {
   beforeEach(cleanDb);
+  afterAll(cleanDb);
 
   it('requires authentication on outgoing and recipient routes', async () => {
     const app = createApp();

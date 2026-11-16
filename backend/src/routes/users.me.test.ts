@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, inject, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, inject, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -35,6 +35,8 @@ async function cleanDb() {
   const keys = await redis.keys('*');
   if (keys.length) await redis.del(...keys);
 }
+
+afterAll(cleanDb);
 
 async function registerUser(overrides: Record<string, string> = {}) {
   return request(createApp())
