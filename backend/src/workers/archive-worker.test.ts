@@ -29,22 +29,28 @@ describe('archive worker isolation', () => {
     state.queryRaw.mockReset();
     state.archive.mockReset();
     state.schedule.mockReset();
+    state.transaction.mockImplementation((work: (db: unknown) => Promise<unknown>) =>
+      work({ $queryRaw: state.queryRaw } as never),
+    );
   });
 
   it('registers the hourly job and runs the archive batch from its callback', async () => {
     const job = { start: vi.fn() };
-    let callback: (() => void) | undefined;
+    let callback: (() => Promise<unknown>) | undefined;
     state.findTenants.mockResolvedValue([]);
-    state.schedule.mockImplementation((_expression, scheduledCallback) => {
+    state.schedule.mockImplementation((_expression, scheduledCallback, options) => {
       callback = scheduledCallback;
+      expect(options).toEqual({ noOverlap: true });
       return job;
     });
 
     const { startArchiveWorker } = await import('../archive-worker');
     expect(startArchiveWorker()).toBe(job);
-    expect(state.schedule).toHaveBeenCalledWith('0 * * * *', expect.any(Function));
+    expect(state.schedule).toHaveBeenCalledWith('0 * * * *', expect.any(Function), {
+      noOverlap: true,
+    });
 
-    callback?.();
+    await callback?.();
     expect(state.findTenants).toHaveBeenCalledWith({ select: { id: true } });
   });
 
@@ -61,7 +67,7 @@ describe('archive worker isolation', () => {
     });
 
     const { runArchiveBatch } = await import('../archive-worker');
-    await expect(runArchiveBatch()).resolves.toEqual({ archivedCount: 2 });
+    await expect(runArchiveBatch()).rejects.toBeInstanceOf(AggregateError);
 
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-a');
     expect(state.archive).toHaveBeenCalledWith(expect.anything(), 'tenant-b');

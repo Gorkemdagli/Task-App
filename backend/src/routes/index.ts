@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { readyRouter } from './ready';
-import { internalRouter } from './internal';
 import { authRouter } from './auth';
 import { teamsRouter } from './teams';
 import { tasksRouter } from './tasks';
@@ -18,7 +17,6 @@ export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/ready', readyRouter);
-apiRouter.use('/internal', internalRouter);
 apiRouter.use('/storage', storageRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/teams', teamsRouter);

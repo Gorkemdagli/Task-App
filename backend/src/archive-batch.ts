@@ -5,6 +5,7 @@ import { archiveExpiredTasks } from './services/tasks.archive';
 export async function runArchiveBatch(): Promise<{ archivedCount: number }> {
   const tenants = await maintenancePrisma.tenant.findMany({ select: { id: true } });
   let archivedCount = 0;
+  const failures: unknown[] = [];
 
   for (const tenant of tenants) {
     try {
@@ -15,8 +16,14 @@ export async function runArchiveBatch(): Promise<{ archivedCount: number }> {
       });
       archivedCount += result.archivedCount;
     } catch (error) {
+      failures.push(error);
       console.error(`[archive-worker] tenant ${tenant.id} failed`, error);
     }
   }
+
+  if (failures.length) {
+    throw new AggregateError(failures, `[archive-worker] ${failures.length} tenant(s) failed`);
+  }
+
   return { archivedCount };
 }

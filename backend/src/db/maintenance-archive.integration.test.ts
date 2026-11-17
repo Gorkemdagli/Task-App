@@ -314,7 +314,7 @@ describe('maintenance archive role', () => {
     expect(rows.find(({ id }) => id === archivedAId)?.archivedAt).toEqual(archivedAt);
   });
 
-  it('runs the full batch over a direct maintenance login without role memberships', async () => {
+  it('archives concurrent full batches once over a direct maintenance login', async () => {
     const password = randomBytes(32).toString('hex');
     await maintenancePrisma.$executeRawUnsafe(
       `ALTER ROLE taskflow_maintenance LOGIN PASSWORD '${password}'`,
@@ -330,7 +330,8 @@ describe('maintenance archive role', () => {
       vi.stubEnv('MAINTENANCE_DATABASE_URL', connectionUrl.toString());
       const { runArchiveBatch } = await import('../archive-batch');
       directMaintenancePrisma = (await import('../lib/maintenancePrisma')).maintenancePrisma;
-      await expect(runArchiveBatch()).resolves.toEqual({ archivedCount: 2 });
+      const results = await Promise.all([runArchiveBatch(), runArchiveBatch()]);
+      expect(results.reduce((total, { archivedCount }) => total + archivedCount, 0)).toBe(2);
     } finally {
       await directMaintenancePrisma?.$disconnect();
       vi.unstubAllEnvs();
