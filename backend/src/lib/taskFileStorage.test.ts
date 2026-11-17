@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { env } from '../env';
+import { createLocalObjectStorage } from './localStorage';
 
 const supabase = vi.hoisted(() => ({
   from: vi.fn(),
@@ -20,6 +24,7 @@ describe('taskFileStorage', () => {
     env.SUPABASE_URL = 'https://supabase.example.test';
     env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
     env.SUPABASE_TASK_FILES_BUCKET = undefined;
+    env.STORAGE_PROVIDER = 'supabase';
     supabase.from.mockReturnValue({
       upload: supabase.upload,
       createSignedUrl: supabase.createSignedUrl,
@@ -72,5 +77,42 @@ describe('taskFileStorage', () => {
       code: 'TASK_FILE_STORAGE_FAILED',
       message,
     });
+  });
+
+  it('stores private files locally and signs an absolute 60-second URL with trusted metadata', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'taskflow-task-file-storage-'));
+    env.STORAGE_PROVIDER = 'local';
+    env.LOCAL_STORAGE_ROOT = root;
+    env.LOCAL_STORAGE_SIGNING_SECRET = 'random-local-signing-secret-with-32-bytes';
+    env.PUBLIC_API_ORIGIN = 'https://api.example.test';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-20T12:00:00.000Z'));
+
+    try {
+      const storage = createTaskFileStorage();
+      const objectPath = 'tenants/tenant-a/tasks/task-a/files/file-a';
+      await storage.upload(objectPath, Buffer.from('%PDF-1.7'), 'application/pdf');
+      const result = await storage.createDownloadUrl(objectPath, {
+        mimeType: 'application/pdf',
+        originalName: 'trusted report.pdf',
+      });
+      const url = new URL(result.url);
+      const local = createLocalObjectStorage(root);
+      const object = await local.openRead('private', objectPath);
+      try {
+        expect(await object.readFile()).toEqual(Buffer.from('%PDF-1.7'));
+      } finally {
+        await object.close();
+      }
+
+      expect(url.origin).toBe('https://api.example.test');
+      expect(url.pathname).toBe('/api/v1/storage/private');
+      expect(url.searchParams.get('token')).toBeTruthy();
+      expect(result.expiresAt).toBe('2026-09-20T12:01:00.000Z');
+      expect(supabase.from).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

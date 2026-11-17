@@ -15,14 +15,17 @@ const storageState = vi.hoisted(() => {
   const uploaded: string[] = [];
   const removed: string[] = [];
   const signed: string[] = [];
+  const signedMetadata: Array<{ mimeType: string; originalName: string } | undefined> = [];
   return {
     uploaded,
     removed,
     signed,
+    signedMetadata,
     storage: {
       upload: vi.fn(async (path: string) => uploaded.push(path)),
-      createDownloadUrl: vi.fn(async (path: string) => {
+      createDownloadUrl: vi.fn(async (path: string, metadata?: { mimeType: string; originalName: string }) => {
         signed.push(path);
+        signedMetadata.push(metadata);
         return { url: 'https://signed.example/task-file', expiresAt: '2026-09-20T10:01:00.000Z' };
       }),
       remove: vi.fn(async (path: string) => removed.push(path)),
@@ -91,6 +94,7 @@ describe('task file routes', () => {
     storageState.uploaded.length = 0;
     storageState.removed.length = 0;
     storageState.signed.length = 0;
+    storageState.signedMetadata.length = 0;
     storageState.storage.upload.mockClear();
     storageState.storage.createDownloadUrl.mockClear();
     storageState.storage.remove.mockClear();
@@ -130,6 +134,9 @@ describe('task file routes', () => {
       expiresAt: '2026-09-20T10:01:00.000Z',
     });
     expect(storageState.signed).toEqual(storageState.uploaded);
+    expect(storageState.signedMetadata).toEqual([
+      { mimeType: 'application/pdf', originalName: 'route-report.pdf' },
+    ]);
   });
 
   it('keeps deletion behind signed URL issuance for the same file row', async () => {

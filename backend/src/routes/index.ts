@@ -12,12 +12,14 @@ import { usersRouter } from './users';
 import { companyInvitationsRouter } from './company-invitations';
 import { companyDashboardRouter } from './company-dashboard';
 import { taskFilesRouter } from './task-files';
+import { storageRouter } from './storage';
 
 export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/ready', readyRouter);
 apiRouter.use('/internal', internalRouter);
+apiRouter.use('/storage', storageRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/teams', teamsRouter);
 apiRouter.use('/tasks', tasksRouter);

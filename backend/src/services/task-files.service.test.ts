@@ -115,10 +115,14 @@ describe('task file service', () => {
       canDelete: false,
     });
 
-    const path = await inTenant(secondMember, (db) =>
+    const download = await inTenant(secondMember, (db) =>
       createTaskFileDownload(db, task.id, created.id, secondMember),
     );
-    expect(path).toBe(fake.uploaded[0]);
+    expect(download).toEqual({
+      path: fake.uploaded[0],
+      mimeType: 'application/pdf',
+      originalName: 'report.pdf',
+    });
   });
 
   it('compensates storage when metadata/event transaction fails', async () => {
