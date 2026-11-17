@@ -18,11 +18,14 @@ export function createRequestLogger(
     createRequestTimingMiddleware(timingEnabled, snapshotPool, (event) => requestLoggerInstance.info(event)),
     pinoHttp({
       logger: requestLoggerInstance,
-      redact: [
-        'req.query.token',
-        'req.query.download',
-        'req.headers.authorization',
-      ],
+      redact: {
+        paths: [
+          'req.query.token',
+          'req.query.download',
+          'req.headers.authorization',
+        ],
+        censor: '[redacted]',
+      },
       serializers: {
         req: (req) => {
           const serialized = pino.stdSerializers.req(req) as { url?: string };
