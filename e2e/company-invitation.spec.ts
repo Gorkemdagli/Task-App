@@ -30,8 +30,11 @@ type FixtureInvitation = {
 type FixtureTeam = { id: string; tenantId: string; name: string };
 type FixtureTask = { id: string; teamId: string; assignerId: string; title: string };
 
-function readUser(value: any, email: string, role: FixtureUser['role']): FixtureUser | undefined {
-  const user = value?.user;
+function readUser(value: unknown, email: string, role: FixtureUser['role']): FixtureUser | undefined {
+  if (typeof value !== 'object' || value === null || !('user' in value)) return undefined;
+  const candidate = value.user;
+  if (typeof candidate !== 'object' || candidate === null) return undefined;
+  const user = candidate as Record<string, unknown>;
   if (
     typeof user?.id !== 'string' ||
     !UUID.test(user.id) ||

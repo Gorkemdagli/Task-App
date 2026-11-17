@@ -12,8 +12,14 @@ function localStorage() {
 }
 
 function setPrivateHeaders(res: Response, mimeType: string, originalName: string, size: number): void {
-  const name = originalName.replace(/[\\/\u0000-\u001f\u007f]/g, '_').slice(0, 255) || 'download';
-  const fallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_').slice(0, 180) || 'download';
+  const name = Array.from(originalName, (character) => {
+    const code = character.charCodeAt(0);
+    return character === '/' || character === '\\' || code < 0x20 || code === 0x7f ? '_' : character;
+  }).join('').slice(0, 255) || 'download';
+  const fallback = name.split('').map((character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code > 0x7e ? '_' : character;
+  }).join('').replace(/["\\]/g, '_').slice(0, 180) || 'download';
   const encoded = encodeURIComponent(name).replace(/['()*]/g, (character) =>
     `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );

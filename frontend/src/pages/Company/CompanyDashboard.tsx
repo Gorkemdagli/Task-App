@@ -97,6 +97,7 @@ function RiskCard({
 export function CompanyDashboard() {
   const { t } = useTranslation();
   const readiness = useRouteDataReadiness();
+  const { completeInitialPhase } = readiness;
   const { data: teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [range, setRange] = useState<CompanyDashboardRange>('30d');
@@ -126,10 +127,10 @@ export function CompanyDashboard() {
     const mount = primaryMount.current;
     return () => {
       queueMicrotask(() => {
-        if (primaryMount.current === mount) readiness.completeInitialPhase();
+        if (primaryMount.current === mount) completeInitialPhase();
       });
     };
-  }, [readiness.completeInitialPhase]);
+  }, [completeInitialPhase]);
 
   useEffect(() => {
     if (selectedTeamId && teams && !teams.some((team) => team.id === selectedTeamId)) {
