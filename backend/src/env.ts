@@ -28,8 +28,6 @@ export const envSchema = z
     JWT_REFRESH_SECRET: z.string().min(16),
     CLIENT_URL: z.string().url(),
     PUBLIC_API_ORIGIN: z.string().url().optional(),
-    QSTASH_CURRENT_SIGNING_KEY: z.string().min(1).optional(),
-    QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     REQUEST_STAGE_TIMING: z
       .enum(['true', 'false'])
@@ -38,9 +36,9 @@ export const envSchema = z
     SUPABASE_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
     SUPABASE_SERVICE_ROLE_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
     SUPABASE_TASK_FILES_BUCKET: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
-    SENTRY_DSN: z.string().url().optional(),
+    SENTRY_DSN: z.preprocess((value) => (value === '' ? undefined : value), z.string().url().optional()),
     SENTRY_ENVIRONMENT: z.string().min(1).default('development'),
-    SENTRY_RELEASE: z.string().min(1).optional(),
+    SENTRY_RELEASE: z.preprocess((value) => (value === '' ? undefined : value), z.string().min(1).optional()),
     RENDER_GIT_COMMIT: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
@@ -110,14 +108,11 @@ export const envSchema = z
         message: 'MAINTENANCE_DATABASE_URL is required in production',
       });
     }
-    if (value.NODE_ENV === 'production' && !value.PUBLIC_API_ORIGIN) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['PUBLIC_API_ORIGIN'],
-        message: 'PUBLIC_API_ORIGIN is required in production',
-      });
-    }
-    if (value.NODE_ENV === 'production' && value.PUBLIC_API_ORIGIN) {
+    if (
+      value.NODE_ENV === 'production' &&
+      value.STORAGE_PROVIDER === 'local' &&
+      value.PUBLIC_API_ORIGIN
+    ) {
       const publicApiOrigin = new URL(value.PUBLIC_API_ORIGIN);
       if (
         publicApiOrigin.protocol !== 'https:' ||
@@ -131,15 +126,6 @@ export const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ['PUBLIC_API_ORIGIN'],
           message: 'PUBLIC_API_ORIGIN must be an HTTPS origin in production',
-        });
-      }
-    }
-    for (const key of ['QSTASH_CURRENT_SIGNING_KEY', 'QSTASH_NEXT_SIGNING_KEY'] as const) {
-      if (value.NODE_ENV === 'production' && !value[key]) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [key],
-          message: `${key} is required in production`,
         });
       }
     }
@@ -162,20 +148,6 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SUPABASE_TASK_FILES_BUCKET'],
         message: 'SUPABASE_TASK_FILES_BUCKET is required in production',
-      });
-    }
-    if (value.NODE_ENV === 'production' && !value.SENTRY_DSN) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SENTRY_DSN'],
-        message: 'SENTRY_DSN is required in production',
-      });
-    }
-    if (value.NODE_ENV === 'production' && !value.SENTRY_RELEASE && !value.RENDER_GIT_COMMIT) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SENTRY_RELEASE'],
-        message: 'SENTRY_RELEASE or RENDER_GIT_COMMIT is required in production',
       });
     }
   });

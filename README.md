@@ -138,20 +138,20 @@ npm run ci:check
 
 ### İsteğe bağlı servis yapılandırması
 
-Şirket logosu ve görev dosyaları için Supabase Storage, imzalı zamanlanmış işler için QStash, hata izleme için Sentry yapılandırılabilir. Bunlar ilgili özellik ve dağıtım yapılandırmasına bağlıdır. Gerekli ortam değişkenleri ve örnek değerler için [backend ortam şablonuna](backend/.env.example) ve [frontend ortam şablonuna](frontend/.env.example) bakın.
+Şirket logosu ve görev dosyaları için Supabase Storage yapılandırılabilir. Arşiv işi Coolify Scheduled Tasks üzerinden çalıştırılır. Sentry ortam değişkenleri isteğe bağlıdır; backend şu anda Sentry SDK başlatmaz. `SENTRY_RELEASE` yalnızca sağlık yanıtındaki `release` alanını doldurur ve ayarlanmazsa `RENDER_GIT_COMMIT` veya `unknown` kullanılır. Gerekli ortam değişkenleri ve örnek değerler için [backend ortam şablonuna](backend/.env.example) ve [frontend ortam şablonuna](frontend/.env.example) bakın.
 
 ### GitHub + Coolify ile production yayını
 
 Bu yayın akışı depo kökündeki `compose.coolify.yaml` dosyasını kullanır. Yerel geliştirme için `docker-compose.yml` ve yukarıdaki kurulum adımları geçerlidir; Coolify tanımı yerel akışın yerini almaz.
 
 1. Coolify'de GitHub deposunu ve yayımlanacak dalı seçin. Build Pack olarak Docker Compose, Base Directory olarak `/`, Compose dosyası olarak `/compose.coolify.yaml` kullanın. Alan adını ve TLS'yi yalnızca `web` servisine bağlayın; API için host portu açmayın.
-2. Coolify runtime ortamında `TASKFLOW_ORIGIN` değerini alan adının tam HTTPS origin'i olarak ayarlayın (ör. `https://<alan-adı>`; path veya port eklemeyin). `APP_DATABASE_URL`, `MAINTENANCE_DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `SENTRY_DSN` ve `SENTRY_RELEASE` değerlerini de runtime için tanımlayın. `SENTRY_ENVIRONMENT` isteğe bağlıdır; belirtilmezse `production` kullanılır. `STORAGE_PROVIDER=supabase` mevcut davranışı korur ve bu modda `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ile `SUPABASE_TASK_FILES_BUCKET` gerekir.
-   Yeni ve boş kurulumda yerel volume kullanmak için `STORAGE_PROVIDER=local`, `LOCAL_STORAGE_SIGNING_SECRET` (ör. `openssl rand -base64 32` ile üretilmiş gizli değer) ve isteğe göre `TASKFLOW_STORAGE_HOST_PATH` ayarlayın. Compose, container içinde `LOCAL_STORAGE_ROOT=/var/lib/taskflow-storage` kullanır; host tarafındaki varsayılan kalıcı dizin `/srv/taskflow/storage`'dir. Uygulama `node` kullanıcısıyla (UID/GID `1000:1000`) çalışır; varsayılan dizini `sudo install -d -o 1000 -g 1000 /srv/taskflow/storage` ile hazırlayın (özel host path kullanıyorsanız onu değiştirin). Public ve private dosyalar ayrı alt dizinlerde tutulur; volume web/nginx servisine bağlanmaz.
+2. Coolify runtime ortamında `TASKFLOW_ORIGIN` değerini alan adının tam HTTPS origin'i olarak ayarlayın (ör. `https://<alan-adı>`; path veya port eklemeyin). `APP_DATABASE_URL`, `MAINTENANCE_DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET` ve `JWT_REFRESH_SECRET` değerlerini de runtime için tanımlayın. `SENTRY_DSN`, `SENTRY_RELEASE` ve `SENTRY_ENVIRONMENT` isteğe bağlıdır. Coolify Compose varsayılanı `STORAGE_PROVIDER=local`'dır. Supabase Storage kullanmak için açıkça `STORAGE_PROVIDER=supabase` ayarlayın ve bu modda `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ile `SUPABASE_TASK_FILES_BUCKET` değerlerini tanımlayın.
+   Yerel volume için `LOCAL_STORAGE_SIGNING_SECRET` (ör. `openssl rand -base64 32` ile üretilmiş gizli değer) ve isteğe göre `TASKFLOW_STORAGE_HOST_PATH` ayarlayın. Compose, container içinde `LOCAL_STORAGE_ROOT=/var/lib/taskflow-storage` kullanır; host tarafındaki varsayılan kalıcı dizin `/srv/taskflow/storage`'dir. Uygulama `node` kullanıcısıyla (UID/GID `1000:1000`) çalışır; varsayılan dizini `sudo install -d -o 1000 -g 1000 /srv/taskflow/storage` ile hazırlayın (özel host path kullanıyorsanız onu değiştirin). Public ve private dosyalar ayrı alt dizinlerde tutulur; volume web/nginx servisine bağlanmaz.
 
    Host volume kökü ve üst dizinleri operatörün kontrolünde olmalıdır; mevcut symlink'ler reddedilir, ancak uygulama aynı host'taki kötü niyetli bir yazıcının eşzamanlı dizin değiştirme yarışını önlemez. Nginx signed-download endpoint'inin access log'unu kapatır ve uygulama query/header token'larını redakte eder; Coolify veya başka bir upstream proxy'nin tam URL query'sini loglamadığını ayrıca doğrulayın.
 
    Bu seçenek Supabase nesnelerini kopyalamaz ve veritabanı migration'ı/seed'i çalıştırmaz. Var olan Supabase nesnelerini veya DB'deki dosya referanslarını taşımaz; kaynak Supabase dosyalarına dokunmaz. Mevcut kurulumda provider'ı değiştirmek eski public URL'leri ve private dosyaları yerel volume'a aktarmış olmaz; taşıma için ayrı, hash ve DB eşlemesi doğrulanmış bir plan gerekir. Tek VPS volume'u offsite yedek veya restore kanıtı değildir.
-3. `APP_DATABASE_URL`, RLS politikalarına tabi olan uygulama rolünü kullanmalıdır; uygulama rolüne `BYPASSRLS` veya superuser yetkisi vermeyin. `MAINTENANCE_DATABASE_URL` arşiv işçisi için ayrı ve gerekli en az yetkili hesabı kullanmalıdır. Self-hosted PostgreSQL veya Redis seçilirse yalnızca ilgili URL'leri erişilebilir servis adreslerine yönlendirin; bu Compose dosyası PostgreSQL ya da Redis servisi oluşturmaz. Dosya depolaması seçtiğiniz Supabase veya yerel provider ile çalışır; QStash ve Sentry bu dağıtım akışında kullanılmaya devam eder.
+3. Supabase kullanan mevcut bir dağıtım varsa yeniden yayımdan önce `STORAGE_PROVIDER=supabase` değerini açıkça ayarlayın; önceki Compose varsayılanı Supabase idi. Provider değiştirmek Supabase nesnelerini veya veritabanı dosya referanslarını taşımaz. `APP_DATABASE_URL`, RLS politikalarına tabi olan uygulama rolünü kullanmalıdır; uygulama rolüne `BYPASSRLS` veya superuser yetkisi vermeyin. `MAINTENANCE_DATABASE_URL` arşiv işi için ayrı ve gerekli en az yetkili hesabı kullanmalıdır. Self-hosted PostgreSQL veya Redis seçilirse yalnızca ilgili URL'leri erişilebilir servis adreslerine yönlendirin; bu Compose dosyası PostgreSQL ya da Redis servisi oluşturmaz.
 4. Gerçek sırları yalnızca Coolify runtime ortam değişkenlerinde saklayın; imajlara, build argümanlarına veya `VITE_` değişkenlerine koymayın. `VITE_API_URL` ayarlamayın. Git pull kaynak kodunu alır; tek başına uygulamayı yeniden kurduğunu veya migration çalıştırdığını göstermez. Seçilen commit'i inceleyip Coolify'de build ve yayını başlatın.
 5. Migration dosyaları değiştiyse önce yedek alın ve doğrulayın; yeni şemayla eski uygulama sürümünün uyumunu da kontrol edin. Migration için depo checkout'unda `npm ci` çalıştırın, yalnızca migration oturumuna yetkili `DIRECT_URL` verin ve backend dizininden migration'ı bilinçli olarak uygulayın:
 
@@ -162,6 +162,14 @@ Bu yayın akışı depo kökündeki `compose.coolify.yaml` dosyasını kullanır
    ```
 
    `DIRECT_URL` migration oturumunda kullanılmalıdır; runtime `APP_DATABASE_URL` ile aynı yetkileri vermeyin. Gerçek ortam değerlerini örnek dosyalarla veya placeholder değerlerle değiştirmeyin. Yayın sonrasında siteyi ve `/api/v1/ready` sağlık adresini kontrol edin.
+
+6. Mevcut QStash arşiv zamanlamasını önce devre dışı bırakın; bu sürümde eski HTTP tetikleyicisi bulunmaz. Sonra API servisinin Coolify `Scheduled Tasks` bölümünde `api` container'ını seçip şu görevi oluşturun:
+
+   - Command: `node backend/dist/archive-once.js`
+   - Frequency: `0 * * * *`
+   - Timeout: `300` saniye
+
+   İlk çalıştırmayı `Execute now` ile başlatın ve Coolify execution history'de `Success` ile tamamlanan arşiv sayısını kontrol edin. Bir tenant'taki hata loglanır; kalan tenant'lar işlenir ve komut başarısız exit code döndürür. Tek Coolify zamanlamasını etkin tutun ve normal çalışma süresinin bir saatten kısa kaldığını doğrulayın. Eşzamanlı bir tekrar arşiv durumunu değiştirmez: güncelleme yalnızca arşivlenmemiş görevleri ve mevcut tenant RLS politikasını kullanır.
 
 ### Yerel volume yedeği ve kurtarma provası
 

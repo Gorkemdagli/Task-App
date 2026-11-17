@@ -1,4 +1,4 @@
-import type { Application, Request } from 'express';
+import type { Application } from 'express';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -18,16 +18,6 @@ export function createApp(): Application {
       origin: env.CLIENT_URL,
       credentials: true,
       maxAge: 600,
-    }),
-  );
-  app.use(
-    '/api/v1/internal/archive',
-    express.raw({
-      type: '*/*',
-      limit: '64kb',
-      verify: (req, _res, body) => {
-        (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(body);
-      },
     }),
   );
   app.use(express.json({ limit: '25mb' }));

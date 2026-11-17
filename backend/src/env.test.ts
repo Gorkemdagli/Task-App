@@ -11,15 +11,10 @@ const baseProductionEnv = {
   JWT_ACCESS_SECRET: 'access-secret-long-enough',
   JWT_REFRESH_SECRET: 'refresh-secret-long-enough',
   CLIENT_URL: 'https://app.example.test',
-  PUBLIC_API_ORIGIN: 'https://api.example.test',
-  QSTASH_CURRENT_SIGNING_KEY: 'current-signing-key',
-  QSTASH_NEXT_SIGNING_KEY: 'next-signing-key',
   SUPABASE_URL: 'https://supabase.example.test',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
   SUPABASE_TASK_FILES_BUCKET: 'taskflow-task-files',
-  SENTRY_DSN: 'https://public@sentry.example.test/1',
   SENTRY_ENVIRONMENT: 'production',
-  SENTRY_RELEASE: 'release-sha',
 };
 
 describe('environment contract', () => {
@@ -60,9 +55,6 @@ describe('environment contract', () => {
     const result = envSchema.safeParse({
       ...baseProductionEnv,
       MAINTENANCE_DATABASE_URL: undefined,
-      PUBLIC_API_ORIGIN: undefined,
-      QSTASH_CURRENT_SIGNING_KEY: undefined,
-      QSTASH_NEXT_SIGNING_KEY: undefined,
       SUPABASE_TASK_FILES_BUCKET: undefined,
     });
 
@@ -71,9 +63,6 @@ describe('environment contract', () => {
       expect(Object.keys(result.error.flatten().fieldErrors)).toEqual(
         expect.arrayContaining([
           'MAINTENANCE_DATABASE_URL',
-          'PUBLIC_API_ORIGIN',
-          'QSTASH_CURRENT_SIGNING_KEY',
-          'QSTASH_NEXT_SIGNING_KEY',
           'SUPABASE_TASK_FILES_BUCKET',
         ]),
       );
@@ -82,6 +71,16 @@ describe('environment contract', () => {
 
   it('accepts complete production deployment contract', () => {
     const result = envSchema.safeParse(baseProductionEnv);
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts blank optional Sentry placeholders in production', () => {
+    const result = envSchema.safeParse({
+      ...baseProductionEnv,
+      SENTRY_DSN: '',
+      SENTRY_RELEASE: '',
+    });
 
     expect(result.success).toBe(true);
   });
@@ -97,6 +96,7 @@ describe('environment contract', () => {
     const result = envSchema.safeParse({
       ...baseProductionEnv,
       STORAGE_PROVIDER: 'local',
+      PUBLIC_API_ORIGIN: 'https://api.example.test',
       LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage',
       LOCAL_STORAGE_SIGNING_SECRET: 'random-local-signing-secret-with-32-bytes',
       SUPABASE_URL: undefined,
@@ -153,12 +153,12 @@ describe('environment contract', () => {
     expect(result.success).toBe(true);
   });
 
-  it('requires the public API URL to be an origin', () => {
+  it('does not require a public API origin for Supabase storage', () => {
     const result = envSchema.safeParse({
       ...baseProductionEnv,
       PUBLIC_API_ORIGIN: 'https://api.example.test/base',
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
