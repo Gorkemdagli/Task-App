@@ -163,6 +163,31 @@ Bu yayın akışı depo kökündeki `compose.coolify.yaml` dosyasını kullanır
 
    `DIRECT_URL` migration oturumunda kullanılmalıdır; runtime `APP_DATABASE_URL` ile aynı yetkileri vermeyin. Gerçek ortam değerlerini örnek dosyalarla veya placeholder değerlerle değiştirmeyin. Yayın sonrasında siteyi ve `/api/v1/ready` sağlık adresini kontrol edin.
 
+### Yerel volume yedeği ve kurtarma provası
+
+Yerel storage yedeği PostgreSQL özel biçimli dökümünü, `public/` ve `private/` dosyalarını ve dosya yolu, byte sayısı ve SHA-256 değerlerini içeren manifesti tek bir GPG şifreli pakette toplar. Tutarlılık için API/web yazmalarını, upload'ları, worker'ları ve zamanlanmış işleri durdurup devam eden işleri boşaltın; script bu durumu `BACKUP_WRITERS_STOPPED=1` onayıyla operatörden ister, atomik snapshot sağlamaz.
+
+`DATABASE_URL`, tam döküm almaya yetkili operatör tarafından onaylanmış bağlantı olmalıdır. Script URL'yi pg_dump argümanına koymaz; libpq bağlantısını mode `0600` geçici service dosyasına dönüştürür, komuttan önce ortam değişkenini kaldırır ve dosyayı çıkışta temizler. Uygulama runtime secret'ını komut satırına veya loglara yazmayın. `BACKUP_RECIPIENT`, GPG alıcı fingerprint'i; yedek çıktısı ise daha sonra operatörce offsite konuma aktarılacak dizindir:
+
+```sh
+export BACKUP_RECIPIENT='<GPG alıcı fingerprinti>'
+export BACKUP_OUTPUT_DIR='/srv/taskflow-backup-staging'
+export BACKUP_STORAGE_ROOT='/srv/taskflow/storage'
+export BACKUP_WRITERS_STOPPED=1
+bash scripts/local-volume-backup.sh create
+```
+
+Başarılı komut şifreli `.recovery.tar.gpg` paketi ve SHA-256 dosyasını yazdırır; mevcut backup ID üzerine yazmayı reddeder. Dosya yolları TaskFlow'un ASCII harf/rakam/nokta/alt çizgi/tire anahtar biçiminde olmalıdır; beklenmeyen dosya adları güvenli biçimde reddedilir. Başka bir makinede checksum, şifre çözme, dosya manifesti ve PostgreSQL döküm listesi kontrolü:
+
+```sh
+export BACKUP_ENCRYPTED_FILE='/path/to/taskflow-<id>.recovery.tar.gpg'
+export BACKUP_CHECKSUM_FILE="$BACKUP_ENCRYPTED_FILE.sha256"
+export BACKUP_PRIVATE_KEY_FILE='/secure/path/backup-private.asc'
+bash scripts/local-volume-backup.sh verify
+```
+
+Gerçek bir restore provası için `npm run backup:rehearsal` Docker'da geçici PostgreSQL ve storage kullanarak şifreli paketi üretir, doğrular ve ayrı geçici veritabanı/dizinlere geri yükler. Bu prova uygulama auth/file API'sini veya üretim verisini doğrulamaz; `verify` tek başına tam restore değildir. Script offsite kopya, retention, RPO/RTO veya otomatik üretim kurtarması sağlamaz. Private key'i paketten ayrı ve VPS dışında saklayın; gerçek sistem kurtarması için aynı PostgreSQL major/extension ortamında ayrıca uygulama düzeyi auth ve dosya erişim kanıtı alın.
+
 ### Proje belgeleri
 
 - [Ürün davranışı ve mimari notları](PROJECT.md)

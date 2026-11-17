@@ -25,6 +25,9 @@ docker_mount_path() {
 
 docker_scripts_dir="$(docker_mount_path "$scripts_dir")"
 docker_rehearsal_dir="$(docker_mount_path "$rehearsal_dir")"
+mkdir -p "$rehearsal_dir/storage/public" "$rehearsal_dir/storage/private"
+printf 'rehearsal public object\n' >"$rehearsal_dir/storage/public/probe.txt"
+printf 'rehearsal private object\n' >"$rehearsal_dir/storage/private/probe.txt"
 run_id="${RANDOM:-0}-$$"
 network_name="taskflow-backup-${run_id}"
 db_name="taskflow-backup-db-${run_id}"
@@ -40,9 +43,9 @@ trap cleanup EXIT
 
 docker network create "$network_name" >/dev/null
 docker build --pull=false \
-  --file "$scripts_dir/Dockerfile.backup-rehearsal" \
+  --file "$docker_scripts_dir/Dockerfile.backup-rehearsal" \
   --tag "$backup_image" \
-  "$scripts_dir" >/dev/null
+  "$docker_scripts_dir" >/dev/null
 
 docker run --rm -d \
   --name "$db_name" \
@@ -100,6 +103,38 @@ export BACKUP_CHECKSUM_FILE="$encrypted_file.sha256"
 export BACKUP_PRIVATE_KEY_FILE=/rehearsal/private.asc
 bash /workspace/scripts/verify-backup.sh
 test ! -e /rehearsal/taskflow.dump
+
+export BACKUP_STORAGE_ROOT=/rehearsal/storage
+export BACKUP_WRITERS_STOPPED=1
+export BACKUP_ID=disposable-volume-rehearsal
+bash /workspace/scripts/local-volume-backup.sh create
+bundle_file=/rehearsal/output/taskflow-disposable-volume-rehearsal.recovery.tar.gpg
+export BACKUP_ENCRYPTED_FILE="$bundle_file"
+export BACKUP_CHECKSUM_FILE="$bundle_file.sha256"
+bash /workspace/scripts/local-volume-backup.sh verify
+
+bundle_archive=/rehearsal/recovery.tar.gz
+GNUPGHOME="$GNUPGHOME" gpg --batch --quiet --decrypt "$bundle_file" >"$bundle_archive"
+PGPASSWORD=taskflow createdb -h db -U postgres taskflow_rehearsal_restore
+cat >/rehearsal/restore.pg_service.conf <<'RESTORE_SERVICE'
+[taskflow_rehearsal_restore]
+host=db
+port=5432
+dbname=taskflow_rehearsal_restore
+user=postgres
+password=taskflow
+RESTORE_SERVICE
+chmod 600 /rehearsal/restore.pg_service.conf
+export PGSERVICEFILE=/rehearsal/restore.pg_service.conf
+export PGSERVICE=taskflow_rehearsal_restore
+tar --to-stdout --gzip --file "$bundle_archive" taskflow.dump > /rehearsal/restored.dump
+pg_restore --exit-on-error --no-owner --no-acl --dbname=service=taskflow_rehearsal_restore /rehearsal/restored.dump
+restored_value="$(psql --dbname=service=taskflow_rehearsal_restore -At -c 'SELECT value FROM rehearsal_probe WHERE id = 1')"
+test "$restored_value" = encrypted-rehearsal
+tar --to-stdout --gzip --file "$bundle_archive" public/probe.txt | cmp - /rehearsal/storage/public/probe.txt
+tar --to-stdout --gzip --file "$bundle_archive" private/probe.txt | cmp - /rehearsal/storage/private/probe.txt
+rm -f /rehearsal/restored.dump
+test ! -e /rehearsal/restored.dump
 CONTAINER_SCRIPT
 
-echo 'backup rehearsal passed: disposable database dumped, encrypted, checksum-verified, and restore-listed'
+echo 'backup rehearsal passed: encrypted database and local-volume bundle verified and restored into disposable targets'
