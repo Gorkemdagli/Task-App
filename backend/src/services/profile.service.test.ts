@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import { env } from '../env';
 import { hasAccessSession } from '../lib/sessionStore';
 import { verifyAccessToken } from '../lib/jwt';
 import { login, register } from './auth.service';
@@ -22,7 +23,11 @@ async function cleanDb() {
 }
 
 describe('profile.service', () => {
+  const originalSupabaseUrl = env.SUPABASE_URL;
   beforeEach(cleanDb);
+  afterEach(() => {
+    env.SUPABASE_URL = originalSupabaseUrl;
+  });
 
   it('reads canonical profile for a tenantless user', async () => {
     const registered = await register({
@@ -135,6 +140,7 @@ describe('profile.service', () => {
   });
 
   it('uploads transformed avatar and deletes prior owned object after DB success', async () => {
+    env.SUPABASE_URL = 'https://storage.test';
     const registered = await register({
       fullName: 'Avatar User',
       email: 'avatar-service@example.com',
@@ -167,6 +173,7 @@ describe('profile.service', () => {
   });
 
   it('deletes newly uploaded object when profile update fails', async () => {
+    env.SUPABASE_URL = 'https://storage.test';
     const registered = await register({
       fullName: 'Avatar Rollback',
       email: 'avatar-rollback@example.com',

@@ -176,10 +176,10 @@ export async function createTaskFileDownload(
   taskId: string,
   fileId: string,
   actor: Actor,
-): Promise<string> {
+): Promise<{ path: string; mimeType: string; originalName: string }> {
   const task = await loadViewableTask(db, taskId, actor);
-  const files = await db.$queryRaw<Array<{ objectPath: string }>>`
-    SELECT object_path AS "objectPath"
+  const files = await db.$queryRaw<Array<{ path: string; mimeType: string; originalName: string }>>`
+    SELECT object_path AS "path", mime_type AS "mimeType", original_name AS "originalName"
     FROM task_files
     WHERE id = ${fileId}
       AND tenant_id = ${task.team.tenantId}::uuid
@@ -189,7 +189,7 @@ export async function createTaskFileDownload(
   `;
   const file = files[0];
   if (!file) throw new AppError(404, 'Dosya bulunamadı', 'NOT_FOUND');
-  return file.objectPath;
+  return file;
 }
 
 export async function markTaskFileDeleted(

@@ -3,5 +3,5 @@ FROM debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -qq \
-  && apt-get install -y -qq --no-install-recommends ca-certificates gnupg2 postgresql-client \
+  && apt-get install -y -qq --no-install-recommends ca-certificates gnupg2 nodejs postgresql-client tar \
   && rm -rf /var/lib/apt/lists/*

@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import type { Logger } from 'pino';
+import pino from 'pino';
 import pinoHttp from 'pino-http';
 import { env } from '../env';
 import { createRequestTimingMiddleware, type ProcessPoolSnapshot } from '../http/requestTiming';
@@ -17,6 +18,24 @@ export function createRequestLogger(
     createRequestTimingMiddleware(timingEnabled, snapshotPool, (event) => requestLoggerInstance.info(event)),
     pinoHttp({
       logger: requestLoggerInstance,
+      redact: {
+        paths: [
+          'req.query.token',
+          'req.query.download',
+          'req.headers.authorization',
+        ],
+        censor: '[redacted]',
+      },
+      serializers: {
+        req: (req) => {
+          const serialized = pino.stdSerializers.req(req) as { url?: string };
+          const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+          if (pathname.toLowerCase().startsWith('/api/v1/storage/private')) {
+            serialized.url = pathname;
+          }
+          return serialized;
+        },
+      },
       customProps: (req, res) => {
         const timing = (req as Request).requestTiming;
         const stages = timing?.snapshot();

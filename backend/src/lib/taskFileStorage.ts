@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from '../env';
 import { AppError } from './appError';
+import {
+  createLocalObjectStorage,
+  signLocalDownload,
+  type LocalDownloadMetadata,
+} from './localStorage';
 
 export const TASK_FILES_BUCKET = 'taskflow-task-files';
 
@@ -9,13 +14,20 @@ const SIGNED_URL_EXPIRES_IN_SECONDS = 60;
 
 export type TaskFileStorageAdapter = {
   upload(path: string, data: Buffer, options: { contentType: string }): Promise<void>;
-  createSignedUrl(path: string, expiresInSeconds: number): Promise<string>;
+  createSignedUrl(
+    path: string,
+    expiresInSeconds: number,
+    metadata?: LocalDownloadMetadata & { expiresAt: number },
+  ): Promise<string>;
   remove(path: string): Promise<void>;
 };
 
 export type TaskFileStorage = {
   upload(path: string, data: Buffer, contentType: string): Promise<void>;
-  createDownloadUrl(path: string): Promise<{ url: string; expiresAt: string }>;
+  createDownloadUrl(
+    path: string,
+    metadata?: LocalDownloadMetadata,
+  ): Promise<{ url: string; expiresAt: string }>;
   remove(path: string): Promise<void>;
 };
 
@@ -52,13 +64,43 @@ function createSupabaseAdapter(): TaskFileStorageAdapter {
   };
 }
 
+function createLocalAdapter(): TaskFileStorageAdapter {
+  const storage = createLocalObjectStorage(env.LOCAL_STORAGE_ROOT ?? '');
+  return {
+    upload(path, data) {
+      return storage.upload('private', path, data);
+    },
+    async createSignedUrl(path, _expiresInSeconds, metadata) {
+      if (!metadata || !env.LOCAL_STORAGE_SIGNING_SECRET || !env.PUBLIC_API_ORIGIN) {
+        throw storageError('Task file download URL failed');
+      }
+      const token = signLocalDownload(
+        path,
+        metadata,
+        env.LOCAL_STORAGE_SIGNING_SECRET,
+        metadata.expiresAt,
+      );
+      const url = new URL('/api/v1/storage/private', env.PUBLIC_API_ORIGIN);
+      url.searchParams.set('token', token);
+      return url.toString();
+    },
+    remove(path) {
+      return storage.remove('private', path);
+    },
+  };
+}
+
+function createDefaultAdapter(): TaskFileStorageAdapter {
+  return env.STORAGE_PROVIDER === 'local' ? createLocalAdapter() : createSupabaseAdapter();
+}
+
 function sanitizeStorageError(error: unknown, message: string): AppError {
   if (error instanceof AppError && error.code === TASK_FILE_STORAGE_ERROR_CODE) return error;
   return storageError(message);
 }
 
 export function createTaskFileStorage(
-  adapter: TaskFileStorageAdapter = createSupabaseAdapter(),
+  adapter: TaskFileStorageAdapter = createDefaultAdapter(),
 ): TaskFileStorage {
   return {
     async upload(path, data, contentType) {
@@ -68,12 +110,15 @@ export function createTaskFileStorage(
         throw sanitizeStorageError(error, 'Task file upload failed');
       }
     },
-    async createDownloadUrl(path) {
-      const expiresAt = new Date(
-        Date.now() + SIGNED_URL_EXPIRES_IN_SECONDS * 1000,
-      ).toISOString();
+    async createDownloadUrl(path, metadata) {
+      const expiry = Date.now() + SIGNED_URL_EXPIRES_IN_SECONDS * 1000;
+      const expiresAt = new Date(expiry).toISOString();
       try {
-        const url = await adapter.createSignedUrl(path, SIGNED_URL_EXPIRES_IN_SECONDS);
+        const url = await adapter.createSignedUrl(
+          path,
+          SIGNED_URL_EXPIRES_IN_SECONDS,
+          metadata ? { ...metadata, expiresAt: expiry } : undefined,
+        );
         return { url, expiresAt };
       } catch (error) {
         throw sanitizeStorageError(error, 'Task file download URL failed');

@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { env } from '../env';
+import { createLocalObjectStorage } from './localStorage';
 import {
   createMediaStorage,
   deleteOwnedAvatar,
@@ -10,6 +15,12 @@ import {
 } from './mediaStorage';
 
 describe('mediaStorage', () => {
+  beforeEach(() => {
+    env.STORAGE_PROVIDER = 'supabase';
+    env.SUPABASE_URL = 'https://storage.test';
+    env.PUBLIC_API_ORIGIN = 'https://api.test';
+  });
+
   it('uploads user-scoped WebP and returns public URL', async () => {
     const adapter = {
       upload: vi.fn().mockResolvedValue(undefined),
@@ -40,6 +51,12 @@ describe('mediaStorage', () => {
 
     expect(parseOwnedAvatarPath(ownedUrl, 'u-1')).toBe('avatars/u-1/a.webp');
     expect(parseOwnedAvatarPath(ownedUrl, 'u-2')).toBeNull();
+    expect(
+      parseOwnedAvatarPath(
+        'https://foreign.test/storage/v1/object/public/taskflow-media/avatars/u-1/a.webp',
+        'u-1',
+      ),
+    ).toBeNull();
     expect(
       parseOwnedAvatarPath('https://storage.test/public/avatars/u-1/a.webp', 'u-1'),
     ).toBeNull();
@@ -130,5 +147,48 @@ describe('mediaStorage', () => {
 
     await deleteOwnedLogo(storage, url, 'tenant-a');
     expect(adapter.remove).toHaveBeenCalledWith('logos/tenant-a/logo.webp');
+  });
+
+  it('parses local media URLs only for the configured API origin and exact owner route', async () => {
+    env.STORAGE_PROVIDER = 'local';
+    const adapter = {
+      upload: vi.fn(),
+      getPublicUrl: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = createMediaStorage(adapter);
+    const url = 'https://api.test/api/v1/storage/media/avatars/u-1/a.webp';
+
+    expect(parseOwnedAvatarPath(url, 'u-1')).toBe('avatars/u-1/a.webp');
+    expect(parseOwnedAvatarPath(url, 'u-2')).toBeNull();
+    expect(parseOwnedAvatarPath(url.replace('api.test', 'foreign.test'), 'u-1')).toBeNull();
+    expect(
+      parseOwnedAvatarPath('https://api.test/api/v1/storage/media/avatars/u-1/%252e%252e.webp', 'u-1'),
+    ).toBeNull();
+
+    await deleteOwnedAvatar(storage, url, 'u-1');
+    await deleteOwnedAvatar(storage, url.replace('api.test', 'foreign.test'), 'u-1');
+    expect(adapter.remove).toHaveBeenCalledTimes(1);
+    expect(adapter.remove).toHaveBeenCalledWith('avatars/u-1/a.webp');
+  });
+
+  it('stores local WebP media under the separate public root and returns the API URL', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'taskflow-media-storage-'));
+    env.STORAGE_PROVIDER = 'local';
+    env.LOCAL_STORAGE_ROOT = root;
+    try {
+      const storage = createMediaStorage();
+      const result = await storage.uploadAvatar('user-a', Buffer.from('converted-webp'));
+      const file = await createLocalObjectStorage(root).openRead('public', result.path);
+      try {
+        expect(await file.readFile()).toEqual(Buffer.from('converted-webp'));
+      } finally {
+        await file.close();
+      }
+      expect(result.url).toBe(`https://api.test/api/v1/storage/media/${result.path}`);
+      await storage.deletePath(result.path);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

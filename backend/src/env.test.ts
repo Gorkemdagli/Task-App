@@ -86,6 +86,63 @@ describe('environment contract', () => {
     expect(result.success).toBe(true);
   });
 
+  it('defaults to the existing Supabase storage provider', () => {
+    const result = envSchema.safeParse(baseProductionEnv);
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.STORAGE_PROVIDER).toBe('supabase');
+  });
+
+  it('allows a local-storage production install without Supabase credentials', () => {
+    const result = envSchema.safeParse({
+      ...baseProductionEnv,
+      STORAGE_PROVIDER: 'local',
+      LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage',
+      LOCAL_STORAGE_SIGNING_SECRET: 'random-local-signing-secret-with-32-bytes',
+      SUPABASE_URL: undefined,
+      SUPABASE_SERVICE_ROLE_KEY: undefined,
+      SUPABASE_TASK_FILES_BUCKET: undefined,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: undefined }, 'LOCAL_STORAGE_ROOT'],
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: 'relative/storage' }, 'LOCAL_STORAGE_ROOT'],
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage' }, 'LOCAL_STORAGE_SIGNING_SECRET'],
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage', LOCAL_STORAGE_SIGNING_SECRET: 'short' }, 'LOCAL_STORAGE_SIGNING_SECRET'],
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage', LOCAL_STORAGE_SIGNING_SECRET: 'random-local-signing-secret-with-32-bytes', PUBLIC_API_ORIGIN: undefined }, 'PUBLIC_API_ORIGIN'],
+    [{ STORAGE_PROVIDER: 'local', LOCAL_STORAGE_ROOT: '/var/lib/taskflow-storage', LOCAL_STORAGE_SIGNING_SECRET: 'random-local-signing-secret-with-32-bytes', PUBLIC_API_ORIGIN: 'https://api.example.test/base' }, 'PUBLIC_API_ORIGIN'],
+  ])('rejects missing or invalid local storage settings', (override, field) => {
+    const result = envSchema.safeParse({ ...baseProductionEnv, ...override });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors).toHaveProperty(field);
+    }
+  });
+
+  it('keeps Supabase production credentials required in the default mode', () => {
+    const result = envSchema.safeParse({
+      ...baseProductionEnv,
+      SUPABASE_URL: undefined,
+      SUPABASE_SERVICE_ROLE_KEY: undefined,
+      SUPABASE_TASK_FILES_BUCKET: undefined,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(Object.keys(result.error.flatten().fieldErrors)).toEqual(
+        expect.arrayContaining([
+          'SUPABASE_URL',
+          'SUPABASE_SERVICE_ROLE_KEY',
+          'SUPABASE_TASK_FILES_BUCKET',
+        ]),
+      );
+    }
+  });
+
   it('accepts Render commit as the production release fallback', () => {
     const result = envSchema.safeParse({
       ...baseProductionEnv,

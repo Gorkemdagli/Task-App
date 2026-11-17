@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
+import path from 'node:path';
 
 // Test ortamında .env.test, geliştirmede .env. NODE_ENV=test olmalı (vitest default).
 // Override: TEST'te dışarıdan sızan DATABASE_URL'i eziyoruz → cleanDb() ana DB'ye
@@ -11,6 +12,9 @@ dotenv.config({ path: envFile, override: isTest, quiet: true });
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    STORAGE_PROVIDER: z.enum(['supabase', 'local']).default('supabase'),
+    LOCAL_STORAGE_ROOT: z.string().optional(),
+    LOCAL_STORAGE_SIGNING_SECRET: z.string().optional(),
     PORT: z.coerce.number().int().positive().default(3001),
     // Admin connection — Prisma migrations + setup/cleanup scripts (BYPASSRLS).
     DATABASE_URL: z.string().url(),
@@ -31,15 +35,67 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
-    SUPABASE_URL: z.string().url().optional(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-    SUPABASE_TASK_FILES_BUCKET: z.string().min(1).optional(),
+    SUPABASE_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
+    SUPABASE_SERVICE_ROLE_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    SUPABASE_TASK_FILES_BUCKET: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
     SENTRY_DSN: z.string().url().optional(),
     SENTRY_ENVIRONMENT: z.string().min(1).default('development'),
     SENTRY_RELEASE: z.string().min(1).optional(),
     RENDER_GIT_COMMIT: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.STORAGE_PROVIDER === 'local') {
+      if (!value.LOCAL_STORAGE_ROOT) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['LOCAL_STORAGE_ROOT'],
+          message: 'LOCAL_STORAGE_ROOT is required for local storage',
+        });
+      } else if (!path.isAbsolute(value.LOCAL_STORAGE_ROOT)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['LOCAL_STORAGE_ROOT'],
+          message: 'LOCAL_STORAGE_ROOT must be absolute',
+        });
+      }
+      if (
+        !value.LOCAL_STORAGE_SIGNING_SECRET ||
+        Buffer.byteLength(value.LOCAL_STORAGE_SIGNING_SECRET, 'utf8') < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['LOCAL_STORAGE_SIGNING_SECRET'],
+          message: 'LOCAL_STORAGE_SIGNING_SECRET must contain at least 32 characters for local storage',
+        });
+      }
+      if (!value.PUBLIC_API_ORIGIN) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PUBLIC_API_ORIGIN'],
+          message: 'PUBLIC_API_ORIGIN is required for local storage',
+        });
+      } else {
+        try {
+          const origin = new URL(value.PUBLIC_API_ORIGIN);
+          if (
+            !['http:', 'https:'].includes(origin.protocol) ||
+            origin.href !== `${origin.origin}/` ||
+            origin.search ||
+            origin.hash ||
+            origin.username ||
+            origin.password
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['PUBLIC_API_ORIGIN'],
+              message: 'PUBLIC_API_ORIGIN must be an absolute origin for local storage',
+            });
+          }
+        } catch {
+          // The URL schema reports malformed values.
+        }
+      }
+    }
     if (value.NODE_ENV === 'production' && !value.APP_DATABASE_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -87,21 +143,21 @@ export const envSchema = z
         });
       }
     }
-    if (value.NODE_ENV === 'production' && !value.SUPABASE_URL) {
+    if (value.NODE_ENV === 'production' && value.STORAGE_PROVIDER === 'supabase' && !value.SUPABASE_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['SUPABASE_URL'],
         message: 'SUPABASE_URL is required in production',
       });
     }
-    if (value.NODE_ENV === 'production' && !value.SUPABASE_SERVICE_ROLE_KEY) {
+    if (value.NODE_ENV === 'production' && value.STORAGE_PROVIDER === 'supabase' && !value.SUPABASE_SERVICE_ROLE_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['SUPABASE_SERVICE_ROLE_KEY'],
         message: 'SUPABASE_SERVICE_ROLE_KEY is required in production',
       });
     }
-    if (value.NODE_ENV === 'production' && !value.SUPABASE_TASK_FILES_BUCKET) {
+    if (value.NODE_ENV === 'production' && value.STORAGE_PROVIDER === 'supabase' && !value.SUPABASE_TASK_FILES_BUCKET) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['SUPABASE_TASK_FILES_BUCKET'],

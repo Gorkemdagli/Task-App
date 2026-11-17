@@ -11,6 +11,14 @@ describe('disposable backup rehearsal', () => {
     assert.match(script, /docker run/);
     assert.match(script, /encrypted-pg-backup\.sh/);
     assert.match(script, /verify-backup\.sh/);
+    assert.match(script, /local-volume-backup\.sh create/);
+    assert.match(script, /local-volume-backup\.sh verify/);
+    assert.match(script, /pg_restore --exit-on-error/);
+    assert.match(script, /--dbname=service=taskflow_rehearsal_restore/);
+    assert.match(script, /taskflow_rehearsal_restore/);
+    assert.match(script, /--file "\$docker_scripts_dir\/Dockerfile\.backup-rehearsal"/);
+    assert.match(script, /"\$docker_scripts_dir" >\/dev\/null/);
+    assert.doesNotMatch(script, /RESTORE_DATABASE_URL/);
     assert.match(script, /gpg/);
   });
 
@@ -27,5 +35,6 @@ describe('disposable backup rehearsal', () => {
     assert.doesNotMatch(script, /apt-get/);
     assert.match(dockerfile, /FROM debian@sha256:[a-f0-9]{64}/);
     assert.match(dockerfile, /apt-get install/);
+    assert.match(dockerfile, /nodejs/);
   });
 });

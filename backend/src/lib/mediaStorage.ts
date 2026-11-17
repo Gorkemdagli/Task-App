@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { env } from '../env';
 import { AppError } from './appError';
 import { logger } from './logger';
+import { createLocalObjectStorage, isCanonicalObjectKey } from './localStorage';
 
 export const MEDIA_BUCKET = 'taskflow-media';
 
@@ -49,8 +50,28 @@ function createSupabaseAdapter(): MediaStorageAdapter {
   };
 }
 
+function createLocalAdapter(): MediaStorageAdapter {
+  const storage = createLocalObjectStorage(env.LOCAL_STORAGE_ROOT ?? '');
+  return {
+    upload(path, data) {
+      return storage.upload('public', path, data);
+    },
+    getPublicUrl(path) {
+      const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+      return new URL(`/api/v1/storage/media/${encodedPath}`, env.PUBLIC_API_ORIGIN).toString();
+    },
+    remove(path) {
+      return storage.remove('public', path);
+    },
+  };
+}
+
+function createDefaultAdapter(): MediaStorageAdapter {
+  return env.STORAGE_PROVIDER === 'local' ? createLocalAdapter() : createSupabaseAdapter();
+}
+
 export function createMediaStorage(
-  adapter: MediaStorageAdapter = createSupabaseAdapter(),
+  adapter: MediaStorageAdapter = createDefaultAdapter(),
 ): MediaStorage {
   async function uploadWebp(path: string, data: Buffer): Promise<{ path: string; url: string }> {
     try {
@@ -78,36 +99,49 @@ export function createMediaStorage(
   };
 }
 
-export function parseOwnedAvatarPath(url: string | null, userId: string): string | null {
+function parseOwnedMediaPath(url: string | null, prefix: string, owner: string, depth: number): string | null {
   if (!url) return null;
-  let pathname: string;
+  const configuredOrigin = env.STORAGE_PROVIDER === 'local' ? env.PUBLIC_API_ORIGIN : env.SUPABASE_URL;
+  if (!configuredOrigin) return null;
   try {
-    pathname = decodeURIComponent(new URL(url).pathname);
+    const parsed = new URL(url);
+    if (
+      parsed.origin !== new URL(configuredOrigin).origin ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return null;
+    }
+    const marker =
+      env.STORAGE_PROVIDER === 'local'
+        ? '/api/v1/storage/media/'
+        : `/storage/v1/object/public/${MEDIA_BUCKET}/`;
+    const pathname = decodeURIComponent(parsed.pathname);
+    if (!pathname.startsWith(marker)) return null;
+    const path = pathname.slice(marker.length);
+    const parts = path.split('/');
+    if (
+      parts.length !== depth ||
+      parts[0] !== prefix ||
+      parts[1] !== owner ||
+      !isCanonicalObjectKey('public', path)
+    ) {
+      return null;
+    }
+    return path;
   } catch {
     return null;
   }
-  const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
-  if (!pathname.startsWith(marker)) return null;
-  const path = pathname.slice(marker.length);
-  if (!path.startsWith(`avatars/${userId}/`) || !path.endsWith('.webp')) return null;
-  if (path.split('/').length !== 3) return null;
-  return path;
+}
+
+export function parseOwnedAvatarPath(url: string | null, userId: string): string | null {
+  return parseOwnedMediaPath(url, 'avatars', userId, 3);
 }
 
 export function parseOwnedLogoPath(url: string | null, tenantId: string): string | null {
-  if (!url) return null;
-  let pathname: string;
-  try {
-    pathname = decodeURIComponent(new URL(url).pathname);
-  } catch {
-    return null;
-  }
-  const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
-  if (!pathname.startsWith(marker)) return null;
-  const path = pathname.slice(marker.length);
-  if (!path.startsWith(`logos/${tenantId}/`) || !path.endsWith('.webp')) return null;
-  if (path.split('/').length !== 3) return null;
-  return path;
+  return parseOwnedMediaPath(url, 'logos', tenantId, 3);
 }
 
 export function parseOwnedTeamPhotoPath(
@@ -115,18 +149,8 @@ export function parseOwnedTeamPhotoPath(
   tenantId: string,
   teamId: string,
 ): string | null {
-  if (!url) return null;
-  let pathname: string;
-  try {
-    pathname = decodeURIComponent(new URL(url).pathname);
-  } catch {
-    return null;
-  }
-  const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
-  if (!pathname.startsWith(marker)) return null;
-  const path = pathname.slice(marker.length);
-  if (!path.startsWith(`teams/${tenantId}/${teamId}/`) || !path.endsWith('.webp')) return null;
-  if (path.split('/').length !== 4) return null;
+  const path = parseOwnedMediaPath(url, 'teams', tenantId, 4);
+  if (!path || path.split('/')[2] !== teamId) return null;
   return path;
 }
 
