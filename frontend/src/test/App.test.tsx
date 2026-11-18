@@ -8,7 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 import { getProtectedRouteSkeletonVariant, RouteFallback } from '../components/layout/RouteFallback';
 import { clearGlobalError, getGlobalError } from '../lib/globalError';
 import { queryKeys } from '../lib/queryKeys';
-import { preloadDashboardRoute } from '../lib/preloadDashboardRoute';
+import { preloadProtectedRoute } from '../lib/preloadDashboardRoute';
 import type { CurrentUserProfile } from '../services/profile';
 
 vi.mock('../lib/api', async () => {
@@ -16,6 +16,7 @@ vi.mock('../lib/api', async () => {
   return { ...actual, getMe: vi.fn() };
 });
 vi.mock('../lib/preloadDashboardRoute', () => ({
+  preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
   preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -59,7 +60,7 @@ describe('AuthBootstrap canonical flow', () => {
     clearGlobalError();
     queryClient.clear();
     vi.mocked(getMe).mockReset();
-    vi.mocked(preloadDashboardRoute).mockClear();
+    vi.mocked(preloadProtectedRoute).mockClear();
     stubMatchMedia();
     refreshSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ status: 204, data: null } as never);
   });
@@ -70,7 +71,15 @@ describe('AuthBootstrap canonical flow', () => {
   });
 
   it('stores /users/me as canonical after refresh', async () => {
-    const refreshUser = { ...canonicalUser, fullName: 'Stale' };
+    const refreshUser = {
+      id: canonicalUser.id,
+      displayId: canonicalUser.displayId,
+      email: canonicalUser.email,
+      fullName: 'Stale',
+      role: canonicalUser.role,
+      tenantId: canonicalUser.tenantId,
+      tenantName: canonicalUser.tenantName,
+    };
     refreshSpy.mockResolvedValue({
       status: 200,
       data: { accessToken: 'fresh', user: refreshUser },
@@ -86,6 +95,24 @@ describe('AuthBootstrap canonical flow', () => {
       });
     });
     expect(getMe).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the canonical profile from refresh without requesting /users/me', async () => {
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: canonicalUser },
+    } as never);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(useAuthStore.getState()).toMatchObject({
+        accessToken: 'fresh',
+        user: canonicalUser,
+      });
+    });
+    expect(getMe).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(queryKeys.profile(canonicalUser.id))).toEqual(canonicalUser);
   });
 
   it('shows a data-free dashboard scaffold while protected bootstrap is pending', () => {
@@ -126,6 +153,7 @@ describe('AuthBootstrap canonical flow', () => {
       expect(screen.getByTestId('page-loading-skeleton')).toHaveAttribute('data-variant', variant);
       expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
       expect(apiGet).not.toHaveBeenCalled();
+      expect(preloadProtectedRoute).toHaveBeenCalledWith(path);
     },
   );
 
@@ -178,7 +206,7 @@ describe('AuthBootstrap canonical flow', () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(preloadDashboardRoute).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(preloadProtectedRoute).toHaveBeenCalledWith('/dashboard'));
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
@@ -206,7 +234,7 @@ describe('AuthBootstrap canonical flow', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(preloadDashboardRoute).not.toHaveBeenCalled();
+    expect(preloadProtectedRoute).not.toHaveBeenCalled();
   });
 
   it('seeds the complete profile query so the sidebar reuses bootstrap /users/me', async () => {

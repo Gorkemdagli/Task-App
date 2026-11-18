@@ -14,6 +14,8 @@ export type LoginResponse = {
   accessToken: string;
 };
 
+export type RefreshResponse = { accessToken: string; user?: unknown };
+
 export const authApi: AxiosInstance = axios.create({
   baseURL: `${API_PREFIX}/auth`,
   withCredentials: true,

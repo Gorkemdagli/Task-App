@@ -465,7 +465,8 @@ export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const readiness = useRouteDataReadiness();
-  const { data: teams } = useTeams();
+  const teamsQuery = useTeams();
+  const teams = teamsQuery.data;
   const activeTeamId = useTeamStore((state) => state.activeTeamId);
   const setActiveTeamId = useTeamStore((state) => state.setActiveTeamId);
   const [createOpen, setCreateOpen] = useState(false);
@@ -525,7 +526,9 @@ export function DashboardPage() {
 
   const tasksEnabled =
     Boolean(user?.tenantId) && readiness.tasksEnabled &&
-    (isCompanyAdmin(user) || Boolean(teamId && currentTeamMember));
+    (isCompanyAdmin(user)
+      ? teams !== undefined || teamsQuery.isError
+      : Boolean(teamId && currentTeamMember));
   const dashboardTaskFilters = {
     ...taskFilters,
     ...(workflowFilter === 'archived'

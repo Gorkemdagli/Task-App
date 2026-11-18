@@ -127,6 +127,50 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(r.status).toBe(204);
   });
 
+  it('returns the current canonical profile with rotated credentials', async () => {
+    const reg = await request(createApp())
+      .post('/api/v1/auth/register')
+      .send({
+        fullName: 'Canonical User',
+        email: 'canonical-refresh@x.com',
+        password: 'hunter22',
+        companyName: 'Canonical Tenant',
+      });
+    await prisma.user.update({
+      where: { id: reg.body.user.id },
+      data: {
+        avatarUrl: '/uploads/current-avatar.webp',
+        notifyTaskAssigned: false,
+        notifyTaskCommented: false,
+      },
+    });
+    await prisma.tenant.update({
+      where: { id: reg.body.user.tenantId },
+      data: { logoUrl: '/uploads/current-tenant-logo.webp' },
+    });
+
+    const refreshed = await request(createApp())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', reg.headers['set-cookie']![0]);
+    const profile = await request(createApp())
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${refreshed.body.accessToken}`);
+
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.user).toEqual(profile.body);
+    expect(refreshed.body.user).toMatchObject({
+      role: 'companyAdmin',
+      tenantName: 'Canonical Tenant',
+      avatarUrl: '/uploads/current-avatar.webp',
+      tenantLogoUrl: '/uploads/current-tenant-logo.webp',
+      notifyTaskAssigned: false,
+      notifyTaskCommented: false,
+      notifyMessageReceived: true,
+    });
+    expect(refreshed.body.user).not.toHaveProperty('passwordHash');
+    expect(refreshed.body.user).not.toHaveProperty('refreshToken');
+  });
+
   it('caps rotated refresh cookie max age at the absolute deadline', async () => {
     const reg = await request(createApp())
       .post('/api/v1/auth/register')
