@@ -32,7 +32,7 @@ create_backup() {
   require_commands pg_dump gpg sha256sum mktemp tar find sort stat base64 tr grep node
 
   local storage_root output_dir backup_id encrypted_name checksum_name encrypted_file checksum_file
-  local temp_dir plain_dump plain_archive manifest service_file source_revision created_utc hash size rel path encoded
+  local temp_dir plain_dump plain_archive manifest service_file pass_file source_revision created_utc hash size rel path encoded
   storage_root="$(cd -- "$BACKUP_STORAGE_ROOT" && pwd -P)"
   [[ "$storage_root" != / ]] || fail "Refusing filesystem root as storage root"
   for area in public private; do
@@ -63,6 +63,7 @@ create_backup() {
   plain_archive="$temp_dir/recovery.tar.gz"
   manifest="$temp_dir/manifest.txt"
   service_file="$temp_dir/pg_service.conf"
+  pass_file="$temp_dir/pgpass"
   local published_encrypted=0 published_checksum=0 completed=0
   cleanup() {
     if [[ "$completed" != 1 ]]; then
@@ -73,12 +74,12 @@ create_backup() {
   }
   trap cleanup EXIT
 
-  if ! DATABASE_URL="$DATABASE_URL" node - "$service_file" <<'NODE'
+  if ! DATABASE_URL="$DATABASE_URL" node - "$service_file" "$pass_file" <<'NODE'
 const fs = require('node:fs');
 
-function quote(value) {
-  if (/[\0\r\n]/.test(value)) throw new Error('invalid connection value');
-  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+function serviceValue(value) {
+  if (/[\0\r\n]/.test(value) || /\s$/.test(value)) throw new Error('invalid service value');
+  return value;
 }
 
 try {
@@ -102,8 +103,15 @@ try {
     add(key, value);
   }
   if (!options.has('dbname')) throw new Error('missing database');
-  const contents = `[taskflow_backup]\n${[...options].map(([key, value]) => `${key}=${quote(value)}`).join('\n')}\n`;
+  const password = options.get('password');
+  options.delete('password');
+  const contents = `[taskflow_backup]\n${[...options].map(([key, value]) => `${key}=${serviceValue(value)}`).join('\n')}\n`;
   fs.writeFileSync(process.argv[2], contents, { flag: 'wx', mode: 0o600 });
+  if (password !== undefined) {
+    if (/[\0\r\n]/.test(password)) throw new Error('invalid password');
+    const escapedPassword = password.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+    fs.writeFileSync(process.argv[3], `*:*:*:*:${escapedPassword}\n`, { flag: 'wx', mode: 0o600 });
+  }
 } catch {
   process.exitCode = 1;
 }
@@ -112,9 +120,19 @@ NODE
     fail "DATABASE_URL could not be converted to a protected libpq service file"
   fi
   chmod 600 "$service_file"
+  [[ ! -f "$pass_file" ]] || chmod 600 "$pass_file"
   unset DATABASE_URL
-  if ! PGSERVICEFILE="$service_file" PGSERVICE=taskflow_backup \
-    pg_dump --format=custom --file "$plain_dump" --dbname=service=taskflow_backup \
+  if ! (
+    while IFS= read -r pg_variable; do
+      [[ "$pg_variable" =~ ^PG[A-Z0-9_]+$ ]] && unset "$pg_variable"
+    done < <(compgen -e)
+    export PGSERVICEFILE="$service_file" PGSERVICE=taskflow_backup
+    if [[ -f "$pass_file" ]]; then
+      export PGPASSFILE="$pass_file"
+    fi
+    # Preserve HOME so a passwordless URL can use libpq's normal ~/.pgpass fallback.
+    pg_dump --format=custom --file "$plain_dump" --dbname=service=taskflow_backup
+  ) \
     >"$temp_dir/pg_dump.stdout" 2>"$temp_dir/pg_dump.stderr"; then
     fail "PostgreSQL backup failed"
   fi

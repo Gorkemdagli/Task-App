@@ -175,7 +175,7 @@ Bu yayın akışı depo kökündeki `compose.coolify.yaml` dosyasını kullanır
 
 Yerel storage yedeği PostgreSQL özel biçimli dökümünü, `public/` ve `private/` dosyalarını ve dosya yolu, byte sayısı ve SHA-256 değerlerini içeren manifesti tek bir GPG şifreli pakette toplar. Tutarlılık için API/web yazmalarını, upload'ları, worker'ları ve zamanlanmış işleri durdurup devam eden işleri boşaltın; script bu durumu `BACKUP_WRITERS_STOPPED=1` onayıyla operatörden ister, atomik snapshot sağlamaz.
 
-`DATABASE_URL`, tam döküm almaya yetkili operatör tarafından onaylanmış bağlantı olmalıdır. Script URL'yi pg_dump argümanına koymaz; libpq bağlantısını mode `0600` geçici service dosyasına dönüştürür, komuttan önce ortam değişkenini kaldırır ve dosyayı çıkışta temizler. Uygulama runtime secret'ını komut satırına veya loglara yazmayın. `BACKUP_RECIPIENT`, GPG alıcı fingerprint'i; yedek çıktısı ise daha sonra operatörce offsite konuma aktarılacak dizindir:
+`DATABASE_URL`, tam döküm almaya yetkili operatör tarafından onaylanmış bağlantı olmalıdır. Script URL'yi pg_dump argümanına koymaz; libpq için mode `0600` geçici service ve password dosyaları oluşturur, komuttan önce URL ortam değişkenini kaldırır ve dosyaları çıkışta temizler. Uygulama runtime secret'ını komut satırına veya loglara yazmayın. `BACKUP_RECIPIENT`, GPG alıcı fingerprint'i; yedek çıktısı ise daha sonra operatörce offsite konuma aktarılacak dizindir:
 
 ```sh
 export BACKUP_RECIPIENT='<GPG alıcı fingerprinti>'
