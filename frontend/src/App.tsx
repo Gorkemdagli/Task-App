@@ -3,10 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { getProtectedRouteSkeletonVariant, RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
-import { authApi, getMe } from './lib/api';
-import { preloadDashboardRoute } from './lib/preloadDashboardRoute';
+import { authApi, getMe, type RefreshResponse } from './lib/api';
+import { preloadProtectedRoute } from './lib/preloadDashboardRoute';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
+import type { CurrentUserProfile } from './services/profile';
 import {
   classifyGlobalError,
   clearGlobalError,
@@ -67,6 +68,25 @@ const CompanyManagementPage = lazy(() =>
 
 const AuthBootstrapContext = createContext(false);
 
+function isCurrentUserProfile(value: unknown): value is CurrentUserProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const profile = value as Record<string, unknown>;
+  return (
+    typeof profile.id === 'string' &&
+    typeof profile.displayId === 'string' &&
+    typeof profile.email === 'string' &&
+    typeof profile.fullName === 'string' &&
+    (profile.role === 'companyAdmin' || profile.role === 'member') &&
+    (profile.tenantId === null || typeof profile.tenantId === 'string') &&
+    (profile.tenantName === null || typeof profile.tenantName === 'string') &&
+    (profile.avatarUrl === null || typeof profile.avatarUrl === 'string') &&
+    (profile.tenantLogoUrl === null || typeof profile.tenantLogoUrl === 'string') &&
+    typeof profile.notifyTaskAssigned === 'boolean' &&
+    typeof profile.notifyTaskCommented === 'boolean' &&
+    typeof profile.notifyMessageReceived === 'boolean'
+  );
+}
+
 function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -89,11 +109,13 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
     const isCurrent = () =>
       active && useAuthStore.getState().sessionGeneration === generation;
 
-    if (window.location.pathname === '/dashboard') void preloadDashboardRoute();
+    if (getProtectedRouteSkeletonVariant(window.location.pathname)) {
+      void preloadProtectedRoute(window.location.pathname);
+    }
 
     (async () => {
       try {
-        const response = await authApi.post('/refresh', null);
+        const response = await authApi.post<RefreshResponse>('/refresh', null);
         if (!isCurrent()) return;
 
         if (response.status === 204) {
@@ -101,9 +123,9 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
           queryClient.clear();
           return;
         }
-        const data = response.data as { accessToken: string };
+        const data = response.data;
         setAccessToken(data.accessToken);
-        const canonicalUser = await getMe();
+        const canonicalUser = isCurrentUserProfile(data.user) ? data.user : await getMe();
         if (!isCurrent()) return;
         queryClient.setQueryData(queryKeys.profile(canonicalUser.id), canonicalUser);
         setUser(canonicalUser);

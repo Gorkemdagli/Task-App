@@ -127,32 +127,16 @@ describe('landing hero responsive layout', () => {
     );
   });
 
-  it('centers landing sections with desktop native scroll snap', () => {
-    const desktopSnap = landingCss.lastIndexOf(
-      '@media (min-width: 64rem) {\n  html:has(.landing-editorial) {',
+  it('keeps desktop landing scroll under the user’s control', () => {
+    expect(landingCss).not.toContain('scroll-snap-type: y mandatory;');
+    expect(landingCss).not.toContain('scroll-snap-stop: always;');
+    expect(landingCss).toContain('html:has(.landing-editorial) {\n  scroll-behavior: smooth;');
+    expect(landingCss).toContain(
+      '@media (prefers-reduced-motion: reduce) {\n  html:has(.landing-editorial) {\n    scroll-behavior: auto;',
     );
-
-    expect(desktopSnap).toBeGreaterThan(-1);
-    const smoothSnap = landingCss.lastIndexOf(
-      '@media (min-width: 64rem) and (prefers-reduced-motion: no-preference) {\n  html:has(.landing-editorial) {',
-    );
-    const snapBlock = landingCss.slice(desktopSnap, smoothSnap);
-
-    expect(snapBlock).toContain('scroll-snap-type: y mandatory;');
-    expect(snapBlock).toContain('scroll-padding-block: var(--landing-nav-height) 0;');
-    expect(snapBlock).toContain('.theme-landing main > section');
-    expect(snapBlock).toContain('scroll-snap-align: center;');
-    expect(snapBlock).toContain('scroll-snap-stop: always;');
-    expect(snapBlock).not.toContain('scroll-margin-top: var(--landing-nav-height);');
-    expect(snapBlock).toContain(
-      '.theme-landing .landing-footer {\n    scroll-snap-align: center;\n    scroll-snap-stop: always;',
-    );
-
-    expect(smoothSnap).toBeGreaterThan(desktopSnap);
-    expect(landingCss.slice(smoothSnap, smoothSnap + 180)).toContain('scroll-behavior: smooth;');
   });
 
-  it('fills desktop snap surfaces to the viewport without outer separators', () => {
+  it('fills desktop landing surfaces to the viewport without outer separators', () => {
     const desktopSurfaces = landingCss.lastIndexOf(
       '@media (min-width: 64rem) {\n  .theme-landing main > section.landing-hero,\n  .theme-landing main > section.landing-features,\n  .theme-landing main > section.landing-motion {',
     );
@@ -175,20 +159,17 @@ describe('landing hero responsive layout', () => {
     );
   });
 
-  it('uses rendered geometry for desktop snap sections', () => {
-    const desktopContentVisibility = landingCss.lastIndexOf(
-      `@media (min-width: 64rem) {
-  .theme-landing .landing-features,
-  .theme-landing .landing-motion {
-    content-visibility: visible;
-    contain-intrinsic-size: none;`,
+  it('keeps section geometry stable for fragment navigation at every viewport', () => {
+    expect(landingCss).not.toMatch(
+      /\.theme-landing \.landing-features,\s*\.theme-landing \.landing-motion\s*\{[^}]*content-visibility:\s*auto/s,
     );
-
-    expect(desktopContentVisibility).toBeGreaterThan(-1);
   });
 
-  it('keeps snap offsets aligned with the responsive nav height', () => {
+  it('keeps scroll offsets aligned with the responsive nav height at every width', () => {
     expect(landingCss).toContain(':root {\n  --landing-nav-height: 5.25rem;');
+    expect(landingCss).toContain(
+      '.theme-landing main > section {\n  scroll-margin-top: var(--landing-nav-height);',
+    );
 
     const mobileNav = landingCss.lastIndexOf(
       `@media (max-width: 47.9375rem) {

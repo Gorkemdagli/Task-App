@@ -96,12 +96,39 @@ async function findUserById(userId: string) {
   );
 }
 
-async function findTenantName(userId: string, tenantId: string | null): Promise<string | null> {
+type AuthTenant = { name: string; logoUrl: string | null };
+
+async function findTenant(
+  userId: string,
+  tenantId: string | null,
+): Promise<AuthTenant | null> {
   if (!tenantId) return null;
-  const tenant = await withTenantContext(userId, tenantId, (tx) =>
-    tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+  return withTenantContext(userId, tenantId, (tx) =>
+    tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, logoUrl: true },
+    }),
   );
-  return tenant?.name ?? null;
+}
+
+function toLoginUser(
+  user: NonNullable<Awaited<ReturnType<typeof findUserById>>>,
+  tenant: AuthTenant | null,
+): LoginUser {
+  return {
+    id: user.id,
+    displayId: user.displayId,
+    email: user.email,
+    fullName: user.fullName,
+    role: user.role,
+    tenantId: user.tenantId,
+    tenantName: tenant?.name ?? null,
+    avatarUrl: user.avatarUrl,
+    tenantLogoUrl: tenant?.logoUrl ?? null,
+    notifyTaskAssigned: user.notifyTaskAssigned,
+    notifyTaskCommented: user.notifyTaskCommented,
+    notifyMessageReceived: user.notifyMessageReceived,
+  };
 }
 
 async function findUserIdByEmail(email: string): Promise<string | null> {
@@ -190,29 +217,9 @@ export async function login(
   if (!user || !valid) throw new AppError(401, 'E-posta veya şifre hatalı', 'UNAUTHORIZED');
   const tenantId = user.tenantId;
   const tenant = await measureRequestStage(timing, 'auth_db_ms', () =>
-    tenantId
-      ? withTenantContext(user.id, tenantId, (tx) =>
-          tx.tenant.findUnique({
-            where: { id: tenantId },
-            select: { name: true, logoUrl: true },
-          }),
-        )
-      : Promise.resolve(null),
+    findTenant(user.id, tenantId),
   );
-  const loginUser: LoginUser = {
-    id: user.id,
-    displayId: user.displayId,
-    email: user.email,
-    fullName: user.fullName,
-    role: user.role,
-    tenantId: user.tenantId,
-    tenantName: tenant?.name ?? null,
-    avatarUrl: user.avatarUrl,
-    tenantLogoUrl: tenant?.logoUrl ?? null,
-    notifyTaskAssigned: user.notifyTaskAssigned,
-    notifyTaskCommented: user.notifyTaskCommented,
-    notifyMessageReceived: user.notifyMessageReceived,
-  };
+  const loginUser = toLoginUser(user, tenant);
   const result = issueTokens(loginUser);
   await measureRequestStage(timing, 'session_redis_ms', () =>
     registerIssuedTokens(
@@ -229,7 +236,7 @@ export async function login(
 export async function refresh(
   refreshToken: string,
   timing?: RequestTimingRecorder,
-): Promise<AuthResult> {
+): Promise<LoginResult> {
   let p;
   try {
     p = verifyRefreshToken(refreshToken);
@@ -247,8 +254,8 @@ export async function refresh(
   }
   const user = await measureRequestStage(timing, 'auth_db_ms', () => findUserById(userId));
   if (!user) throw new AppError(401, 'Kullanıcı bulunamadı', 'UNAUTHORIZED');
-  const tenantName = await measureRequestStage(timing, 'auth_db_ms', () =>
-    findTenantName(user.id, user.tenantId),
+  const tenant = await measureRequestStage(timing, 'auth_db_ms', () =>
+    findTenant(user.id, user.tenantId),
   );
   const accessToken = signAccessToken(user.id, user.tenantId);
   const refreshLifetimeSeconds = Math.min(
@@ -268,15 +275,7 @@ export async function refresh(
   );
   if (!rotated) throw new AppError(401, 'Oturum sonlandÄ±rÄ±lmÄ±Å¸', 'TOKEN_REVOKED');
   return {
-    user: {
-      id: user.id,
-      displayId: user.displayId,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      tenantId: user.tenantId,
-      tenantName,
-    },
+    user: toLoginUser(user, tenant),
     accessToken,
     refreshToken: newRefreshToken,
     refreshExpiresAt,

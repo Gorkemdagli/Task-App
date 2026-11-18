@@ -5,6 +5,8 @@ import { useTasks } from '@/hooks/tasks';
 import { useTaskFilters } from '@/hooks/useTaskFilters';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeamStore } from '@/stores/teamStore';
+import { isCompanyAdmin } from '@/lib/permissions';
+import { Link } from 'react-router-dom';
 import { ActiveFilterChips, FilterBar } from '@/components/tasks/FilterBar';
 import { TaskCardRow, TaskListHeader } from '@/components/tasks/TaskCardRow';
 import { TaskPagination } from '@/components/tasks/TaskPagination';
@@ -36,10 +38,16 @@ export function TasksPage() {
   const { t } = useTranslation();
   const { data: teams } = useTeams();
   const { user } = useAuth();
-  const { filters, setPage } = useTaskFilters();
+  const { filters, resetFilters, setPage } = useTaskFilters();
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const membersTeamId = filters.teamId ?? activeTeamId ?? undefined;
   const { data: membersTeam } = useTeam(membersTeamId);
+  const { data: activeTeam } = useTeam(activeTeamId ?? undefined);
+  const canCreateTasksFromDashboard =
+    isCompanyAdmin(user) ||
+    activeTeam?.members.some(
+      (member) => member.userId === user?.id && member.role === 'teamAdmin',
+    ) === true;
 
   const assignees = useMemo(
     () =>
@@ -68,6 +76,14 @@ export function TasksPage() {
 
   const { data, isLoading } = useTasks(queryArgs);
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / TASK_PAGE_SIZE));
+  const hasActiveFilters =
+    filters.status.length > 0 ||
+    filters.priority.length > 0 ||
+    filters.assigneeIds.length > 0 ||
+    Boolean(filters.teamId) ||
+    filters.deadline !== 'all' ||
+    Boolean(filters.deadlineFrom || filters.deadlineTo) ||
+    filters.includeArchived;
 
   useEffect(() => {
     if (data && filters.page > totalPages) setPage(totalPages);
@@ -107,15 +123,44 @@ export function TasksPage() {
               ))}
             </div>
           ) : !data || data.total === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
-              {t('tasks.page.empty')}
-            </p>
+            <div className="rounded-md border border-dashed border-border bg-card/50 p-6 text-center text-sm text-muted-foreground">
+              <p>
+                {t(
+                  hasActiveFilters
+                    ? 'tasks.page.emptyFiltered'
+                    : canCreateTasksFromDashboard
+                      ? 'tasks.page.emptyUnfilteredAdmin'
+                      : 'tasks.page.emptyUnfilteredMember',
+                )}
+              </p>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="mt-3 inline-flex min-h-11 items-center justify-center px-3 font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {t('tasks.filters.clear')}
+                </button>
+              )}
+              {!hasActiveFilters && canCreateTasksFromDashboard && (
+                <Link
+                  to="/dashboard"
+                  className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 font-medium text-black hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {t('tasks.page.openDashboard')}
+                </Link>
+              )}
+            </div>
           ) : (
             <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <div role="table" aria-label={t('tasks.page.results')}>
               <TaskListHeader />
-              {data.tasks.map((task) => (
-                <TaskCardRow key={task.id} task={task} />
-              ))}
+              <div role="rowgroup">
+                {data.tasks.map((task) => (
+                  <TaskCardRow key={task.id} task={task} />
+                ))}
+              </div>
+              </div>
               <TaskPagination
                 page={filters.page}
                 totalPages={totalPages}

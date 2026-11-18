@@ -122,11 +122,13 @@ host=db
 port=5432
 dbname=taskflow_rehearsal_restore
 user=postgres
-password=taskflow
 RESTORE_SERVICE
 chmod 600 /rehearsal/restore.pg_service.conf
+printf '*:*:*:*:taskflow\n' >/rehearsal/restore.pgpass
+chmod 600 /rehearsal/restore.pgpass
 export PGSERVICEFILE=/rehearsal/restore.pg_service.conf
 export PGSERVICE=taskflow_rehearsal_restore
+export PGPASSFILE=/rehearsal/restore.pgpass
 tar --to-stdout --gzip --file "$bundle_archive" taskflow.dump > /rehearsal/restored.dump
 pg_restore --exit-on-error --no-owner --no-acl --dbname=service=taskflow_rehearsal_restore /rehearsal/restored.dump
 restored_value="$(psql --dbname=service=taskflow_rehearsal_restore -At -c 'SELECT value FROM rehearsal_probe WHERE id = 1')"

@@ -254,6 +254,27 @@ describe('TeamDetailPage', () => {
     expect(screen.getByText(/Yapıldı:/)).toBeInTheDocument();
   });
 
+  it('moves focus and selection between tabs with arrow keys', async () => {
+    const user = userEvent.setup();
+    mocks.useAuth.mockReturnValue({
+      user: { id: 'user-1', role: 'companyAdmin', tenantId: 'tenant-1' },
+      isCompanyAdmin: true,
+    });
+    renderPage();
+    const detailTab = screen.getByRole('tab', { name: 'Takım Detayı' });
+    const dashboardTab = screen.getByRole('tab', { name: 'Dashboard' });
+
+    detailTab.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(dashboardTab).toHaveFocus();
+    expect(dashboardTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Dashboard' })).toBeInTheDocument();
+
+    await user.keyboard('{ArrowLeft}');
+    expect(detailTab).toHaveFocus();
+    expect(detailTab).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('renders English team detail copy and switches back to Turkish', async () => {
     try {
       await act(() => i18n.changeLanguage('en'));

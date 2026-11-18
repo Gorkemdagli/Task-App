@@ -380,7 +380,7 @@ export function ProfilePage() {
                 </Button>
                 <FieldError message={avatarError ?? undefined} />
               </div>
-              <Button type="submit" className="h-11 w-full" loading={updateMutation.isPending}>
+              <Button type="submit" className="h-11 w-full sm:w-auto" loading={updateMutation.isPending}>
                 {t('Değişiklikleri Kaydet')}
               </Button>
               <FieldError message={profileError ?? undefined} />
@@ -408,7 +408,7 @@ export function ProfilePage() {
               </div>
               {preferenceForm.formState.isDirty || preferenceError ? (
                 <div className="space-y-3">
-                  <Button type="submit" className="w-full" loading={updateMutation.isPending}>
+                  <Button type="submit" className="w-full sm:w-auto" loading={updateMutation.isPending}>
                     <Save size={16} aria-hidden="true" />
                     Tercihleri kaydet
                   </Button>
@@ -470,7 +470,7 @@ export function ProfilePage() {
                   </label>
                 </div>
                 <FieldError message={passwordError ?? undefined} />
-                <Button type="submit" className="h-11 w-full" loading={updateMutation.isPending} disabled={isLoggingOut}>
+                <Button type="submit" className="h-11 w-full sm:w-auto" loading={updateMutation.isPending} disabled={isLoggingOut}>
                   <KeyRound size={16} aria-hidden="true" />
                   {t('Şifreyi güncelle')}
                 </Button>

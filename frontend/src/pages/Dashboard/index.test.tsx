@@ -572,11 +572,15 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('task-card-todo-active-109')).not.toBeInTheDocument();
   });
 
-  it('shows empty placeholder when column has no tasks', () => {
+  it('shows a useful empty message and compact column when a column has no tasks', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     mockTasks = [];
     renderDashboard();
-    expect(screen.getAllByText('Boş').length).toBe(3);
+    for (const status of ['todo', 'in_progress', 'done']) {
+      const column = screen.getByTestId(`column-${status}`);
+      expect(within(column).getByText('Bu sütunda henüz görev yok')).toBeInTheDocument();
+      expect(column.querySelector(':scope > div:nth-child(2)')).toHaveClass('min-h-0');
+    }
   });
 
   it('shows pending badge on task with pendingStatus when viewer is not proposer', () => {
@@ -786,6 +790,23 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(taskUrls).toHaveLength(3));
     expect(taskUrls.every((url) => url.includes('teamId=team-1'))).toBe(true);
     expect(taskUrls.every((url) => !url.includes('assigneeIds'))).toBe(true);
+  });
+
+  it('waits for company team scope before issuing task requests', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    const teams = deferred<teamsService.Team[]>();
+    vi.spyOn(teamsService, 'listTeams').mockReturnValue(teams.promise);
+    const taskUrls = watchTaskRequests();
+    renderLiveDashboard();
+
+    await waitFor(() => expect(teamsService.listTeams).toHaveBeenCalled());
+    expect(taskUrls).toEqual([]);
+
+    await act(async () => teams.resolve([{ id: 'team-1', name: 'UX' } as teamsService.Team]));
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
+    expect(taskUrls.every((url) => url.includes('teamId=team-1'))).toBe(true);
   });
 
   it('keeps status-scoped Member task requests scoped to their team and assignments', async () => {

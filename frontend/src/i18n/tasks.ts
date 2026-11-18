@@ -7,7 +7,10 @@ export const taskTranslations = {
         loading: 'Yükleniyor…',
         found_one: '{{count}} görev bulundu',
         found_other: '{{count}} görev bulundu',
-        empty: 'Filtrelere uyan görev yok.',
+        emptyFiltered: 'Filtrelere uyan görev yok.',
+        emptyUnfilteredAdmin: 'Henüz görev yok. Aktif takımın panosundan görev oluşturabilirsiniz.',
+        emptyUnfilteredMember: 'Henüz atanmış göreviniz yok. Görev atandığında burada görünür.',
+        openDashboard: 'Takım panosunu aç',
       },
       common: {
         cancel: 'İptal',
@@ -244,7 +247,10 @@ export const taskTranslations = {
         loading: 'Loading…',
         found_one: '{{count}} task found',
         found_other: '{{count}} tasks found',
-        empty: 'No tasks match these filters.',
+        emptyFiltered: 'No tasks match these filters.',
+        emptyUnfilteredAdmin: 'There are no tasks yet. Create a task from the active team dashboard.',
+        emptyUnfilteredMember: 'You have no assigned tasks yet. Assigned tasks will appear here.',
+        openDashboard: 'Open team dashboard',
       },
       common: {
         cancel: 'Cancel',

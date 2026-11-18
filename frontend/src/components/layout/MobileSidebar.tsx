@@ -69,7 +69,7 @@ export function MobileSidebar() {
               </span>
               <DialogPrimitive.Close
                 aria-label={t('Menüyü kapat')}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary"
               >
                 <X className="h-5 w-5" />
               </DialogPrimitive.Close>
@@ -82,7 +82,7 @@ export function MobileSidebar() {
                   to={item.path}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                      'flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
                       isActive
                         ? 'bg-secondary font-semibold text-primary'
                         : 'text-foreground hover:bg-secondary',
@@ -104,7 +104,7 @@ export function MobileSidebar() {
               activeTeamName={activeTeamName}
               onSelectTeam={handleSelectTeam}
               mobile
-              teamSectionClassName="border-b border-border p-4"
+              teamSectionClassName="border-b border-border p-4 [&_button]:min-h-11"
               membersSectionClassName="p-4"
             />
           </div>

@@ -67,8 +67,16 @@ describe('ProposeConfirmDialog', () => {
 
   it('renders Gönder and İptal buttons', () => {
     renderDialog();
-    expect(screen.getByTestId('propose-confirm')).toHaveTextContent(/Gönder/);
-    expect(screen.getByTestId('propose-cancel')).toHaveTextContent(/İptal/);
+    const confirm = screen.getByTestId('propose-confirm');
+    const cancel = screen.getByTestId('propose-cancel');
+    expect(confirm).toHaveTextContent(/Gönder/);
+    expect(cancel).toHaveTextContent(/İptal/);
+    expect(confirm).toHaveClass('h-11', 'sm:h-9');
+    expect(cancel).toHaveClass('h-11', 'sm:h-9');
+    expect(screen.getByTestId('propose-confirm-dialog')).toHaveClass(
+      '[&>button]:h-11',
+      '[&>button]:w-11',
+    );
   });
 
   it('lists other assignees (excludes proposer)', () => {

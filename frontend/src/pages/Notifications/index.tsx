@@ -112,7 +112,7 @@ export function NotificationsPage() {
       : undefined;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-0 py-6">
       <header className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <Bell className="h-5 w-5 text-primary" aria-hidden />
@@ -123,7 +123,7 @@ export function NotificationsPage() {
             type="button"
             onClick={() => markAllRead.mutate()}
             data-testid="page-mark-all-read"
-            className="text-sm font-medium text-primary hover:underline"
+            className="min-h-11 min-w-11 rounded-md px-2 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             {t('Tümünü okundu işaretle')}
           </button>

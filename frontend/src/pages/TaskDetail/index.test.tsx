@@ -456,7 +456,7 @@ describe('TaskDetailPage — approved workbench', () => {
     const user = userEvent.setup();
 
     expect(screen.getAllByRole('button', { name: 'Görevi sil' })).toHaveLength(1);
-    expect(screen.getByTestId('task-title-section')).toContainElement(
+    expect(screen.getByRole('region', { name: 'Görev içeriği' })).toContainElement(
       screen.getByTestId('task-delete-trigger'),
     );
     expect(screen.getByRole('banner')).not.toContainElement(screen.getByTestId('task-delete-trigger'));

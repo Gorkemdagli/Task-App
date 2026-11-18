@@ -146,6 +146,10 @@ export function TeamDetailPage() {
   const tasks = allTasks.slice(0, PAGE_SIZE);
   const taskTotal = tasksData?.total ?? team?.taskCount ?? 0;
   const [activeTab, setActiveTab] = useState<'detail' | 'dashboard'>('detail');
+  const tabRefs = useRef<Record<'detail' | 'dashboard', HTMLButtonElement | null>>({
+    detail: null,
+    dashboard: null,
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<{ teamId: string; name: string; description: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -188,6 +192,30 @@ export function TeamDetailPage() {
   }, [id, setActiveTeamId]);
 
   const visibleTab = canManageMembers && activeTab === 'dashboard' ? 'dashboard' : 'detail';
+  const handleTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    current: 'detail' | 'dashboard',
+  ) => {
+    const availableTabs: Array<'detail' | 'dashboard'> = canManageMembers
+      ? ['detail', 'dashboard']
+      : ['detail'];
+    const currentIndex = availableTabs.indexOf(current);
+    const targetIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? availableTabs.length - 1
+          : event.key === 'ArrowRight'
+            ? (currentIndex + 1) % availableTabs.length
+            : event.key === 'ArrowLeft'
+              ? (currentIndex - 1 + availableTabs.length) % availableTabs.length
+              : null;
+    if (targetIndex === null) return;
+    event.preventDefault();
+    const nextTab = availableTabs[targetIndex];
+    setActiveTab(nextTab);
+    tabRefs.current[nextTab]?.focus();
+  };
 
   const startEdit = () => {
     setEditDraft({ teamId: team!.id, name: team!.name, description: team!.description ?? '' });
@@ -371,9 +399,14 @@ export function TeamDetailPage() {
         aria-label={t('teams.detail.view')}
       >
         <button
+          ref={(node) => { tabRefs.current.detail = node; }}
           type="button"
           role="tab"
+          id="team-detail-tab"
+          aria-controls="team-detail-panel"
           aria-selected={visibleTab === 'detail'}
+          tabIndex={visibleTab === 'detail' ? 0 : -1}
+          onKeyDown={(event) => handleTabKeyDown(event, 'detail')}
           className={cn(
             'border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             visibleTab === 'detail'
@@ -386,9 +419,14 @@ export function TeamDetailPage() {
         </button>
         {canManageMembers && (
           <button
+            ref={(node) => { tabRefs.current.dashboard = node; }}
             type="button"
             role="tab"
+            id="team-dashboard-tab"
+            aria-controls="team-dashboard-panel"
             aria-selected={visibleTab === 'dashboard'}
+            tabIndex={visibleTab === 'dashboard' ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, 'dashboard')}
             className={cn(
               'border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
               visibleTab === 'dashboard'
@@ -403,9 +441,22 @@ export function TeamDetailPage() {
       </div>
 
       {visibleTab === 'dashboard' ? (
-        <TeamDashboard teamId={team.id} enabled={canManageMembers} />
+        <section
+          id="team-dashboard-panel"
+          aria-labelledby="team-dashboard-tab"
+          tabIndex={0}
+        >
+          <TeamDashboard teamId={team.id} enabled={canManageMembers} />
+        </section>
       ) : (
-        <div data-testid="team-detail-panels" className="grid items-stretch gap-4 lg:grid-cols-2">
+        <div
+          id="team-detail-panel"
+          role="tabpanel"
+          aria-labelledby="team-detail-tab"
+          tabIndex={0}
+          data-testid="team-detail-panels"
+          className="grid items-stretch gap-4 lg:grid-cols-2"
+        >
           <section className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
             <div className="flex h-16 items-center justify-between border-b border-border px-5">
               <h2 className="text-lg font-semibold text-foreground">

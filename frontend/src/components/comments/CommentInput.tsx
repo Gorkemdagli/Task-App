@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCreateComment } from '@/hooks/tasks';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from '@/i18n';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface CommentInputProps {
   taskId: string;
@@ -35,9 +36,10 @@ export function CommentInput({ taskId, disabled }: CommentInputProps) {
 
   return (
     <form onSubmit={handleSubmit} className="mt-3 grid grid-cols-[36px_minmax(0,1fr)] gap-3 border-t border-border pt-3">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-        {initials || '?'}
-      </span>
+      <Avatar className="h-9 w-9">
+        {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
+        <AvatarFallback className="bg-secondary text-xs font-semibold">{initials || '?'}</AvatarFallback>
+      </Avatar>
       <div className="min-w-0">
         <textarea
           value={body}

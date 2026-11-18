@@ -33,7 +33,7 @@ describe('disposable backup rehearsal', () => {
     assert.match(script, /\/workspace\/scripts:ro/);
     assert.doesNotMatch(script, /docker_workspace_dir/);
     assert.doesNotMatch(script, /apt-get/);
-    assert.match(dockerfile, /FROM debian@sha256:[a-f0-9]{64}/);
+    assert.match(dockerfile, /FROM postgres:17/);
     assert.match(dockerfile, /apt-get install/);
     assert.match(dockerfile, /nodejs/);
   });

@@ -292,7 +292,7 @@ export function TaskDetailPage() {
       <div className="task-detail-workbench grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.85fr)_minmax(280px,1.1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
         <aside
           aria-label={t('tasks.detail.infoAria')}
-          className="order-1 flex min-h-0 max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:col-start-1 lg:row-start-1 lg:max-h-none lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border lg:bg-card lg:p-4"
+          className="order-2 flex min-h-0 max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:col-start-1 lg:row-start-1 lg:max-h-none lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border lg:bg-card lg:p-4"
         >
           <section
             aria-labelledby="task-information-heading"
@@ -430,7 +430,7 @@ export function TaskDetailPage() {
                       data-testid="task-block-cancel"
                       onClick={handleBlockCancel}
                       disabled={updateBlocked.isPending}
-                      className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-11 rounded-md border border-border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:bg-card"
                     >
                       {t('tasks.common.cancel')}
                     </button>
@@ -438,7 +438,7 @@ export function TaskDetailPage() {
                       type="submit"
                       data-testid="task-block-confirm"
                       disabled={updateBlocked.isPending}
-                      className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-11 rounded-md bg-primary px-3 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
                     >
                       {updateBlocked.isPending ? t('tasks.detail.blocking') : t('tasks.detail.block')}
                     </button>
@@ -451,7 +451,7 @@ export function TaskDetailPage() {
                   ref={blockTriggerRef}
                   onClick={handleBlockToggle}
                   disabled={updateBlocked.isPending}
-                  className="mt-4 h-9 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-4 h-11 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
                 >
                   {updateBlocked.isPending
                     ? t('tasks.detail.updating')
@@ -485,7 +485,7 @@ export function TaskDetailPage() {
                 disabled={
                   restoreTask.isPending || restoreDeadline === null || restoreDeadline < today
                 }
-                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-11 rounded-md bg-primary px-4 text-sm font-medium text-black transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
               >
                 {restoreTask.isPending ? t('tasks.detail.restorePending') : t('tasks.detail.restore')}
               </button>
@@ -497,15 +497,16 @@ export function TaskDetailPage() {
             </div>
           )}
 
-          <div className="order-3 mt-4 flex min-h-0 max-h-[20rem] flex-1 overflow-hidden border-t border-border pt-4 lg:order-none lg:max-h-none lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:border-t lg:border-border lg:pt-4">
+          <div className="mt-4 flex min-h-0 max-h-[20rem] flex-1 overflow-hidden border-t border-border pt-4 lg:max-h-none lg:overflow-hidden">
             <TaskHistoryTimeline taskId={task.id} />
           </div>
+
         </aside>
 
         <section
           role="region"
           aria-label={t('tasks.detail.content')}
-          className="order-3 min-w-0 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-lg border border-border bg-card p-4 lg:col-start-2 lg:row-start-1 lg:order-none lg:max-h-none lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain md:p-5"
+          className="order-1 min-w-0 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-lg border border-border bg-card p-4 lg:col-start-2 lg:row-start-1 lg:order-none lg:max-h-none lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain md:p-5"
         >
           {hasPending && task.pendingStatus && (
             <div
@@ -534,7 +535,7 @@ export function TaskDetailPage() {
                       id && ackStatus.mutate({ taskId: id, pendingVersion: task.pendingVersion })
                     }
                     disabled={ackStatus.isPending}
-                    className="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-black transition-colors hover:bg-primary-hover disabled:opacity-50"
+                    className="h-11 rounded-md bg-primary px-3 text-xs font-semibold text-black transition-colors hover:bg-primary-hover disabled:opacity-50 sm:h-8"
                   >
                     {ackStatus.isPending ? t('tasks.detail.approving') : t('tasks.detail.approve')}
                   </button>
@@ -544,7 +545,7 @@ export function TaskDetailPage() {
                     type="button"
                     onClick={() => id && cancelStatus.mutate(id)}
                     disabled={cancelStatus.isPending}
-                    className="h-8 rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-secondary disabled:opacity-50"
+                    className="h-11 rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-secondary disabled:opacity-50 sm:h-8"
                   >
                     {cancelStatus.isPending ? t('tasks.detail.canceling') : t('tasks.common.cancel')}
                   </button>
@@ -635,17 +636,7 @@ export function TaskDetailPage() {
             </form>
           ) : (
             <div className="space-y-6">
-              <section
-                data-testid="task-title-section"
-                aria-labelledby="title-heading"
-                className="flex flex-wrap items-start justify-between gap-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-sm font-medium">{t('tasks.detail.title')}</p>
-                  <h2 id="title-heading" className="text-2xl font-semibold leading-tight tracking-tight">
-                    {task.title}
-                  </h2>
-                </div>
+              <section className="flex flex-wrap items-start justify-end gap-4">
                 {allowedDelete && (
                   <div className="shrink-0">
                     {!isDeleteConfirming ? (
@@ -682,7 +673,7 @@ export function TaskDetailPage() {
                           onClick={() => setIsDeleteConfirming(false)}
                           disabled={deleteTask.isPending}
                           autoFocus
-                          className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-11 rounded-md border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
                         >
                           {t('tasks.common.cancel')}
                         </button>
@@ -691,7 +682,7 @@ export function TaskDetailPage() {
                           data-testid="task-delete-confirm"
                           onClick={handleDeleteConfirm}
                           disabled={deleteTask.isPending}
-                          className="h-9 rounded-md bg-priority-high px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-11 rounded-md bg-priority-high px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
                         >
                           {deleteTask.isPending ? t('tasks.detail.deleting') : t('tasks.detail.confirmDelete')}
                         </button>

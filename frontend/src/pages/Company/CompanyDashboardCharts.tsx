@@ -50,11 +50,15 @@ function chartLabels(count: number) {
   return count <= 1 ? new Set([0]) : new Set([0, count - 1]);
 }
 
+function chartNumber(value: number, language: string) {
+  return new Intl.NumberFormat(language).format(value);
+}
+
 function ChartTooltip({ x, children }: { x: number; children: string }) {
   return (
     <div
       role="tooltip"
-      className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs text-card-foreground shadow-panel"
+      className="pointer-events-none absolute top-1 z-10 grid min-w-32 -translate-x-1/2 gap-1.5 whitespace-nowrap rounded-lg border border-border/70 bg-background px-2.5 py-2 text-xs tabular-nums text-card-foreground shadow-xl"
       style={{ left: `${Math.min(88, Math.max(12, x))}%` }}
     >
       {children}
@@ -138,7 +142,7 @@ function ChartDataPoint({
 }
 
 function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
@@ -152,7 +156,9 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
   return (
     <div className="relative min-h-0 flex-1" data-testid="company-trend-chart">
       <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
         <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
+        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
         {createdPath && (
           <polyline points={createdPath} fill="none" className="stroke-primary" strokeWidth="1.5" />
         )}
@@ -193,8 +199,8 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
         <ChartTooltip x={chartX(activeIndex, points.length)}>
           {t('company.charts.createdTooltip', {
             period: activePoint.period,
-            created: activePoint.created,
-            completed: activePoint.completed,
+            created: chartNumber(activePoint.created, i18n.language),
+            completed: chartNumber(activePoint.completed, i18n.language),
           })}
         </ChartTooltip>
       )}
@@ -224,14 +230,16 @@ function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
 }
 
 function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
   return (
     <div className="relative min-h-0 flex-1" data-testid="company-throughput-chart">
       <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
         <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
+        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
         {points.map((point, index) => {
           const x = chartX(index, points.length);
           const height = Math.max(1, (point.count / max) * CHART_HEIGHT);
@@ -263,7 +271,7 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
         <ChartTooltip x={chartX(activeIndex, points.length)}>
           {t('company.charts.completedTooltip', {
             period: activePoint.period,
-            count: activePoint.count,
+            count: chartNumber(activePoint.count, i18n.language),
           })}
         </ChartTooltip>
       )}
@@ -295,7 +303,7 @@ function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: numb
 }
 
 function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; max: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const labels = chartLabels(points.length);
   const activePoint = activeIndex === null ? null : points[activeIndex];
@@ -308,7 +316,9 @@ function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; m
   return (
     <div className="relative min-h-0 flex-1" data-testid="company-cumulative-flow-chart">
       <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
         <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
+        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
         {series.map((item) => (
           <polyline
             key={item.key}
@@ -346,9 +356,9 @@ function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; m
         <ChartTooltip x={chartX(activeIndex, points.length)}>
           {t('company.charts.cumulativeTooltip', {
             date: activePoint.date,
-            todo: activePoint.todo,
-            inProgress: activePoint.inProgress,
-            done: activePoint.done,
+            todo: chartNumber(activePoint.todo, i18n.language),
+            inProgress: chartNumber(activePoint.inProgress, i18n.language),
+            done: chartNumber(activePoint.done, i18n.language),
           })}
         </ChartTooltip>
       )}
@@ -424,17 +434,17 @@ export function PeriodTrendCharts({
             />
           )}
         </div>
-        <div className="mt-2 flex shrink-0 gap-4 text-xs text-secondary-foreground">
+        <div className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-secondary-foreground">
           <span>
             <span
-              className="mr-1.5 inline-block h-2 w-2 rounded-full bg-primary"
+              className="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-primary"
               aria-hidden="true"
             />
             {t('company.charts.created')}
           </span>
           <span>
             <span
-              className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done"
+              className="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-status-done"
               aria-hidden="true"
             />
             {t('company.charts.completed')}
@@ -494,7 +504,7 @@ export function PeriodTrendCharts({
               />
             )}
           </div>
-          <div className="mt-2 flex shrink-0 gap-4 text-xs text-secondary-foreground">
+          <div className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-secondary-foreground">
             <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-todo" aria-hidden="true" />{t('company.charts.todo')}</span>
             <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-inprogress" aria-hidden="true" />{t('company.charts.inProgress')}</span>
             <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-status-done" aria-hidden="true" />{t('company.charts.done')}</span>

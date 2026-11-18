@@ -30,6 +30,8 @@ describe('local volume backup bundle', () => {
 pg_dump() {
   printf '%s\\n' "$@" >"$BACKUP_TEST_PG_DUMP_ARGS"
   cp "$PGSERVICEFILE" "$BACKUP_TEST_SERVICE_COPY"
+  if [ -n "\${PGPASSFILE:-}" ]; then cp "$PGPASSFILE" "$BACKUP_TEST_PASS_COPY"; else printf unset >"$BACKUP_TEST_PASS_COPY"; fi
+  printf '%s|%s|%s|%s|%s|%s|%s\\n' "\${PGPASSWORD:-unset}" "\${PGHOST:-unset}" "\${PGDATABASE:-unset}" "\${PGUSER:-unset}" "\${PGSSLMODE:-unset}" "\${PGSERVICE:-unset}" "\${PGPASSFILE:+set}" >"$BACKUP_TEST_PG_ENV_STATE"
   printf '%s' "\${DATABASE_URL:-unset}" >"$BACKUP_TEST_DB_URL_STATE"
   while [ "$#" -gt 0 ]; do
     if [ "$1" = --file ]; then cp "$BACKUP_TEST_DUMP" "$2"; return $?; fi
@@ -67,9 +69,19 @@ pg_restore() { printf 'TABLE public.probe\\n'; }
         BACKUP_TEST_DUMP: join(root, 'dump.fixture'),
         BACKUP_TEST_PG_DUMP_ARGS: join(root, 'pg_dump.args'),
         BACKUP_TEST_SERVICE_COPY: join(root, 'pg_service.conf'),
+        BACKUP_TEST_PASS_COPY: join(root, 'pgpass'),
         BACKUP_TEST_DB_URL_STATE: join(root, 'database-url-state'),
+        BACKUP_TEST_PG_ENV_STATE: join(root, 'pg-env-state'),
         BACKUP_WRITERS_STOPPED: '1',
-        DATABASE_URL: 'postgresql://backup%40user:p%40ss%3A%23%27%5Cword@db.example:5432/taskflow?sslmode=require&schema=public',
+        DATABASE_URL: 'postgresql://backup%40user:p%40ss%3A%25%23%27%5Cword@db.example:5432/taskflow?sslmode=require&schema=public',
+        PGPASSWORD: 'ambient-dummy-password',
+        PGHOST: 'ambient.invalid',
+        PGDATABASE: 'ambient-database',
+        PGUSER: 'ambient-user',
+        PGSSLMODE: 'disable',
+        PGSERVICE: 'ambient-service',
+        PGSERVICEFILE: join(root, 'ambient.pg_service.conf'),
+        PGPASSFILE: join(root, 'ambient.pgpass'),
         BASH_ENV: bashEnv,
       };
       const create = spawnSync(bash, [script, 'create'], { cwd: process.cwd(), encoding: 'utf8', env });
@@ -83,13 +95,15 @@ pg_restore() { printf 'TABLE public.probe\\n'; }
       assert.match(dumpArgs, /--dbname=service=taskflow_backup/);
       assert.doesNotMatch(dumpArgs, /postgresql:\/\//);
       assert.equal(readFileSync(join(root, 'database-url-state'), 'utf8'), 'unset');
+      assert.equal(readFileSync(join(root, 'pg-env-state'), 'utf8'), 'unset|unset|unset|unset|unset|taskflow_backup|set\n');
       const service = readFileSync(join(root, 'pg_service.conf'), 'utf8');
-      assert.match(service, /host='db\.example'/);
-      assert.match(service, /dbname='taskflow'/);
-      assert.match(service, /user='backup@user'/);
-      assert.ok(service.includes("password='p@ss:#\\'\\\\word'"));
-      assert.match(service, /sslmode='require'/);
+      assert.match(service, /host=db\.example/);
+      assert.match(service, /dbname=taskflow/);
+      assert.match(service, /user=backup@user/);
+      assert.match(service, /sslmode=require/);
+      assert.doesNotMatch(service, /password=/);
       assert.doesNotMatch(service, /schema/);
+      assert.equal(readFileSync(join(root, 'pgpass'), 'utf8'), "*:*:*:*:p@ss\\:%#'\\\\word\n");
 
       const verifyEnv = {
         ...env,
@@ -134,6 +148,17 @@ pg_restore() { printf 'TABLE public.probe\\n'; }
         'taskflow-self-check.recovery.tar.gpg',
         'taskflow-self-check.recovery.tar.gpg.sha256',
       ]);
+
+      const passwordless = spawnSync(bash, [script, 'create'], {
+        cwd: process.cwd(), encoding: 'utf8', env: {
+          ...env,
+          BACKUP_ID: 'passwordless',
+          DATABASE_URL: 'postgresql://backup%40user@db.example:5432/taskflow?sslmode=require&schema=public',
+        },
+      });
+      assert.equal(passwordless.status, 0, passwordless.stderr);
+      assert.equal(readFileSync(join(root, 'pg-env-state'), 'utf8'), 'unset|unset|unset|unset|unset|taskflow_backup|\n');
+      assert.equal(readFileSync(join(root, 'pgpass'), 'utf8'), 'unset');
 
       const payload = join(root, 'malicious-payload');
       mkdirSync(join(payload, 'public'), { recursive: true });

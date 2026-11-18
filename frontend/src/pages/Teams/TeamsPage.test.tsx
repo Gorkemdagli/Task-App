@@ -127,10 +127,7 @@ describe('TeamsPage directory', () => {
 
     renderPage();
 
-    expect(screen.getByTestId('team-directory-item-team-1')).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByTestId('team-directory-item-team-1')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('team-preview-team-1')).toHaveTextContent('Product');
     expect(screen.getByText('Deniz Kaya')).toBeInTheDocument();
     const membersSection = screen.getByRole('heading', { name: 'Üyeler' }).parentElement;
@@ -172,7 +169,7 @@ describe('TeamsPage directory', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Teams' })).toBeInTheDocument();
-    expect(screen.getByRole('listbox', { name: 'Team directory' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Team directory' })).toBeInTheDocument();
     expect(screen.getByTestId('team-preview-team-1')).toHaveTextContent('2 members');
   });
 
@@ -182,10 +179,7 @@ describe('TeamsPage directory', () => {
 
     await user.click(screen.getByTestId('team-directory-item-team-2'));
 
-    expect(screen.getByTestId('team-directory-item-team-2')).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByTestId('team-directory-item-team-2')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('team-mobile-preview-team-2')).toHaveTextContent('Marketing');
     expect(screen.getByTestId('location')).toHaveTextContent('/teams');
   });

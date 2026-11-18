@@ -12,7 +12,7 @@ import {
   User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -162,11 +162,11 @@ function TopbarContent() {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-4 md:px-6">
       {/* Left cluster */}
-      <div className="flex items-center gap-6">
+      <div className="flex min-w-0 items-center gap-2 md:gap-6">
         <button
           type="button"
           onClick={openMobileSheet}
-          className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary md:hidden"
+          className="-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary md:hidden"
           aria-label={t('Menüyü aç')}
         >
           <Menu className="h-5 w-5" />
@@ -174,7 +174,7 @@ function TopbarContent() {
 
         <Link
           to="/dashboard"
-          className="text-xl font-bold tracking-tight text-primary hover:opacity-90"
+          className="shrink-0 text-lg font-bold tracking-tight text-primary hover:opacity-90 md:text-xl"
         >
           <span className="text-foreground">Task</span><span className="text-primary">Flow</span>
         </Link>
@@ -210,7 +210,7 @@ function TopbarContent() {
       </div>
 
       {/* Right cluster */}
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0 md:gap-1">
         <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
           <DropdownMenuTrigger asChild>
             <button
@@ -297,6 +297,7 @@ function TopbarContent() {
               aria-label={t('Kullanıcı menüsünü aç')}
             >
               <Avatar className="h-7 w-7">
+                {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
                 <AvatarFallback className="bg-secondary text-xs font-semibold text-foreground">
                   {initials || '??'}
                 </AvatarFallback>
@@ -315,6 +316,7 @@ function TopbarContent() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-3 px-2 py-2">
                 <Avatar className="h-9 w-9">
+                  {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
                   <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
                     {initials || '??'}
                   </AvatarFallback>

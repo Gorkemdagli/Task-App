@@ -75,6 +75,13 @@ describe('PendingAckModal', () => {
     expect(screen.getByText(/Durum teklifi: Yapılıyor/)).toBeInTheDocument();
   });
 
+  it('uses mobile-sized acknowledgement and close targets', () => {
+    renderModal();
+    expect(screen.getByRole('button', { name: 'Onayla' })).toHaveClass('h-11', 'sm:h-9');
+    expect(screen.getByRole('button', { name: 'İptal' })).toHaveClass('h-11', 'sm:h-9');
+    expect(screen.getByRole('dialog')).toHaveClass('[&>button]:h-11', '[&>button]:w-11');
+  });
+
   it('renders proposer name in description when pendingProposer exists', () => {
     renderModal();
     expect(

@@ -196,7 +196,9 @@ function StatusColumn({
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
       <div
-        className="min-h-[200px] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+        className={tasks.length === 0 && !isLoading
+          ? 'min-h-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col'
+          : 'min-h-[200px] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col'}
       >
         {isLoading ? (
           <div className="space-y-3" aria-label={t('Görevler yükleniyor')}>
@@ -204,7 +206,7 @@ function StatusColumn({
             <Skeleton className="h-24 w-full rounded-md" />
           </div>
         ) : tasks.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t('Boş')}</p>
+          <p className="text-xs text-muted-foreground">{t('Bu sütunda henüz görev yok')}</p>
         ) : (
           <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <div
@@ -463,7 +465,8 @@ export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const readiness = useRouteDataReadiness();
-  const { data: teams } = useTeams();
+  const teamsQuery = useTeams();
+  const teams = teamsQuery.data;
   const activeTeamId = useTeamStore((state) => state.activeTeamId);
   const setActiveTeamId = useTeamStore((state) => state.setActiveTeamId);
   const [createOpen, setCreateOpen] = useState(false);
@@ -523,7 +526,9 @@ export function DashboardPage() {
 
   const tasksEnabled =
     Boolean(user?.tenantId) && readiness.tasksEnabled &&
-    (isCompanyAdmin(user) || Boolean(teamId && currentTeamMember));
+    (isCompanyAdmin(user)
+      ? teams !== undefined || teamsQuery.isError
+      : Boolean(teamId && currentTeamMember));
   const dashboardTaskFilters = {
     ...taskFilters,
     ...(workflowFilter === 'archived'
@@ -651,7 +656,7 @@ export function DashboardPage() {
   return (
     <div
       data-testid="dashboard-page"
-      className={`p-4 md:p-8 lg:flex lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:flex-col lg:overflow-hidden ${hasTaskDetail ? 'lg:pr-[min(38vw,32rem)]' : ''}`}
+      className={`p-0 md:p-8 lg:flex lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:flex-col lg:overflow-hidden ${hasTaskDetail ? 'lg:pr-[min(38vw,32rem)]' : ''}`}
     >
       <div className="mb-6 flex min-h-[150px] flex-col gap-4 xl:min-h-0 xl:flex-row xl:items-center xl:justify-between lg:shrink-0">
         <div>
