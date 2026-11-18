@@ -12,7 +12,7 @@ import {
   User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -297,6 +297,7 @@ function TopbarContent() {
               aria-label={t('Kullanıcı menüsünü aç')}
             >
               <Avatar className="h-7 w-7">
+                {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
                 <AvatarFallback className="bg-secondary text-xs font-semibold text-foreground">
                   {initials || '??'}
                 </AvatarFallback>
@@ -315,6 +316,7 @@ function TopbarContent() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-3 px-2 py-2">
                 <Avatar className="h-9 w-9">
+                  {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
                   <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
                     {initials || '??'}
                   </AvatarFallback>
