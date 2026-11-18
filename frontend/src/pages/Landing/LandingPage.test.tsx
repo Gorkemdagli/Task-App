@@ -215,28 +215,43 @@ describe('LandingPage', () => {
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('tr');
   });
 
-  it('scrolls to a section without adding a hash to the landing URL', async () => {
+  it('uses native hash links for section navigation and browser history', async () => {
     const user = userEvent.setup();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    renderLanding();
 
-    try {
-      renderLanding();
+    await user.click(screen.getByRole('link', { name: 'İş akışı' }));
+    expect(window.location.hash).toBe('#workflow');
+    expect(document.getElementById('workflow')!.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start',
+    });
 
-      await user.click(screen.getByRole('link', { name: 'İş akışı' }));
-      await user.click(document.querySelector('.landing-hero a[href="#workflow"]')!);
-      await user.click(document.querySelector('.landing-context-footer-line a[href="#workflow"]')!);
-      await user.click(document.querySelector('.landing-nav__menu')!);
-      await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'İş akışı' }));
+    await user.click(screen.getByRole('link', { name: 'Özellikler' }));
+    expect(window.location.hash).toBe('#features');
+    expect(window.history.length).toBeGreaterThan(1);
+    expect(document.getElementById('features')!.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  });
 
-      expect(window.location.hash).toBe('');
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      expect(document.getElementById('workflow')!.scrollIntoView).toHaveBeenCalledTimes(4);
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
+  it('scrolls to a directly loaded section hash after mounting', () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    window.history.replaceState({}, '', '/#workflow');
+
+    renderLanding();
+
+    expect(document.getElementById('workflow')!.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   });
 
   it('uses a static product teaser beside the hero actions', () => {

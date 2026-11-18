@@ -37,8 +37,8 @@ export function HeroSection({ hasConfirmedSession }: { hasConfirmedSession: bool
               </Link>
               <a
                 href="#workflow"
-                className={`${buttonVariants({ variant: 'secondary', size: 'lg' })} landing-hero-cta`}
                 onClick={(event) => scrollToLandingSection(event, '#workflow')}
+                className={`${buttonVariants({ variant: 'secondary', size: 'lg' })} landing-hero-cta`}
               >
                 {t('landing.hero.workflowLink')}
               </a>

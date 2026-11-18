@@ -1,19 +1,18 @@
-import { useParams } from 'react-router-dom';
-import { PagePlaceholder } from '@/components/layout/PagePlaceholder';
 import { useTranslation } from '@/i18n';
 
 export function ChatPage() {
   const { t } = useTranslation();
-  const { id } = useParams();
   return (
-    <PagePlaceholder
-      title="Mesajlaşma"
-      description="Takım veya bireysel mesajlaşma akışı. WebSocket bağlantısı Faz 11'de eklenecek."
-      source="ROADMAP.md:174-188 (Faz 8)"
-    >
-      <p className="text-xs text-secondary-foreground">
-        {t('Konuşma ID:')} <span className="font-mono text-foreground">{id ?? '—'}</span>
-      </p>
-    </PagePlaceholder>
+    <main className="mx-auto w-full max-w-3xl p-4 md:p-8">
+      <section
+        role="status"
+        className="rounded-lg border border-border bg-card p-6 text-card-foreground"
+      >
+        <h1 className="text-2xl font-semibold">{t('Mesajlaşma')}</h1>
+        <p className="mt-2 text-sm text-secondary-foreground">
+          {t('Mesajlaşma şu anda kullanılamıyor.')}
+        </p>
+      </section>
+    </main>
   );
 }

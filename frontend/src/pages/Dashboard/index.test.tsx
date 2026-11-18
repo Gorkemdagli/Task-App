@@ -572,11 +572,15 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('task-card-todo-active-109')).not.toBeInTheDocument();
   });
 
-  it('shows empty placeholder when column has no tasks', () => {
+  it('shows a useful empty message and compact column when a column has no tasks', () => {
     useAuthStore.setState({ accessToken: 't', user: admin });
     mockTasks = [];
     renderDashboard();
-    expect(screen.getAllByText('Boş').length).toBe(3);
+    for (const status of ['todo', 'in_progress', 'done']) {
+      const column = screen.getByTestId(`column-${status}`);
+      expect(within(column).getByText('Bu sütunda henüz görev yok')).toBeInTheDocument();
+      expect(column.querySelector(':scope > div:nth-child(2)')).toHaveClass('min-h-0');
+    }
   });
 
   it('shows pending badge on task with pendingStatus when viewer is not proposer', () => {

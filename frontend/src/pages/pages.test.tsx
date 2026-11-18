@@ -203,6 +203,26 @@ describe('placeholder pages', () => {
     expect(screen.getByRole('heading', { name: 'Görevlerim' })).toBeInTheDocument();
   });
 
+  it('distinguishes an empty task list from an empty filtered result', () => {
+    const { unmount } = renderAt('/tasks');
+    expect(screen.getByText(/atanmış göreviniz yok/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Takım panosunu aç' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Temizle' })).not.toBeInTheDocument();
+    unmount();
+
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    renderAt('/tasks');
+    expect(screen.getByText(/aktif takımın panosundan görev oluşturabilirsiniz/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Takım panosunu aç' })).toHaveAttribute('href', '/dashboard');
+  });
+
+  it('clears filters when a filtered task list is empty', () => {
+    useAuthStore.setState({ accessToken: 't', user: member });
+    renderAt('/tasks?teamId=team-1');
+    expect(screen.getByText('Filtrelere uyan görev yok.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Temizle' })).toHaveLength(2);
+  });
+
   it('requests displayed status from a Dashboard column link', () => {
     renderAt('/tasks?status=done&displayStatus=done&teamId=team-1');
 
@@ -265,10 +285,11 @@ describe('placeholder pages', () => {
     expect(screen.getByRole('heading', { name: 'Stub Title', level: 1 })).toBeInTheDocument();
   });
 
-  it('Chat renders title and shows id param', () => {
+  it('Chat explains that messaging is unavailable', () => {
     renderAt('/chat/c-7');
     expect(screen.getByRole('heading', { name: 'Mesajlaşma' })).toBeInTheDocument();
-    expect(screen.getByText('c-7')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Mesajlaşma şu anda kullanılamıyor.');
+    expect(screen.queryByText('c-7')).not.toBeInTheDocument();
   });
 
   it('Profile renders title and shows current user email', () => {

@@ -54,7 +54,11 @@ export function FooterSection({ hasConfirmedSession }: { hasConfirmedSession: bo
 
         <div className="landing-footer__base">
           <p>© 2026 TaskFlow</p>
-          <a href="#hero" onClick={(event) => scrollToLandingSection(event, '#hero')}>
+          <a
+            href="#hero"
+            onClick={(event) => scrollToLandingSection(event, '#hero')}
+            className="inline-flex min-h-11 items-center justify-center px-3"
+          >
             {t('landing.footer.backToTop')}
           </a>
         </div>

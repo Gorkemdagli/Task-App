@@ -183,7 +183,7 @@ function CompanySettingsContent({
       >
         <aside
           data-testid="company-settings-identity-rail"
-          className="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-6"
+          className="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-4 md:p-6"
         >
           <div className="flex flex-col items-center gap-5 text-center">
             <label
@@ -263,7 +263,7 @@ function CompanySettingsContent({
 
         <div
           data-testid="company-settings-profile-panel"
-          className="h-full min-w-0 rounded-lg border border-border bg-card p-6"
+          className="h-full min-w-0 rounded-lg border border-border bg-card p-4 md:p-6"
         >
           <form onSubmit={handleSettingsSubmit} className="space-y-5">
             <h2 className="text-lg font-semibold">{t('company.settings.profile')}</h2>
@@ -323,7 +323,7 @@ function CompanySettingsContent({
 
       <section
         data-testid="company-settings-operations-queue"
-        className="w-full space-y-6 rounded-lg border border-border bg-card p-6"
+        className="w-full space-y-6 rounded-lg border border-border bg-card p-4 md:p-6"
       >
         <form
           onSubmit={handleCreateInvitation}

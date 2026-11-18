@@ -17,7 +17,7 @@ export function AuthLayout() {
   const { t } = useTranslation();
   return (
     <div className="auth-theme theme-landing flex min-h-screen items-center justify-center bg-background p-4 sm:p-6 lg:p-8">
-      <div className="grid w-full max-w-6xl min-h-[600px] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card shadow-panel lg:grid-cols-2">
+      <div className="grid w-full max-w-6xl min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-border bg-card shadow-panel lg:min-h-[600px] lg:grid-cols-2">
         <BrandPanel />
         <main className="flex items-center justify-center bg-card p-6 sm:p-8 md:p-12 lg:p-10 xl:p-12">
           <div className="w-full max-w-md">

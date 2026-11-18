@@ -45,7 +45,7 @@ function InfoTooltip({ label, description }: { label: string; description: strin
         onMouseLeave={() => setIsOpen(false)}
         onFocus={() => setIsOpen(true)}
         onBlur={() => setIsOpen(false)}
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-secondary-foreground hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border text-secondary-foreground hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <Info aria-hidden="true" size={11} strokeWidth={2.25} />
       </button>

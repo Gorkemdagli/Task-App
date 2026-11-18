@@ -42,7 +42,7 @@ export function PendingAckModal({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="pt-14 [&>button]:h-11 [&>button]:w-11 sm:pt-6 sm:[&>button]:h-4 sm:[&>button]:w-4">
         <DialogHeader>
           <DialogTitle>{t('tasks.pending.proposalTitle', { status: t(`tasks.status.${pendingStatus}`) })}</DialogTitle>
           <DialogDescription>
@@ -88,12 +88,12 @@ export function PendingAckModal({
 
         <DialogFooter className="gap-2">
           {canCancel && (
-            <Button variant="secondary" onClick={onCancel} disabled={isAcking || isCanceling}>
+            <Button variant="secondary" onClick={onCancel} disabled={isAcking || isCanceling} className="h-11 sm:h-9">
               {isCanceling ? t('tasks.pending.canceling') : t('tasks.pending.cancel')}
             </Button>
           )}
           {canAck && !yourAcked && (
-            <Button onClick={onAck} disabled={isAcking || isCanceling}>
+            <Button onClick={onAck} disabled={isAcking || isCanceling} className="h-11 sm:h-9">
               {isAcking ? t('tasks.pending.approving') : t('tasks.pending.approve')}
             </Button>
           )}

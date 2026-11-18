@@ -67,7 +67,7 @@ export function MemberList({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs"
+                      className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-2 text-xs"
                     >
                       {member.role === 'teamAdmin'
                         ? t('teams.members.teamAdmin')

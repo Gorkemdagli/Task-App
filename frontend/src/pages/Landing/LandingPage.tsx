@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { NavSection } from './sections/NavSection';
 import { HeroSection } from './sections/HeroSection';
 import { FeaturesSection } from './sections/FeaturesSection';
 import { MotionSection } from './sections/MotionSection';
 import { FooterSection } from './sections/FooterSection';
+import { scrollToCurrentLandingHash } from './landingScroll';
 
 /**
  * Public marketing landing at `/`.
@@ -12,6 +14,13 @@ import { FooterSection } from './sections/FooterSection';
  * - Logged-in users hit landing with CTAs pointing to /dashboard.
  */
 export function LandingPage({ hasConfirmedSession }: { hasConfirmedSession: boolean }) {
+  useEffect(() => {
+    const handleHistoryNavigation = () => scrollToCurrentLandingHash();
+    if (window.location.hash) handleHistoryNavigation();
+    window.addEventListener('popstate', handleHistoryNavigation);
+    return () => window.removeEventListener('popstate', handleHistoryNavigation);
+  }, []);
+
   return (
     <div className="theme-landing landing-editorial min-h-screen overflow-x-hidden w-full max-w-full">
       <NavSection hasConfirmedSession={hasConfirmedSession} />

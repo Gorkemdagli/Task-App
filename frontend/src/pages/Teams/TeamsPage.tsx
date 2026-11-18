@@ -228,7 +228,7 @@ export function TeamsPage() {
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">{t('Takımlarım')}</h2>
             </div>
-            <div role="listbox" aria-label={t('Takım dizini')}>
+            <div role="group" aria-label={t('Takım dizini')}>
               {teams.map((team) => {
                 const selected = team.id === selectedId;
                 const mobileExpanded = team.id === mobileExpandedTeamId;
@@ -236,8 +236,7 @@ export function TeamsPage() {
                   <div key={team.id}>
                     <button
                       type="button"
-                      role="option"
-                      aria-selected={selected}
+                      aria-pressed={selected}
                       aria-expanded={mobileExpanded}
                       aria-controls={`team-mobile-preview-${team.id}`}
                       data-testid={`team-directory-item-${team.id}`}

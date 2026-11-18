@@ -194,6 +194,8 @@ export const commonEnglish: Record<string, string> = {
   'Onay Bekliyor': 'Awaiting approval',
   'Görevler yükleniyor': 'Loading tasks',
   'Boş': 'Empty',
+  'Bu sütunda henüz görev yok': 'No tasks in this column yet',
+  'Mesajlaşma şu anda kullanılamıyor.': 'Messaging is currently unavailable.',
   '{{label}} önceki görev': '{{label}} previous task',
   '{{label}} sonraki görev': '{{label}} next task',
   'Görev ayrıntısı': 'Task details',

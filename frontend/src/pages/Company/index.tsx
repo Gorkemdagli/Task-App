@@ -48,7 +48,7 @@ export function CompanyManagementPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
+    <div className="space-y-6 p-0 md:p-8">
       <div role="tablist" aria-label={t('company.navigation.tabs')}>
         {tabs.map((item) => (
           <button

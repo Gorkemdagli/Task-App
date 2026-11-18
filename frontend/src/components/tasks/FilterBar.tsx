@@ -128,7 +128,7 @@ function FilterOptions({
           <button
             type="button"
             onClick={resetFilters}
-            className="text-xs text-secondary-foreground underline underline-offset-2 hover:text-primary"
+            className="inline-flex min-h-11 items-center px-2 text-xs text-secondary-foreground underline underline-offset-2 hover:text-primary lg:min-h-0"
           >
             {t('tasks.filters.clear')}
           </button>
@@ -207,7 +207,7 @@ function FilterOptions({
             type="button"
             aria-expanded={showAllAssignees}
             onClick={() => setShowAllAssignees((visible) => !visible)}
-            className="flex min-h-8 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs text-secondary-foreground hover:text-foreground"
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs text-secondary-foreground hover:text-foreground lg:min-h-8"
           >
             {showAllAssignees ? t('tasks.filters.less') : t('tasks.filters.more')}
             {showAllAssignees ? (
@@ -255,7 +255,7 @@ function FilterOptions({
       </FilterGroup>
 
       <div className="px-4 py-3">
-        <label className="flex items-center gap-2 text-xs text-secondary-foreground">
+        <label className="flex min-h-11 items-center gap-2 text-xs text-secondary-foreground lg:min-h-0">
           <input
             type="checkbox"
             checked={filters.includeArchived}
@@ -298,7 +298,7 @@ function FilterChip({
       data-testid={testId}
       data-active={active}
       className={cn(
-        'flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        'flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:min-h-8',
         active
           ? 'bg-primary text-black hover:bg-primary-hover'
           : 'text-secondary-foreground hover:bg-secondary hover:text-foreground',
@@ -386,7 +386,7 @@ export function ActiveFilterChips({ teams = [], assignees = [], currentUserId }:
             data-testid={`remove-filter-${chip.id}`}
             onClick={chip.remove}
               aria-label={t('tasks.filters.remove', { label: chip.label })}
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:h-6 lg:w-6"
           >
             <X className="h-3 w-3" aria-hidden />
           </button>

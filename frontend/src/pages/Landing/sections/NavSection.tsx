@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -8,7 +8,7 @@ import trFlag from '@/assets/flags/tr.png';
 import { buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useTheme } from '@/hooks/useTheme';
-import { scrollToLandingSection } from '../landingScroll';
+import { scrollToLandingHash, scrollToLandingSection } from '../landingScroll';
 
 const sectionLinks = [
   { href: '#features', label: 'landing.nav.features' },
@@ -21,6 +21,7 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
   const { t } = useTranslation();
   const { mode, toggleMode } = useTheme();
   const [open, setOpen] = useState(false);
+  const pendingSection = useRef<string | null>(null);
   const [activeSection, setActiveSection] = useState<LandingSectionId>('hero');
   const themeLabel = mode === 'dark' ? t('landing.nav.lightTheme') : t('landing.nav.darkTheme');
   const languageLabel = t(i18n.language === 'tr' ? 'Dili İngilizce yap' : 'Switch language to Turkish');
@@ -52,10 +53,10 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
       <div className="landing-nav__inner">
         <a
           href="#hero"
+          onClick={(event) => scrollToLandingSection(event, '#hero')}
           className="landing-wordmark"
           aria-label={t('landing.nav.home')}
           aria-current={activeSection === 'hero' ? 'location' : undefined}
-          onClick={(event) => scrollToLandingSection(event, '#hero')}
         >
           <span className="text-landing-text">Task</span><span className="text-primary">Flow</span>
         </a>
@@ -65,8 +66,8 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
             <a
               key={link.href}
               href={link.href}
-              aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
               onClick={(event) => scrollToLandingSection(event, link.href)}
+              aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
             >
               {t(link.label)}
             </a>
@@ -119,7 +120,18 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
               <Menu aria-hidden />
             </button>
           </SheetTrigger>
-          <SheetContent side="right" className="theme-landing landing-mobile-sheet">
+          <SheetContent
+            side="right"
+            className="theme-landing landing-mobile-sheet"
+            onCloseAutoFocus={(event) => {
+              if (!pendingSection.current) return;
+              event.preventDefault();
+              document.querySelector<HTMLButtonElement>('.landing-nav__menu')?.focus({ preventScroll: true });
+              const href = pendingSection.current;
+              pendingSection.current = null;
+              requestAnimationFrame(() => scrollToLandingHash(href));
+            }}
+          >
             <SheetTitle className="text-landing-text">
               Task<span className="text-primary">Flow</span>
             </SheetTitle>
@@ -129,11 +141,13 @@ export function NavSection({ hasConfirmedSession }: { hasConfirmedSession: boole
                 <SheetClose key={link.href} asChild>
                   <a
                     href={link.href}
-                    aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
                     onClick={(event) => {
-                      scrollToLandingSection(event, link.href);
+                      pendingSection.current = link.href;
+                      scrollToLandingSection(event, link.href, true);
                       if (event.defaultPrevented) setOpen(false);
+                      else pendingSection.current = null;
                     }}
+                    aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}
                   >
                     {t(link.label)}
                   </a>

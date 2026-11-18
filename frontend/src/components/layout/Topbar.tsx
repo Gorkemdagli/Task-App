@@ -162,11 +162,11 @@ function TopbarContent() {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-4 md:px-6">
       {/* Left cluster */}
-      <div className="flex items-center gap-6">
+      <div className="flex min-w-0 items-center gap-2 md:gap-6">
         <button
           type="button"
           onClick={openMobileSheet}
-          className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary md:hidden"
+          className="-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-secondary-foreground hover:bg-secondary md:hidden"
           aria-label={t('Menüyü aç')}
         >
           <Menu className="h-5 w-5" />
@@ -174,7 +174,7 @@ function TopbarContent() {
 
         <Link
           to="/dashboard"
-          className="text-xl font-bold tracking-tight text-primary hover:opacity-90"
+          className="shrink-0 text-lg font-bold tracking-tight text-primary hover:opacity-90 md:text-xl"
         >
           <span className="text-foreground">Task</span><span className="text-primary">Flow</span>
         </Link>
@@ -210,7 +210,7 @@ function TopbarContent() {
       </div>
 
       {/* Right cluster */}
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0 md:gap-1">
         <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
           <DropdownMenuTrigger asChild>
             <button

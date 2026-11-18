@@ -26,18 +26,20 @@ export function TaskListHeader() {
   const { t } = useTranslation();
   return (
     <div
+      role="rowgroup"
       data-testid="task-list-header"
       className={cn(
-        'hidden border-b border-border bg-secondary/30 px-4 py-2 text-xs font-medium text-secondary-foreground lg:grid lg:items-center lg:gap-3',
-        TASK_GRID,
+        'hidden border-b border-border bg-secondary/30 px-4 py-2 text-xs font-medium text-secondary-foreground lg:block',
       )}
     >
-      <span>{t('tasks.columns.title')}</span>
-      <span>{t('tasks.columns.status')}</span>
-      <span>{t('tasks.columns.priority')}</span>
-      <span>{t('tasks.columns.team')}</span>
-      <span>{t('tasks.columns.assignee')}</span>
-      <span>{t('tasks.columns.deadline')}</span>
+      <div role="row" className={cn('grid items-center gap-3', TASK_GRID)}>
+        <span role="columnheader">{t('tasks.columns.title')}</span>
+        <span role="columnheader">{t('tasks.columns.status')}</span>
+        <span role="columnheader">{t('tasks.columns.priority')}</span>
+        <span role="columnheader">{t('tasks.columns.team')}</span>
+        <span role="columnheader">{t('tasks.columns.assignee')}</span>
+        <span role="columnheader">{t('tasks.columns.deadline')}</span>
+      </div>
     </div>
   );
 }
@@ -89,35 +91,33 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
   const isPending = task.pendingStatus !== null;
 
   return (
-    <Link
-      to={`/tasks/${task.id}`}
+    <div
+      role="row"
       data-testid={`task-row-${task.id}`}
       data-pending={isPending ? 'true' : undefined}
-      onPointerEnter={(event) => {
-        if (event.pointerType !== 'touch') prefetchTask();
-      }}
-      onFocus={prefetchTask}
-      className={cn(
-        'grid gap-3 border-b border-border bg-card px-4 py-3 transition-colors last:border-b-0 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:items-center',
-        TASK_GRID,
-        isPending && 'bg-yellow-500/5',
-      )}
+      className={cn('relative grid gap-3 border-b border-border bg-card px-4 py-3 transition-colors hover:bg-secondary last:border-b-0 lg:items-center', TASK_GRID, isPending && 'bg-yellow-500/5')}
     >
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="min-w-0 truncate text-sm font-medium text-foreground">{task.title}</h3>
-          {task.archivedAt && (
-            <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
-              {t('tasks.columns.archive')}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 truncate text-xs text-secondary-foreground lg:hidden">
-          {task.team.name}
-        </p>
+      <div role="cell" className="min-w-0">
+        <Link
+          to={`/tasks/${task.id}`}
+          onPointerEnter={(event) => {
+            if (event.pointerType !== 'touch') prefetchTask();
+          }}
+          onFocus={prefetchTask}
+          className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="min-w-0 truncate text-sm font-medium text-foreground">{task.title}</h3>
+            {task.archivedAt && (
+              <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
+                {t('tasks.columns.archive')}
+              </span>
+            )}
+          </div>
+        </Link>
       </div>
 
-      <div className="flex min-w-0 items-center justify-between gap-3 text-xs lg:block">
+      <div role="cell" className="flex min-w-0 items-center justify-between gap-3 text-xs lg:block">
         <span className="text-secondary-foreground lg:hidden">{t('tasks.columns.status')}</span>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <StatusBadge status={task.status} />
@@ -125,22 +125,22 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 lg:block">
+      <div role="cell" className="flex items-center justify-between gap-3 lg:block">
         <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.priority')}</span>
         <PriorityBadge priority={task.priority} />
       </div>
 
-      <div className="flex items-center justify-between gap-3 lg:block">
+      <div role="cell" className="flex items-center justify-between gap-3 lg:block">
         <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.team')}</span>
         <span className="truncate text-xs text-foreground">{task.team.name}</span>
       </div>
 
-      <div className="flex items-center justify-between gap-3 lg:block">
+      <div role="cell" className="flex items-center justify-between gap-3 lg:block">
         <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.assignee')}</span>
         <AssigneeAvatarStack assignees={task.assignees} max={2} size="sm" />
       </div>
 
-      <div className="flex items-center justify-between gap-3 lg:block">
+      <div role="cell" className="flex items-center justify-between gap-3 lg:block">
         <span className="text-xs text-secondary-foreground lg:hidden">{t('tasks.columns.deadline')}</span>
         <span
           className={cn(
@@ -151,6 +151,6 @@ export function TaskCardRow({ task }: TaskCardRowProps) {
           {formatCalendarDateDisplay(task.deadline, i18n.language)}
         </span>
       </div>
-    </Link>
+    </div>
   );
 }

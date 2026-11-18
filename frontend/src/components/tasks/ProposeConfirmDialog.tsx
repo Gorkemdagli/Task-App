@@ -35,7 +35,10 @@ export function ProposeConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !isProposing && onCancel()}>
-      <DialogContent data-testid="propose-confirm-dialog">
+      <DialogContent
+        data-testid="propose-confirm-dialog"
+        className="pt-14 [&>button]:h-11 [&>button]:w-11 sm:pt-6 sm:[&>button]:h-4 sm:[&>button]:w-4"
+      >
         <DialogHeader>
           <DialogTitle>{t('tasks.proposal.title')}</DialogTitle>
           <DialogDescription>
@@ -64,10 +67,16 @@ export function ProposeConfirmDialog({
             onClick={onCancel}
             disabled={isProposing}
             data-testid="propose-cancel"
+            className="h-11 sm:h-9"
           >
             {t('tasks.proposal.cancel')}
           </Button>
-          <Button onClick={onConfirm} disabled={isProposing} data-testid="propose-confirm">
+          <Button
+            onClick={onConfirm}
+            disabled={isProposing}
+            data-testid="propose-confirm"
+            className="h-11 sm:h-9"
+          >
             <Send className="mr-1 h-3 w-3" />
             {isProposing ? t('tasks.proposal.sending') : t('tasks.proposal.send')}
           </Button>
