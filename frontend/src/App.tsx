@@ -7,6 +7,10 @@ import { authApi, getMe, type RefreshResponse } from './lib/api';
 import { preloadProtectedRoute } from './lib/preloadDashboardRoute';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
+import { teamDetailQueryOptions, teamsQueryOptions } from './hooks/queries/useTeams';
+import { MAX_RENDERED_RECORDS } from './lib/listLimits';
+import { useTeamStore } from './stores/teamStore';
+import type { Team } from './services/teams';
 import type { CurrentUserProfile } from './services/profile';
 import {
   classifyGlobalError,
@@ -129,6 +133,42 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         if (!isCurrent()) return;
         queryClient.setQueryData(queryKeys.profile(canonicalUser.id), canonicalUser);
         setUser(canonicalUser);
+        const authenticatedGeneration = useAuthStore.getState().sessionGeneration;
+        if (canonicalUser.tenantId && window.location.pathname === '/dashboard') {
+          const tenantId = canonicalUser.tenantId;
+          const selectedTeamId =
+            canonicalUser.role === 'member' ? useTeamStore.getState().activeTeamId : null;
+          const teamsQueryKey = queryKeys.teams.list(tenantId);
+          const teamsPrefetch = queryClient.prefetchQuery(teamsQueryOptions(tenantId));
+          if (selectedTeamId) {
+            void teamsPrefetch.then(() => {
+              const currentUser = useAuthStore.getState().user;
+              const currentGeneration = useAuthStore.getState().sessionGeneration;
+              const teams = queryClient.getQueryData<Team[]>(teamsQueryKey);
+              const visibleTeams = Array.isArray(teams)
+                ? [...teams]
+                    .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+                    .slice(0, MAX_RENDERED_RECORDS)
+                : [];
+              if (
+                !active ||
+                currentGeneration !== authenticatedGeneration ||
+                window.location.pathname !== '/dashboard' ||
+                currentUser?.id !== canonicalUser.id ||
+                currentUser.tenantId !== tenantId ||
+                currentUser.role !== 'member' ||
+                useTeamStore.getState().activeTeamId !== selectedTeamId ||
+                queryClient.getQueryState(teamsQueryKey)?.status !== 'success'
+              ) return;
+              const selectedTeam = visibleTeams.find(
+                (team) => team.id === selectedTeamId && team.tenantId === tenantId,
+              );
+              if (selectedTeam) {
+                void queryClient.prefetchQuery(teamDetailQueryOptions(tenantId, selectedTeam.id));
+              }
+            }).catch(() => undefined);
+          }
+        }
         if (['/login', '/register'].includes(window.location.pathname)) {
           navigateRef.current('/dashboard', { replace: true });
         }
