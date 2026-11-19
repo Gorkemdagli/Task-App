@@ -55,6 +55,20 @@ describe('TaskCard', () => {
     expect(screen.getByText('Yüksek')).toBeInTheDocument();
   });
 
+  it('renders a separate task link when mobile split navigation is enabled', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} draggable mobileSplitNavigation showTeam />
+      </Wrap>,
+    );
+
+    const card = screen.getByTestId('task-card-t1');
+    const taskLink = screen.getByRole('link', { name: 'Göreve git' });
+    expect(taskLink).toHaveAttribute('href', '/tasks/t1');
+    expect(card.querySelectorAll('a')).toHaveLength(2);
+    expect(card).toContainElement(taskLink);
+  });
+
   it('shows a blocked badge beside priority without exposing the reason', () => {
     render(
       <Wrap>

@@ -7,6 +7,7 @@ export const taskTranslations = {
         loading: 'Yükleniyor…',
         found_one: '{{count}} görev bulundu',
         found_other: '{{count}} görev bulundu',
+        openTaskHint: 'Görevi açmak için görev adına tıklayın.',
         emptyFiltered: 'Filtrelere uyan görev yok.',
         emptyUnfilteredAdmin: 'Henüz görev yok. Aktif takımın panosundan görev oluşturabilirsiniz.',
         emptyUnfilteredMember: 'Henüz atanmış göreviniz yok. Görev atandığında burada görünür.',
@@ -80,6 +81,7 @@ export const taskTranslations = {
         task_other: 'görev',
       },
       card: {
+        goToTask: 'Göreve git',
         blocked: 'Engellendi',
         today: 'Bugün',
         tomorrow: 'Yarın',
@@ -247,6 +249,7 @@ export const taskTranslations = {
         loading: 'Loading…',
         found_one: '{{count}} task found',
         found_other: '{{count}} tasks found',
+        openTaskHint: 'Click a task name to open it.',
         emptyFiltered: 'No tasks match these filters.',
         emptyUnfilteredAdmin: 'There are no tasks yet. Create a task from the active team dashboard.',
         emptyUnfilteredMember: 'You have no assigned tasks yet. Assigned tasks will appear here.',
@@ -320,6 +323,7 @@ export const taskTranslations = {
         task_other: 'tasks',
       },
       card: {
+        goToTask: 'Go to task',
         blocked: 'Blocked',
         today: 'Today',
         tomorrow: 'Tomorrow',

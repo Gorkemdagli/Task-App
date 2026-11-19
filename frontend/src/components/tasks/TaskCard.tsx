@@ -36,6 +36,7 @@ interface TaskCardProps {
   showTeam?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  mobileSplitNavigation?: boolean;
 }
 
 export function TaskCard({
@@ -46,6 +47,7 @@ export function TaskCard({
   showTeam = false,
   selected = false,
   onSelect,
+  mobileSplitNavigation = false,
 }: TaskCardProps) {
   const { t, i18n } = useTranslation();
   const prefetchTask = usePrefetchTask(task.id);
@@ -97,20 +99,27 @@ export function TaskCard({
         selected && 'ring-1 ring-primary',
       )}
     >
-      <Link
-        to={`/tasks/${task.id}`}
-        className="block p-3"
-        draggable={false}
-        onPointerEnter={(event) => {
-          if (event.pointerType !== 'touch') handlePrefetch();
-        }}
-        onFocus={handlePrefetch}
-        onClick={(e) => {
-          if (isDragging || onSelect) e.preventDefault();
-          if (onSelect && !isDragging) onSelect();
-        }}
-        aria-current={selected ? 'true' : undefined}
-      >
+      {(
+        <Link
+          to={`/tasks/${task.id}`}
+          aria-label={task.title}
+          className={cn(
+            'absolute inset-0 z-20',
+            mobileSplitNavigation && 'hidden lg:block',
+          )}
+          draggable={false}
+          onPointerEnter={(event) => {
+            if (event.pointerType !== 'touch') handlePrefetch();
+          }}
+          onFocus={handlePrefetch}
+          onClick={(event) => {
+            if (isDragging || onSelect) event.preventDefault();
+            if (onSelect && !isDragging) onSelect();
+          }}
+          aria-current={selected ? 'true' : undefined}
+        />
+      )}
+      <div className="relative z-10 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">
             <span
@@ -130,6 +139,27 @@ export function TaskCard({
               </span>
             )}
           </span>
+          {mobileSplitNavigation && (
+            <Link
+              to={`/tasks/${task.id}`}
+              className="inline-flex min-h-9 shrink-0 items-center rounded border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
+              draggable={false}
+              onPointerDown={(event) => event.stopPropagation()}
+              onTouchStart={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+              onPointerEnter={(event) => {
+                if (event.pointerType !== 'touch') handlePrefetch();
+              }}
+              onFocus={handlePrefetch}
+              onClick={(event) => {
+                if (isDragging || onSelect) event.preventDefault();
+                if (onSelect && !isDragging) onSelect();
+              }}
+              aria-current={selected ? 'true' : undefined}
+            >
+              {t('tasks.card.goToTask')}
+            </Link>
+          )}
           <span className="flex min-w-0 items-center gap-2">
             {isPending && task.pendingStatus && <PendingStatusBadge status={task.pendingStatus} />}
             {showTeam && (
@@ -157,7 +187,7 @@ export function TaskCard({
             )}
           </span>
         </div>
-      </Link>
+      </div>
     </div>
   );
 }

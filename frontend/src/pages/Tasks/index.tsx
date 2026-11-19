@@ -106,12 +106,17 @@ export function TasksPage() {
           aria-label={t('tasks.page.results')}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-secondary-foreground">
+            <p className="text-sm font-medium text-secondary-foreground">
               {isLoading ? (
                 <span role="status" className="sr-only">{t('tasks.page.loading')}</span>
               ) : (
                 t('tasks.page.found', { count: data?.total ?? 0 })
               )}
+              {!isLoading && data?.total ? (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  {t('tasks.page.openTaskHint')}
+                </span>
+              ) : null}
             </p>
             <ActiveFilterChips teams={teams ?? []} assignees={assignees} currentUserId={user?.id} />
           </div>

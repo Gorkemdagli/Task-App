@@ -222,6 +222,7 @@ function StatusColumn({
                     draggable={draggable}
                     currentUserId={userId}
                     showTeam={showTeam}
+                    mobileSplitNavigation
                     selected={selectedTaskId === task.id}
                     onSelect={onSelectTask ? () => onSelectTask(task.id) : undefined}
                   />
@@ -551,6 +552,11 @@ export function DashboardPage() {
     { enabled: tasksEnabled },
   );
   const taskQueries = [todoTasksQuery, inProgressTasksQuery, doneTasksQuery];
+  const taskQueriesByStatus = {
+    todo: todoTasksQuery,
+    in_progress: inProgressTasksQuery,
+    done: doneTasksQuery,
+  };
   const tasksData = taskQueries.map((query) => query.data);
   const tasks = taskQueries.flatMap((query) => query.data?.tasks ?? EMPTY_TASKS);
   const visibleTaskCount = taskQueries.reduce((total, query) => total + (query.data?.total ?? 0), 0);
@@ -569,12 +575,13 @@ export function DashboardPage() {
     grouped[status].sort(compareDashboardTasks);
   }
 
-  const isLoading =
-    taskQueries.some((query) => query.isLoading) ||
+  const isReadinessLoading =
     readiness.phase === 'teams' || readiness.phase === 'team-detail' ||
     (readiness.phase === 'tasks' && taskQueries.some((query, index) =>
       query.fetchStatus === 'idle' && tasksData[index] === undefined,
     ));
+  const canInteractWithTasks =
+    !isReadinessLoading && !taskQueries.some((query) => query.isLoading);
   const visibleColumns: Record<TaskStatus, Task[]> = { todo: [], in_progress: [], done: [] };
   for (const status of Object.keys(grouped) as TaskStatus[]) {
     visibleColumns[status] = grouped[status].slice(0, TASKS_PER_COLUMN);
@@ -729,13 +736,13 @@ export function DashboardPage() {
                 key={column.status}
                 column={column}
                 tasks={visibleColumns[column.status]}
-                isLoading={isLoading}
+                isLoading={isReadinessLoading || taskQueriesByStatus[column.status].isLoading}
                 userId={user?.id}
                 teamId={teamId}
                 showTeam={isAllTeamScope}
                 selectedTaskId={selectedTaskId}
                 onSelectTask={handleTaskSelect}
-                draggable={workflowFilter !== 'archived'}
+                draggable={canInteractWithTasks && workflowFilter !== 'archived'}
               />
             ))}
           </div>
