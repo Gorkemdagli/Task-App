@@ -484,7 +484,7 @@ export function TeamDetailPage() {
             />
           </section>
 
-          <section data-testid="team-task-panel" className="flex h-[28rem] min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <section data-testid="team-task-panel" className="flex min-w-0 flex-col rounded-lg border border-border bg-card lg:h-[28rem] lg:overflow-hidden">
             <div className="flex h-16 items-center justify-between border-b border-border px-5">
               <h2 className="text-lg font-semibold text-foreground">
                 {t('teams.detail.tasks')} <span className="text-secondary-foreground">({team.taskCount})</span>
@@ -501,7 +501,7 @@ export function TeamDetailPage() {
                 </Button>
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               {tasksLoading ? (
                 <div className="space-y-2 p-4">
                   {Array.from({ length: PAGE_SIZE }, (_, index) => (

@@ -147,3 +147,4 @@ frontend/.impeccable/
 .wrongstack
 docs/agentSetup.md
 scripts/__pycache__
+.hallmark

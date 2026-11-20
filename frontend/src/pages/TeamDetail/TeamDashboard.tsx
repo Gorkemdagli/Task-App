@@ -1,11 +1,14 @@
-import { useId, useState } from 'react';
+import { lazy, Suspense, useId, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTeamDashboard } from '@/hooks/queries/useTeamDashboard';
 import type { CompanyDashboardRange } from '@/services/companyDashboard';
 import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
-import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from '../Company/CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger } from '../Company/CompanyDashboardTables';
+
+const PeriodTrendCharts = lazy(() => import('../Company/CompanyDashboardCharts').then(({ PeriodTrendCharts }) => ({ default: PeriodTrendCharts })));
+const PriorityDistribution = lazy(() => import('../Company/CompanyDashboardCharts').then(({ PriorityDistribution }) => ({ default: PriorityDistribution })));
+const StatusDonut = lazy(() => import('../Company/CompanyDashboardCharts').then(({ StatusDonut }) => ({ default: StatusDonut })));
 
 function KpiCard({
   label,
@@ -287,15 +290,15 @@ export function TeamDashboard({ teamId, enabled }: { teamId: string; enabled: bo
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,.9fr)]">
             <RiskLedger risk={data.risk} riskTasks={data.riskTasks} teamId={teamScope} />
             <div className="space-y-4">
-              <StatusDonut breakdown={data.statusBreakdown} teamId={teamScope} />
-              <PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamScope} />
+              <Suspense fallback={null}><StatusDonut breakdown={data.statusBreakdown} teamId={teamScope} /></Suspense>
+              <Suspense fallback={null}><PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamScope} /></Suspense>
             </div>
           </div>
-          <PeriodTrendCharts
+          <Suspense fallback={null}><PeriodTrendCharts
             createdVsCompleted={data.createdVsCompleted}
             throughput={data.throughput}
             cumulativeFlow={data.cumulativeFlow}
-          />
+          /></Suspense>
         </>
       )}
 

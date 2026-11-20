@@ -189,6 +189,9 @@ test('late task edit from a prior session cannot restore data after same-tenant 
 
     await adminPage.getByRole('button', { name: /Kullanıcı menüsünü aç|open user menu/i }).click();
     await adminPage.getByRole('menuitem', { name: /Oturumu Kapat|log out/i }).click();
+    await expect(adminPage).toHaveURL((url) => url.pathname === '/');
+    await expect(adminPage.getByRole('link', { name: /Giriş yap/i }).first()).toBeVisible();
+    await adminPage.getByRole('link', { name: /Giriş yap/i }).first().click();
     await expect(adminPage.locator('#email')).toBeVisible();
     await login(adminPage, member, password);
     await adminPage.evaluate((path) => {
@@ -209,17 +212,16 @@ test('late task edit from a prior session cannot restore data after same-tenant 
     expect(deniedResponse.status()).toBe(403);
     await expect(adminPage.getByText(taskTitle, { exact: true })).toHaveCount(0);
 
-    const terminalRetryPromise = adminPage.waitForResponse(
+    const staleMutationResponsePromise = adminPage.waitForResponse(
       (response) =>
         response.request().method() === 'PATCH' &&
-        response.url().endsWith(`/api/v1/tasks/${task.id}`) &&
-        mutationAttempts >= 2,
+        response.url().endsWith(`/api/v1/tasks/${task.id}`),
     );
     releaseMutation();
-    const terminalRetry = await terminalRetryPromise;
-    await terminalRetry.finished();
-    expect(mutationAttempts).toBe(2);
-    expect(terminalRetry.status()).toBe(403);
+    const staleMutationResponse = await staleMutationResponsePromise;
+    await staleMutationResponse.finished();
+    expect(mutationAttempts).toBe(1);
+    expect(staleMutationResponse.status()).toBe(401);
     await adminPage.evaluate(
       () => new Promise<void>((resolve) => queueMicrotask(() => queueMicrotask(resolve))),
     );

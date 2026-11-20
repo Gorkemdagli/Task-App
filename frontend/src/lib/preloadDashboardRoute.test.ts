@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getProtectedRouteChunk, preloadProtectedRoute } from './preloadDashboardRoute';
+import {
+  getPreloadedDashboardModules,
+  getProtectedRouteChunk,
+  preloadProtectedRoute,
+} from './preloadDashboardRoute';
 
 vi.mock('../components/ProtectedRoute', () => Promise.reject(new Error('chunk failed')));
 vi.mock('../components/layout/AppShell', () => ({ AppShell: () => null }));
@@ -7,6 +11,12 @@ vi.mock('../components/layout/AppShell', () => ({ AppShell: () => null }));
 describe('preloadProtectedRoute', () => {
   it('absorbs route chunk failures so auth restoration can continue', async () => {
     await expect(preloadProtectedRoute('/dashboard')).resolves.toBeUndefined();
+    expect(getPreloadedDashboardModules()).toBeUndefined();
+  });
+
+  it('does not expose a dashboard module set for other paths', async () => {
+    await expect(preloadProtectedRoute('/teams')).resolves.toBeUndefined();
+    expect(getPreloadedDashboardModules()).toBeUndefined();
   });
 
   it.each([

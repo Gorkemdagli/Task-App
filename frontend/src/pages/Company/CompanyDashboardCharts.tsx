@@ -1,19 +1,14 @@
-import {
-  useState,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react';
+import { useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { CompanyDashboard } from '@/services/companyDashboard';
+import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { buildPriorityTasksUrl, buildStatusTasksUrl } from './companyDashboardNavigation';
 
 type StatusBreakdown = CompanyDashboard['statusBreakdown'];
 type PriorityBreakdown = CompanyDashboard['priorityBreakdown'];
 type TrendPoint = CompanyDashboard['createdVsCompleted'][number];
 type ThroughputPoint = CompanyDashboard['throughput'][number];
-type CumulativeFlowPoint = NonNullable<CompanyDashboard['cumulativeFlow']>['samples'][number];
 
 const STATUS_SEGMENTS = [
   { key: 'todo', label: 'company.charts.todo', color: 'text-status-todo', marker: 'bg-status-todo' },
@@ -32,360 +27,15 @@ const PRIORITY_SEGMENTS = [
   { key: 'high', label: 'company.charts.high', color: 'bg-priority-high' },
 ] as const;
 
-const CHART_BOTTOM = 46;
-const CHART_HEIGHT = 36;
-const CHART_SIDE_PADDING = 4;
-
-function chartX(index: number, count: number) {
-  return count === 1
-    ? 50
-    : CHART_SIDE_PADDING + (index / (count - 1)) * (100 - CHART_SIDE_PADDING * 2);
-}
-
-function chartY(value: number, max: number) {
-  return CHART_BOTTOM - (value / max) * CHART_HEIGHT;
-}
-
-function chartLabels(count: number) {
-  return count <= 1 ? new Set([0]) : new Set([0, count - 1]);
-}
-
-function chartNumber(value: number, language: string) {
-  return new Intl.NumberFormat(language).format(value);
-}
-
-function ChartTooltip({ x, children }: { x: number; children: string }) {
-  return (
-    <div
-      role="tooltip"
-      className="pointer-events-none absolute top-1 z-10 grid min-w-32 -translate-x-1/2 gap-1.5 whitespace-nowrap rounded-lg border border-border/70 bg-background px-2.5 py-2 text-xs tabular-nums text-card-foreground shadow-xl"
-      style={{ left: `${Math.min(88, Math.max(12, x))}%` }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function nearestChartIndex(
-  event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>,
-  count: number,
-) {
-  const rect = event.currentTarget.getBoundingClientRect();
-  const width = rect.width;
-  if (!width) return 0;
-  const position = (event.clientX - rect.left) / width;
-  const padding = CHART_SIDE_PADDING / 100;
-  const plotPosition = (position - padding) / (1 - padding * 2);
-  const clampedPosition = Math.max(0, Math.min(1, plotPosition));
-  return Math.round(clampedPosition * (count - 1));
-}
-
-function ChartInteractionSurface({
-  testId,
-  count,
-  onActivate,
-  onDeactivate,
-  children,
-}: {
-  testId: string;
-  count: number;
-  onActivate: (index: number) => void;
-  onDeactivate: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      className="absolute inset-x-0 top-0 bottom-5 z-10"
-      onPointerMove={(event) => onActivate(nearestChartIndex(event, count))}
-      onPointerLeave={(event) => {
-        if (event.pointerType !== 'touch') onDeactivate();
-      }}
-      onClick={(event) => onActivate(nearestChartIndex(event, count))}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ChartDataPoint({
-  x,
-  top,
-  label,
-  onActivate,
-  onDeactivate,
-}: {
-  x: number;
-  top: string;
-  label: string;
-  onActivate: () => void;
-  onDeactivate: () => void;
-}) {
-  return (
-    <span
-      role="img"
-      tabIndex={0}
-      aria-label={label}
-      title={label}
-      onFocus={onActivate}
-      onBlur={onDeactivate}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          onDeactivate();
-          event.currentTarget.blur();
-        }
-      }}
-      className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-      style={{ left: `${x}%`, top }}
-    />
-  );
-}
-
-function TrendChart({ points, max }: { points: TrendPoint[]; max: number }) {
-  const { t, i18n } = useTranslation();
+function RechartsFrame({ data, children, label, testId, renderPoint }: { data: object[]; children: ReactNode; label: string; testId: string; renderPoint: (index: number) => string }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const labels = chartLabels(points.length);
-  const activePoint = activeIndex === null ? null : points[activeIndex];
-  const createdPath = points
-    .map((point, index) => `${chartX(index, points.length)},${chartY(point.created, max)}`)
-    .join(' ');
-  const completedPath = points
-    .map((point, index) => `${chartX(index, points.length)},${chartY(point.completed, max)}`)
-    .join(' ');
-
-  return (
-    <div className="relative min-h-0 flex-1" data-testid="company-trend-chart">
-      <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
-        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
-        <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
-        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
-        {createdPath && (
-          <polyline points={createdPath} fill="none" className="stroke-primary" strokeWidth="1.5" />
-        )}
-        {completedPath && (
-          <polyline
-            points={completedPath}
-            fill="none"
-            className="stroke-status-done"
-            strokeWidth="1.5"
-          />
-        )}
-        {points.map((point, index) => {
-          const x = chartX(index, points.length);
-          return (
-            <g key={point.period} aria-hidden="true">
-              <circle cx={x} cy={chartY(point.created, max)} r="1.5" className="fill-primary" />
-              <circle
-                cx={x}
-                cy={chartY(point.completed, max)}
-                r="1.5"
-                className="fill-status-done"
-              />
-              {labels.has(index) && (
-                <text
-                  x={x}
-                  y="61"
-                  textAnchor="middle"
-                  className="fill-secondary-foreground text-xs"
-                >
-                  {point.period.slice(5)}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      {activePoint && activeIndex !== null && (
-        <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {t('company.charts.createdTooltip', {
-            period: activePoint.period,
-            created: chartNumber(activePoint.created, i18n.language),
-            completed: chartNumber(activePoint.completed, i18n.language),
-          })}
-        </ChartTooltip>
-      )}
-      <ChartInteractionSurface
-        testId="company-trend-hit-surface"
-        count={points.length}
-        onActivate={setActiveIndex}
-        onDeactivate={() => setActiveIndex(null)}
-      >
-        {points.map((point, index) => (
-          <ChartDataPoint
-            key={point.period}
-            x={chartX(index, points.length)}
-            top={`${(chartY(Math.max(point.created, point.completed), max) / CHART_BOTTOM) * 100}%`}
-            label={t('company.charts.createdPoint', {
-              period: point.period,
-              created: point.created,
-              completed: point.completed,
-            })}
-            onActivate={() => setActiveIndex(index)}
-            onDeactivate={() => setActiveIndex(null)}
-          />
-        ))}
-      </ChartInteractionSurface>
-    </div>
-  );
-}
-
-function ThroughputChart({ points, max }: { points: ThroughputPoint[]; max: number }) {
-  const { t, i18n } = useTranslation();
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const labels = chartLabels(points.length);
-  const activePoint = activeIndex === null ? null : points[activeIndex];
-  return (
-    <div className="relative min-h-0 flex-1" data-testid="company-throughput-chart">
-      <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
-        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
-        <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
-        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
-        {points.map((point, index) => {
-          const x = chartX(index, points.length);
-          const height = Math.max(1, (point.count / max) * CHART_HEIGHT);
-          return (
-            <g key={point.period} aria-hidden="true">
-              <rect
-                x={x - 1.4}
-                y={CHART_BOTTOM - height}
-                width="2.8"
-                height={height}
-                rx="0.5"
-                className="fill-primary"
-              />
-              {labels.has(index) && (
-                <text
-                  x={x}
-                  y="61"
-                  textAnchor="middle"
-                  className="fill-secondary-foreground text-xs"
-                >
-                  {point.period.slice(5)}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      {activePoint && activeIndex !== null && (
-        <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {t('company.charts.completedTooltip', {
-            period: activePoint.period,
-            count: chartNumber(activePoint.count, i18n.language),
-          })}
-        </ChartTooltip>
-      )}
-      <ChartInteractionSurface
-        testId="company-throughput-hit-surface"
-        count={points.length}
-        onActivate={setActiveIndex}
-        onDeactivate={() => setActiveIndex(null)}
-      >
-        {points.map((point, index) => {
-          const height = Math.max(1, (point.count / max) * CHART_HEIGHT);
-          return (
-            <ChartDataPoint
-              key={point.period}
-              x={chartX(index, points.length)}
-              top={`${((CHART_BOTTOM - height) / CHART_BOTTOM) * 100}%`}
-              label={t('company.charts.completedPoint', {
-                period: point.period,
-                count: point.count,
-              })}
-              onActivate={() => setActiveIndex(index)}
-              onDeactivate={() => setActiveIndex(null)}
-            />
-          );
-        })}
-      </ChartInteractionSurface>
-    </div>
-  );
-}
-
-function CumulativeFlowChart({ points, max }: { points: CumulativeFlowPoint[]; max: number }) {
-  const { t, i18n } = useTranslation();
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const labels = chartLabels(points.length);
-  const activePoint = activeIndex === null ? null : points[activeIndex];
-  const series = [
-    { key: 'todo', stroke: 'stroke-status-todo', fill: 'fill-status-todo' },
-    { key: 'inProgress', stroke: 'stroke-status-inprogress', fill: 'fill-status-inprogress' },
-    { key: 'done', stroke: 'stroke-status-done', fill: 'fill-status-done' },
-  ] as const;
-
-  return (
-    <div className="relative min-h-0 flex-1" data-testid="company-cumulative-flow-chart">
-      <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" aria-hidden="true">
-        {[10, 22, 34].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} className="stroke-border/60" strokeDasharray="1 2" />)}
-        <line x1="0" y1={CHART_BOTTOM} x2="100" y2={CHART_BOTTOM} className="stroke-border" />
-        {activeIndex !== null && <line x1={chartX(activeIndex, points.length)} y1="4" x2={chartX(activeIndex, points.length)} y2={CHART_BOTTOM} className="stroke-border" strokeDasharray="1 2" />}
-        {series.map((item) => (
-          <polyline
-            key={item.key}
-            points={points
-              .map((point, index) => `${chartX(index, points.length)},${chartY(point[item.key], max)}`)
-              .join(' ')}
-            fill="none"
-            className={item.stroke}
-            strokeWidth="1.5"
-          />
-        ))}
-        {points.map((point, index) => {
-          const x = chartX(index, points.length);
-          return (
-            <g key={point.date} aria-hidden="true">
-              {series.map((item) => (
-                <circle
-                  key={item.key}
-                  cx={x}
-                  cy={chartY(point[item.key], max)}
-                  r="1.5"
-                  className={item.fill}
-                />
-              ))}
-              {labels.has(index) && (
-                <text x={x} y="61" textAnchor="middle" className="fill-secondary-foreground text-xs">
-                  {point.date.slice(5)}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      {activePoint && activeIndex !== null && (
-        <ChartTooltip x={chartX(activeIndex, points.length)}>
-          {t('company.charts.cumulativeTooltip', {
-            date: activePoint.date,
-            todo: chartNumber(activePoint.todo, i18n.language),
-            inProgress: chartNumber(activePoint.inProgress, i18n.language),
-            done: chartNumber(activePoint.done, i18n.language),
-          })}
-        </ChartTooltip>
-      )}
-      <ChartInteractionSurface
-        testId="company-cumulative-flow-hit-surface"
-        count={points.length}
-        onActivate={setActiveIndex}
-        onDeactivate={() => setActiveIndex(null)}
-      >
-        {points.map((point, index) => (
-          <ChartDataPoint
-            key={point.date}
-            x={chartX(index, points.length)}
-            top={`${(chartY(Math.max(point.todo, point.inProgress, point.done), max) / CHART_BOTTOM) * 100}%`}
-            label={t('company.charts.cumulativePoint', {
-              date: point.date,
-              todo: point.todo,
-              inProgress: point.inProgress,
-              done: point.done,
-            })}
-            onActivate={() => setActiveIndex(index)}
-            onDeactivate={() => setActiveIndex(null)}
-          />
-        ))}
-      </ChartInteractionSurface>
-    </div>
-  );
+  const visibleIndex = activeIndex === null || data.length === 0 ? null : Math.min(activeIndex, data.length - 1);
+  const activate = (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position = rect.width ? ((event.clientX - rect.left) / rect.width - 0.04) / 0.92 : 0;
+    setActiveIndex(Math.max(0, Math.min(data.length - 1, Math.round(position * (data.length - 1)))));
+  };
+  return <div role="group" aria-label={label} className="relative h-full min-h-0 w-full text-xs [&_.recharts-cartesian-axis-tick_text]:fill-secondary-foreground [&_.recharts-cartesian-grid_line]:stroke-border/60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} accessibilityLayer margin={{ top: 12, right: 12, bottom: 0, left: -20 }}>{children}<CartesianGrid vertical={false} strokeDasharray="3 3" /><XAxis dataKey="period" tickFormatter={(value: string) => value.slice(5)} tickLine={false} axisLine={false} minTickGap={24} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} width={40} /><Tooltip contentStyle={{ borderRadius: 8, borderColor: 'var(--border)', background: 'var(--background)', color: 'var(--foreground)' }} formatter={(value) => new Intl.NumberFormat().format(Number(value ?? 0))} /></ComposedChart></ResponsiveContainer>{visibleIndex !== null && <div role="tooltip" className="pointer-events-none absolute left-1/2 top-1 z-10 -translate-x-1/2 rounded-lg border border-border bg-background px-2.5 py-2 text-xs tabular-nums shadow-xl">{renderPoint(visibleIndex)}</div>}<div data-testid={testId} className="absolute inset-x-0 top-0 bottom-5 z-10" onPointerMove={activate} onPointerLeave={(event) => { if (event.pointerType !== 'touch') setActiveIndex(null); }} onClick={activate}>{data.map((_, index) => <span key={index} role="img" tabIndex={0} aria-label={renderPoint(index)} className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" style={{ left: `${data.length < 2 ? 50 : (index / (data.length - 1)) * 100}%`, top: '50%' }} onFocus={() => setActiveIndex(index)} onBlur={() => setActiveIndex(null)} onKeyDown={(event) => { if (event.key === 'Escape') setActiveIndex(null); }} />)}</div></div>;
 }
 
 export function PeriodTrendCharts({
@@ -398,12 +48,6 @@ export function PeriodTrendCharts({
   cumulativeFlow?: CompanyDashboard['cumulativeFlow'];
 }) {
   const { t } = useTranslation();
-  const maxFlow = Math.max(
-    1,
-    ...createdVsCompleted.flatMap((point) => [point.created, point.completed]),
-  );
-  const maxThroughput = Math.max(1, ...throughput.map((point) => point.count));
-
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section
@@ -427,11 +71,7 @@ export function PeriodTrendCharts({
             </p>
           )}
           {createdVsCompleted.length > 0 && (
-            <TrendChart
-              key={`${createdVsCompleted[0]?.period}-${createdVsCompleted[createdVsCompleted.length - 1]?.period}`}
-              points={createdVsCompleted}
-              max={maxFlow}
-            />
+            <RechartsFrame data={createdVsCompleted} label={t('company.charts.createdCompletedTrend')} testId="company-trend-hit-surface" renderPoint={(index) => `${createdVsCompleted[index].period}: ${t('company.charts.created')}: ${createdVsCompleted[index].created} · ${t('company.charts.completed')}: ${createdVsCompleted[index].completed}`}><Line type="monotone" dataKey="created" name={t('company.charts.created')} stroke="var(--color-primary)" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="completed" name={t('company.charts.completed')} stroke="var(--color-status-done)" strokeWidth={2} dot={false} /></RechartsFrame>
           )}
         </div>
         <div className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-secondary-foreground">
@@ -469,11 +109,7 @@ export function PeriodTrendCharts({
             </p>
           )}
           {throughput.length > 0 && (
-            <ThroughputChart
-              key={`${throughput[0]?.period}-${throughput[throughput.length - 1]?.period}`}
-              points={throughput}
-              max={maxThroughput}
-            />
+            <RechartsFrame data={throughput} label={t('company.charts.throughputTrend')} testId="company-throughput-hit-surface" renderPoint={(index) => `${throughput[index].period}: ${t('company.dashboard.completedTasks')}: ${throughput[index].count}`}><Bar dataKey="count" name={t('company.charts.completed')} fill="var(--color-primary)" radius={[3, 3, 0, 0]} /></RechartsFrame>
           )}
         </div>
       </section>
@@ -494,14 +130,7 @@ export function PeriodTrendCharts({
               <p className="py-6 text-center text-sm text-secondary-foreground">{t('company.charts.noPeriodData')}</p>
             )}
             {cumulativeFlow.samples.length > 0 && (
-              <CumulativeFlowChart
-                key={`${cumulativeFlow.samples[0]?.date}-${cumulativeFlow.samples[cumulativeFlow.samples.length - 1]?.date}`}
-                points={cumulativeFlow.samples}
-                max={Math.max(
-                  1,
-                  ...cumulativeFlow.samples.flatMap((point) => [point.todo, point.inProgress, point.done]),
-                )}
-              />
+              <RechartsFrame data={cumulativeFlow.samples.map(({ date, ...point }) => ({ period: date, ...point }))} label={t('company.charts.cumulativeFlowTrend')} testId="company-cumulative-flow-hit-surface" renderPoint={(index) => { const sample = cumulativeFlow.samples[index]; return `${sample.date}: ${t('company.charts.todo')}: ${sample.todo}, ${t('company.charts.inProgress')}: ${sample.inProgress}, ${t('company.charts.done')}: ${sample.done}`; }}><Area dataKey="todo" name={t('company.charts.todo')} stroke="var(--color-status-todo)" fill="var(--color-status-todo)" fillOpacity={0.12} /><Area dataKey="inProgress" name={t('company.charts.inProgress')} stroke="var(--color-status-inprogress)" fill="var(--color-status-inprogress)" fillOpacity={0.12} /><Area dataKey="done" name={t('company.charts.done')} stroke="var(--color-status-done)" fill="var(--color-status-done)" fillOpacity={0.12} /></RechartsFrame>
             )}
           </div>
           <div className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-secondary-foreground">

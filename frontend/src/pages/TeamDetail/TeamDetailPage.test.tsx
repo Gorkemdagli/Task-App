@@ -224,7 +224,9 @@ describe('TeamDetailPage', () => {
     mocks.useTasks.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     renderPage();
 
-    expect(screen.getByTestId('team-task-panel')).toHaveClass('h-[28rem]');
+    expect(screen.getByTestId('team-task-panel')).toHaveClass('lg:h-[28rem]');
+    expect(screen.getByTestId('team-task-panel')).not.toHaveClass('h-[28rem]');
+    expect(screen.getByTestId('team-task-panel').querySelectorAll('div')[1]).toHaveClass('lg:overflow-y-auto');
     expect(screen.getByTestId('team-task-panel').querySelectorAll('.animate-pulse')).toHaveLength(8);
   });
 
@@ -250,7 +252,7 @@ describe('TeamDetailPage', () => {
     expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
     expect(screen.getByText('Lead time')).toBeInTheDocument();
     expect(screen.getByText(/Ölçülemeyen/)).toBeInTheDocument();
-    expect(screen.getByText(/Yapılacak:/)).toBeInTheDocument();
+    expect(await screen.findByText(/Yapılacak:/)).toBeInTheDocument();
     expect(screen.getByText(/Yapıldı:/)).toBeInTheDocument();
   });
 

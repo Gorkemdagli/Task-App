@@ -292,7 +292,7 @@ export function TaskDetailPage() {
       <div className="task-detail-workbench grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.85fr)_minmax(280px,1.1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
         <aside
           aria-label={t('tasks.detail.infoAria')}
-          className="order-2 flex min-h-0 max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:col-start-1 lg:row-start-1 lg:max-h-none lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border lg:bg-card lg:p-4"
+          className="order-2 flex flex-col rounded-lg border border-border bg-card p-4 lg:order-none lg:col-start-1 lg:row-start-1 lg:max-h-none lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border lg:bg-card lg:p-4"
         >
           <section
             aria-labelledby="task-information-heading"
@@ -497,7 +497,7 @@ export function TaskDetailPage() {
             </div>
           )}
 
-          <div className="mt-4 flex min-h-0 max-h-[20rem] flex-1 overflow-hidden border-t border-border pt-4 lg:max-h-none lg:overflow-hidden">
+          <div className="mt-4 border-t border-border pt-4 lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden">
             <TaskHistoryTimeline taskId={task.id} />
           </div>
 
@@ -506,7 +506,7 @@ export function TaskDetailPage() {
         <section
           role="region"
           aria-label={t('tasks.detail.content')}
-          className="order-1 min-w-0 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-lg border border-border bg-card p-4 lg:col-start-2 lg:row-start-1 lg:order-none lg:max-h-none lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain md:p-5"
+          className="order-1 min-w-0 rounded-lg border border-border bg-card p-4 lg:col-start-2 lg:row-start-1 lg:order-none lg:max-h-none lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain md:p-5"
         >
           {hasPending && task.pendingStatus && (
             <div
@@ -749,21 +749,21 @@ export function TaskDetailPage() {
         >
           <section
             data-testid="task-files-region"
-            className="order-4 flex min-h-0 max-h-[24rem] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:max-h-none lg:flex lg:min-h-0 lg:flex-1 lg:flex-[1_1_0%] lg:flex-col lg:overflow-hidden"
+            className="order-4 flex flex-col rounded-lg border border-border bg-card p-4 lg:order-none lg:max-h-none lg:min-h-0 lg:flex-1 lg:flex-[1_1_0%] lg:overflow-hidden"
           >
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+            <div className="pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
               <TaskFilesPanel taskId={task.id} />
             </div>
           </section>
           <section
             aria-labelledby="comments-heading"
             data-testid="task-comments-region"
-            className="order-5 flex min-h-0 max-h-[28rem] flex-col overflow-hidden rounded-lg border border-border bg-card p-4 lg:order-none lg:max-h-none lg:flex lg:min-h-0 lg:flex-[2_1_0%] lg:flex-col lg:overflow-hidden"
+            className="order-5 flex flex-col rounded-lg border border-border bg-card p-4 lg:order-none lg:max-h-none lg:flex lg:min-h-0 lg:flex-[2_1_0%] lg:flex-col lg:overflow-hidden"
           >
             <h2 id="comments-heading" className="mb-3 shrink-0 text-lg font-semibold">
               {t('tasks.detail.comments')} <span aria-hidden="true">({commentsData?.comments.length ?? 0})</span>
             </h2>
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+            <div className="pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
               <CommentList comments={commentsData?.comments ?? []} />
             </div>
             {allowedComment && id && (

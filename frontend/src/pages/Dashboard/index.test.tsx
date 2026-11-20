@@ -825,6 +825,44 @@ describe('DashboardPage', () => {
     expect(taskUrls.every((url) => url.includes('assigneeIds=u1'))).toBe(true);
   });
 
+  it('renders each status column as its task request settles', async () => {
+    realQueries.teams = true;
+    realQueries.tasks = true;
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    vi.spyOn(teamsService, 'listTeams').mockResolvedValue([
+      { id: 'team-1', name: 'UX' } as teamsService.Team,
+    ]);
+    vi.spyOn(teamsService, 'getTeam').mockResolvedValue(makeTeamDetail('teamAdmin'));
+
+    const todoTask = makeTask({ id: 'loaded-todo-task' });
+    const inProgressTask = makeTask({ id: 'pending-progress-task', status: 'in_progress' });
+    const inProgress = deferred<{ data: { tasks: TaskModule.Task[]; total: number } }>();
+    const taskUrls: string[] = [];
+    vi.spyOn(api, 'get').mockImplementation((url) => {
+      if (!url.startsWith('/tasks')) return Promise.resolve({ data: {} }) as never;
+      taskUrls.push(url);
+      const status = new URLSearchParams(url.split('?')[1]).get('displayStatus');
+      if (status === 'in_progress') return inProgress.promise as never;
+      const tasks = status === 'todo' ? [todoTask] : [];
+      return Promise.resolve({ data: { tasks, total: tasks.length } }) as never;
+    });
+
+    renderLiveDashboard();
+
+    await waitFor(() => expect(taskUrls).toHaveLength(3));
+    expect(await screen.findByTestId('task-card-loaded-todo-task')).toBeInTheDocument();
+    expect(screen.getByTestId('column-in_progress').querySelector('div[aria-label]')).toBeInTheDocument();
+    expect(screen.getByTestId('column-done').querySelector('div[aria-label]')).toBeNull();
+
+    await act(async () => {
+      inProgress.resolve({ data: { tasks: [inProgressTask], total: 1 } });
+    });
+
+    expect(await screen.findByTestId('task-card-pending-progress-task')).toBeInTheDocument();
+    expect(screen.getByTestId('column-in_progress').querySelector('div[aria-label]')).toBeNull();
+    expect(screen.getByTestId('task-card-loaded-todo-task')).toBeInTheDocument();
+  });
+
   it('uses a cached current-team role while the detail refresh is pending', async () => {
     realQueries.teams = true;
     realQueries.tasks = true;
@@ -913,11 +951,11 @@ describe('DashboardPage', () => {
       'lg:bottom-0',
       'lg:w-[min(38vw,32rem)]',
     );
-    expect(screen.getByRole('link', { name: 'Göreve git' })).toHaveAttribute(
+    expect(screen.getAllByRole('link').find((link) => link.textContent === 'Göreve git')).toHaveAttribute(
       'href',
       '/tasks/selected-task',
     );
-    expect(screen.getByRole('link', { name: 'Seçilen görev' })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: 'Seçilen görev' })[0]).toHaveAttribute(
       'href',
       '/tasks/selected-task',
     );
@@ -1111,7 +1149,7 @@ describe('DashboardPage', () => {
     mockTasks = [makeTask({ id: 'mobile-task', title: 'Mobil görev' })];
 
     renderDashboard();
-    fireEvent.click(screen.getByTestId('task-card-mobile-task').querySelector('a')!);
+    fireEvent.click(screen.getByRole('link', { name: 'Göreve git' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent('/tasks/mobile-task');
     expect(screen.queryByTestId('member-task-detail-panel')).toBeNull();

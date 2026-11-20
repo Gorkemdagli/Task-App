@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentType } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from '../App';
 import { api, authApi, getMe } from '../lib/api';
@@ -10,15 +12,61 @@ import { clearGlobalError, getGlobalError } from '../lib/globalError';
 import { queryKeys } from '../lib/queryKeys';
 import { preloadProtectedRoute } from '../lib/preloadDashboardRoute';
 import type { CurrentUserProfile } from '../services/profile';
+import { useTeamStore } from '../stores/teamStore';
 
+const appShellGate = vi.hoisted(() => ({
+  deferred: false,
+  release: undefined as undefined | (() => void),
+}));
+const dashboardModuleLoadCalls = vi.hoisted(() => ({
+  protectedRoute: vi.fn(),
+  appShell: vi.fn(),
+  dashboardPage: vi.fn(),
+}));
+const actualDashboardPreload = vi.hoisted(() => ({
+  preload: undefined as undefined | ((pathname: string) => Promise<unknown>),
+  getModules: undefined as undefined | (() => unknown),
+}));
 vi.mock('../lib/api', async () => {
   const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
   return { ...actual, getMe: vi.fn() };
 });
-vi.mock('../lib/preloadDashboardRoute', () => ({
-  preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
-  preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('../components/layout/AppShell', async () => {
+  const actual = await vi.importActual('../components/layout/AppShell') as { AppShell: ComponentType };
+  return {
+    ...actual,
+    AppShell: () => {
+      const [released, setReleased] = useState(() => !appShellGate.deferred);
+      useEffect(() => {
+        if (!released) appShellGate.release = () => setReleased(true);
+        return () => { appShellGate.release = undefined; };
+      }, [released]);
+      return released ? createElement(actual.AppShell) : null;
+    },
+  };
+});
+vi.mock('../lib/preloadDashboardRoute', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../lib/preloadDashboardRoute');
+  actualDashboardPreload.preload = actual.preloadProtectedRoute as (pathname: string) => Promise<unknown>;
+  actualDashboardPreload.getModules = actual.getPreloadedDashboardModules as () => unknown;
+  return {
+    ...actual,
+    preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
+    preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
+    loadProtectedRouteModule: vi.fn(() => {
+      dashboardModuleLoadCalls.protectedRoute();
+      return (actual.loadProtectedRouteModule as () => Promise<unknown>)();
+    }),
+    loadAppShellModule: vi.fn(() => {
+      dashboardModuleLoadCalls.appShell();
+      return (actual.loadAppShellModule as () => Promise<unknown>)();
+    }),
+    loadDashboardRouteModule: vi.fn(() => {
+      dashboardModuleLoadCalls.dashboardPage();
+      return (actual.loadDashboardRouteModule as () => Promise<unknown>)();
+    }),
+  };
+});
 
 const canonicalUser: CurrentUserProfile = {
   id: 'u1',
@@ -61,6 +109,9 @@ describe('AuthBootstrap canonical flow', () => {
     queryClient.clear();
     vi.mocked(getMe).mockReset();
     vi.mocked(preloadProtectedRoute).mockClear();
+    useTeamStore.setState({ activeTeamId: null });
+    appShellGate.deferred = false;
+    appShellGate.release = undefined;
     stubMatchMedia();
     refreshSpy = vi.spyOn(authApi, 'post').mockResolvedValue({ status: 204, data: null } as never);
   });
@@ -128,6 +179,60 @@ describe('AuthBootstrap canonical flow', () => {
     expect(scaffold.querySelectorAll('a, button')).toHaveLength(0);
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
   });
+
+  it('uses all preloaded dashboard modules after canonical auth and keeps the shell on navigation', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    await act(async () => {
+      await actualDashboardPreload.preload?.('/dashboard');
+    });
+    const modules = actualDashboardPreload.getModules?.();
+    expect(modules).toBeDefined();
+    expect(modules).toHaveProperty('ProtectedRoute');
+    expect(modules).toHaveProperty('AppShell');
+    expect(modules).toHaveProperty('DashboardPage');
+    dashboardModuleLoadCalls.protectedRoute.mockClear();
+    dashboardModuleLoadCalls.appShell.mockClear();
+    dashboardModuleLoadCalls.dashboardPage.mockClear();
+
+    let resolveRefresh!: (value: unknown) => void;
+    let resolveMe!: (user: CurrentUserProfile) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    vi.mocked(getMe).mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveRefresh({ status: 200, data: { accessToken: 'fresh' } });
+    });
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveMe(canonicalUser);
+    });
+    const shell = await screen.findByTestId('app-shell', {}, { timeout: 10_000 });
+    expect(dashboardModuleLoadCalls.protectedRoute).not.toHaveBeenCalled();
+    expect(dashboardModuleLoadCalls.appShell).not.toHaveBeenCalled();
+    expect(dashboardModuleLoadCalls.dashboardPage).not.toHaveBeenCalled();
+
+    act(() => {
+      window.history.pushState({}, '', '/tasks');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(screen.getByTestId('app-shell')).toBe(shell);
+  }, 15_000);
 
   it.each([
     ['/tasks', 'table'],
@@ -226,6 +331,422 @@ describe('AuthBootstrap canonical flow', () => {
     expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
     expect(useAuthStore.getState()).toMatchObject({ accessToken: 'fresh', user: canonicalUser });
   }, 15_000);
+
+  it('starts the tenant teams query before the app shell and reuses its in-flight request', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const shellVisibleAtTeamsRequest: boolean[] = [];
+    const observersAtTeamsRequest: number[] = [];
+    const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url === '/teams') {
+        shellVisibleAtTeamsRequest.push(Boolean(screen.queryByTestId('app-shell')));
+        observersAtTeamsRequest.push(
+          queryClient.getQueryCache().find({ queryKey: queryKeys.teams.list('tenant-a') })?.getObserversCount() ?? -1,
+        );
+      }
+      return new Promise(() => {}) as never;
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/teams'));
+    expect(shellVisibleAtTeamsRequest).toEqual([false]);
+    expect(observersAtTeamsRequest).toEqual([0]);
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(1);
+  }, 15_000);
+
+  it('does not hold the shell open while validating a persisted team against a pending list', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledWith('/teams');
+  }, 15_000);
+
+  it('starts the selected team detail before the shell and reuses its in-flight request', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    appShellGate.deferred = true;
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    const team = {
+      id: 'team-1',
+      name: 'Alpha',
+      description: null,
+      photoUrl: null,
+      tenantId: 'tenant-a',
+      memberCount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    useTeamStore.setState({ activeTeamId: team.id });
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const shellVisibleAtDetailRequest: boolean[] = [];
+    const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url === '/teams') return Promise.resolve({ data: [team] }) as never;
+      if (url === `/teams/${team.id}`) {
+        shellVisibleAtDetailRequest.push(Boolean(screen.queryByTestId('app-shell')));
+      }
+      return new Promise(() => {}) as never;
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith(`/teams/${team.id}`));
+    expect(shellVisibleAtDetailRequest).toEqual([false]);
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    await waitFor(() => expect(appShellGate.release).toBeDefined());
+    act(() => appShellGate.release?.());
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(apiGet.mock.calls.filter(([url]) => url === `/teams/${team.id}`)).toHaveLength(1);
+    expect(apiGet.mock.calls.filter(([url]) => url.startsWith('/tasks'))).toHaveLength(0);
+  }, 15_000);
+
+  it('uses fresh cached tenant teams instead of fetching them again', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    appShellGate.deferred = true;
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    queryClient.setQueryData(queryKeys.teams.list('tenant-a'), []);
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(0);
+    await waitFor(() => expect(appShellGate.release).toBeDefined());
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+    act(() => appShellGate.release?.());
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+  }, 15_000);
+
+  it.each([
+    ['no persisted selection', null, 'team-1', 'tenant-a'],
+    ['stale persisted selection', 'old-team', 'team-1', 'tenant-a'],
+    ['selected ID returned for another tenant', 'team-1', 'team-1', 'tenant-b'],
+  ] as const)(
+    'does not prefetch an unvalidated dashboard team (%s)',
+    async (_case, activeTeamId, teamId, teamTenantId) => {
+      window.history.pushState({}, '', '/dashboard');
+      appShellGate.deferred = true;
+      useTeamStore.setState({ activeTeamId });
+      const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+      const team = {
+        id: teamId,
+        name: 'Alpha',
+        description: null,
+        photoUrl: null,
+        tenantId: teamTenantId,
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      refreshSpy.mockResolvedValue({
+        status: 200,
+        data: { accessToken: 'fresh', user: tenantUser },
+      } as never);
+      const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) =>
+        url === '/teams' ? Promise.resolve({ data: [team] }) as never : new Promise(() => {}) as never,
+      );
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>,
+      );
+
+      await waitFor(() => expect(appShellGate.release).toBeDefined());
+      expect(apiGet.mock.calls.filter(([url]) => url === `/teams/${teamId}`)).toHaveLength(0);
+      expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not prefetch tenant teams for a public initial route', async () => {
+    window.history.pushState({}, '', '/');
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(useAuthStore.getState().user).toEqual(tenantUser));
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(0);
+  });
+
+  it('does not prefetch teams without a tenant', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: canonicalUser },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(0);
+  }, 15_000);
+
+  it('does not prefetch a teams query for a superseded auth bootstrap', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    let resolveRefresh!: (value: unknown) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(resolveRefresh).toBeDefined());
+    act(() => useAuthStore.getState().clearAuth());
+    await act(async () => {
+      resolveRefresh({
+        status: 200,
+        data: { accessToken: 'stale', user: { ...canonicalUser, tenantId: 'tenant-a' } },
+      });
+    });
+
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(0);
+  });
+
+  it('does not speculatively prefetch teams across the company summary phase', async () => {
+    window.history.pushState({}, '', '/company');
+    const companyAdmin = { ...canonicalUser, role: 'companyAdmin' as const, tenantId: 'tenant-a' };
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: companyAdmin },
+    } as never);
+    const observersAtTeamsRequest: number[] = [];
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url === '/teams') {
+        observersAtTeamsRequest.push(
+          queryClient.getQueryCache().find({ queryKey: queryKeys.teams.list('tenant-a') })?.getObserversCount() ?? -1,
+        );
+      }
+      return new Promise(() => {}) as never;
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(observersAtTeamsRequest.every((count) => count > 0)).toBe(true);
+  }, 15_000);
+
+  it('does not cache a teams response that completes after logout cleanup', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    appShellGate.deferred = true;
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    let resolveTeams!: (value: unknown) => void;
+    const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url === '/teams') return new Promise((resolve) => { resolveTeams = resolve; }) as never;
+      if (url === '/teams/team-1') return new Promise(() => {}) as never;
+      return new Promise(() => {}) as never;
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/teams'));
+    await waitFor(() => expect(appShellGate.release).toBeDefined());
+    act(() => {
+      useAuthStore.getState().clearAuth();
+      queryClient.clear();
+    });
+    await act(async () => resolveTeams({ data: [{
+      id: 'team-1',
+      name: 'Alpha',
+      description: null,
+      photoUrl: null,
+      tenantId: 'tenant-a',
+      memberCount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }] }));
+
+    expect(queryClient.getQueryData(queryKeys.teams.list('tenant-a'))).toBeUndefined();
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+  }, 15_000);
+
+  it.each(['account and tenant', 'team selection'] as const)(
+    'does not prefetch a selected team after %s changes while teams are loading',
+    async (changedState) => {
+      window.history.pushState({}, '', '/dashboard');
+      appShellGate.deferred = true;
+      useTeamStore.setState({ activeTeamId: 'team-1' });
+      const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+      const team = {
+        id: 'team-1',
+        name: 'Alpha',
+        description: null,
+        photoUrl: null,
+        tenantId: 'tenant-a',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      refreshSpy.mockResolvedValue({
+        status: 200,
+        data: { accessToken: 'fresh', user: tenantUser },
+      } as never);
+      let resolveTeams!: (value: unknown) => void;
+      const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+        if (url === '/teams') return new Promise((resolve) => { resolveTeams = resolve; }) as never;
+        return new Promise(() => {}) as never;
+      });
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>,
+      );
+
+      await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/teams'));
+      await waitFor(() => expect(appShellGate.release).toBeDefined());
+      act(() => {
+        if (changedState === 'account and tenant') {
+          useAuthStore.getState().setUser({ ...tenantUser, id: 'u2', tenantId: 'tenant-b' });
+        } else {
+          useTeamStore.setState({ activeTeamId: 'team-2' });
+        }
+      });
+      await act(async () => resolveTeams({ data: [team] }));
+
+      expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+      expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    },
+  );
+
+  it('uses cached selected team details without another request when the shell mounts', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    appShellGate.deferred = true;
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+    const tenantUser = { ...canonicalUser, tenantId: 'tenant-a' };
+    const team = {
+      id: 'team-1',
+      name: 'Alpha',
+      description: null,
+      photoUrl: null,
+      tenantId: 'tenant-a',
+      memberCount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    queryClient.setQueryData(queryKeys.teams.list('tenant-a'), [team]);
+    queryClient.setQueryData(queryKeys.team.detail('tenant-a', team.id), {
+      ...team,
+      members: [],
+      taskCount: 0,
+    });
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: tenantUser },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(appShellGate.release).toBeDefined());
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+    act(() => appShellGate.release?.());
+    expect(await screen.findByTestId('app-shell', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+  }, 15_000);
+
+  it('keeps a failed teams prefetch on the existing global error path', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    appShellGate.deferred = true;
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: { ...canonicalUser, tenantId: 'tenant-a' } },
+    } as never);
+    const apiGet = vi.spyOn(api, 'get').mockImplementation((url: string) =>
+      url === '/teams' ? Promise.reject(new Error('teams failed')) as never : new Promise(() => {}) as never,
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(getGlobalError()).not.toBeNull(), { timeout: 5_000 });
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams/team-1')).toHaveLength(0);
+  });
+
+  it('does not prefetch teams after refresh confirms no session', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    const initialGeneration = useAuthStore.getState().sessionGeneration;
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(useAuthStore.getState().sessionGeneration).toBe(initialGeneration + 1));
+    expect(apiGet.mock.calls.filter(([url]) => url === '/teams')).toHaveLength(0);
+  });
 
   it('does not preload dashboard code for the landing route', () => {
     window.history.pushState({}, '', '/');

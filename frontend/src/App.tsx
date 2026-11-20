@@ -4,9 +4,20 @@ import { getProtectedRouteSkeletonVariant, RouteFallback } from './components/la
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
 import { useAuthStore } from './stores/authStore';
 import { authApi, getMe, type RefreshResponse } from './lib/api';
-import { preloadProtectedRoute } from './lib/preloadDashboardRoute';
+import {
+  getPreloadedDashboardModules,
+  getProtectedRouteChunk,
+  loadAppShellModule,
+  loadDashboardRouteModule,
+  loadProtectedRouteModule,
+  preloadProtectedRoute,
+} from './lib/preloadDashboardRoute';
 import { queryClient } from './lib/react-query';
 import { queryKeys } from './lib/queryKeys';
+import { teamDetailQueryOptions, teamsQueryOptions } from './hooks/queries/useTeams';
+import { MAX_RENDERED_RECORDS } from './lib/listLimits';
+import { useTeamStore } from './stores/teamStore';
+import type { Team } from './services/teams';
 import type { CurrentUserProfile } from './services/profile';
 import {
   classifyGlobalError,
@@ -21,7 +32,7 @@ const AuthLayout = lazy(() =>
   import('./pages/Auth/AuthLayout').then((module) => ({ default: module.AuthLayout })),
 );
 const ProtectedRoute = lazy(() =>
-  import('./components/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })),
+  loadProtectedRouteModule().then((module) => ({ default: module.ProtectedRoute })),
 );
 const GlobalErrorPage = lazy(() =>
   import('./components/layout/GlobalErrorPage').then((module) => ({ default: module.GlobalErrorPage })),
@@ -33,10 +44,10 @@ const RegisterPage = lazy(() =>
   import('./pages/Auth/RegisterPage').then((module) => ({ default: module.RegisterPage })),
 );
 const AppShell = lazy(() =>
-  import('./components/layout/AppShell').then((module) => ({ default: module.AppShell })),
+  loadAppShellModule().then((module) => ({ default: module.AppShell })),
 );
 const DashboardPage = lazy(() =>
-  import('./pages/Dashboard').then((module) => ({ default: module.DashboardPage })),
+  loadDashboardRouteModule().then((module) => ({ default: module.DashboardPage })),
 );
 const TeamsPage = lazy(() =>
   import('./pages/Teams').then((module) => ({ default: module.TeamsPage })),
@@ -65,6 +76,35 @@ const PermissionsPage = lazy(() =>
 const CompanyManagementPage = lazy(() =>
   import('./pages/Company').then((module) => ({ default: module.CompanyManagementPage })),
 );
+
+type PreloadedDashboardModules = NonNullable<ReturnType<typeof getPreloadedDashboardModules>>;
+const DashboardModulesContext = createContext<PreloadedDashboardModules | undefined>(undefined);
+
+function ProtectedRouteSlot() {
+  const { pathname } = useLocation();
+  const [modules] = useState(() =>
+    getProtectedRouteChunk(pathname)?.[1] === 'dashboard' ? getPreloadedDashboardModules() : undefined,
+  );
+  const [Component] = useState(() => modules?.ProtectedRoute ?? ProtectedRoute);
+
+  return (
+    <DashboardModulesContext.Provider value={modules}>
+      <Component />
+    </DashboardModulesContext.Provider>
+  );
+}
+
+function AppShellSlot() {
+  const modules = useContext(DashboardModulesContext);
+  const [Component] = useState(() => modules?.AppShell ?? AppShell);
+  return <Component />;
+}
+
+function DashboardPageSlot() {
+  const modules = useContext(DashboardModulesContext);
+  const [Component] = useState(() => modules?.DashboardPage ?? DashboardPage);
+  return <Component />;
+}
 
 const AuthBootstrapContext = createContext(false);
 
@@ -129,6 +169,42 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
         if (!isCurrent()) return;
         queryClient.setQueryData(queryKeys.profile(canonicalUser.id), canonicalUser);
         setUser(canonicalUser);
+        const authenticatedGeneration = useAuthStore.getState().sessionGeneration;
+        if (canonicalUser.tenantId && window.location.pathname === '/dashboard') {
+          const tenantId = canonicalUser.tenantId;
+          const selectedTeamId =
+            canonicalUser.role === 'member' ? useTeamStore.getState().activeTeamId : null;
+          const teamsQueryKey = queryKeys.teams.list(tenantId);
+          const teamsPrefetch = queryClient.prefetchQuery(teamsQueryOptions(tenantId));
+          if (selectedTeamId) {
+            void teamsPrefetch.then(() => {
+              const currentUser = useAuthStore.getState().user;
+              const currentGeneration = useAuthStore.getState().sessionGeneration;
+              const teams = queryClient.getQueryData<Team[]>(teamsQueryKey);
+              const visibleTeams = Array.isArray(teams)
+                ? [...teams]
+                    .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+                    .slice(0, MAX_RENDERED_RECORDS)
+                : [];
+              if (
+                !active ||
+                currentGeneration !== authenticatedGeneration ||
+                window.location.pathname !== '/dashboard' ||
+                currentUser?.id !== canonicalUser.id ||
+                currentUser.tenantId !== tenantId ||
+                currentUser.role !== 'member' ||
+                useTeamStore.getState().activeTeamId !== selectedTeamId ||
+                queryClient.getQueryState(teamsQueryKey)?.status !== 'success'
+              ) return;
+              const selectedTeam = visibleTeams.find(
+                (team) => team.id === selectedTeamId && team.tenantId === tenantId,
+              );
+              if (selectedTeam) {
+                void queryClient.prefetchQuery(teamDetailQueryOptions(tenantId, selectedTeam.id));
+              }
+            }).catch(() => undefined);
+          }
+        }
         if (['/login', '/register'].includes(window.location.pathname)) {
           navigateRef.current('/dashboard', { replace: true });
         }
@@ -197,9 +273,9 @@ function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
         </Route>
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppShell />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
+        <Route element={<ProtectedRouteSlot />}>
+          <Route element={<AppShellSlot />}>
+            <Route path="/dashboard" element={<DashboardPageSlot />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/teams/:id" element={<TeamDetailPage />} />
             <Route path="/tasks" element={<TasksPage />} />
