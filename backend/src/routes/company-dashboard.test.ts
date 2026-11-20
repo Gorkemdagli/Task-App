@@ -8,7 +8,11 @@ import { startOfUtcToday } from '../lib/calendarDate';
 import { withTenantContext } from '../db/withTenant';
 import type { Actor } from '../lib/permissions';
 import { register, type AuthResult } from '../services/auth.service';
-import { getCompanyDashboard } from '../services/company-dashboard.service';
+import {
+  deriveCumulativeFlow,
+  getCompanyDashboard,
+  type CumulativeFlowRow,
+} from '../services/company-dashboard.service';
 
 const PASSWORD = 'hunter22';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -495,6 +499,214 @@ describe('company dashboard routes', () => {
       ['2026-08-14', 1, 1],
       ['2026-08-20', 2, 2],
     ]);
+  });
+
+  it('matches the baseline cumulative-flow reconstruction at lifecycle boundaries', async () => {
+    const admin = await register({
+      fullName: 'Cumulative Flow Admin',
+      email: 'dashboard-cumulative-flow@company.test',
+      password: PASSWORD,
+      companyName: 'Cumulative Flow Company',
+    });
+    const tenantId = admin.user.tenantId!;
+    const team = await prisma.team.create({ data: { tenantId, name: 'Cumulative Flow Team' } });
+    const transitionTask = await createTask({
+      teamId: team.id,
+      title: 'Same-day transitions',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'done',
+      priority: 'low',
+      createdAt: new Date('2026-08-13T00:00:00.000Z'),
+      completedAt: new Date('2026-08-16T12:00:00.000Z'),
+      archivedAt: new Date('2026-08-18T00:00:00.000Z'),
+    });
+    await prisma.task.update({
+      where: { id: transitionTask.id },
+      data: { startedAt: new Date('2026-08-14T12:00:00.000Z') },
+    });
+    const createdAtBoundaryTask = await createTask({
+      teamId: team.id,
+      title: 'Created on sample boundary',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'in_progress',
+      priority: 'low',
+      createdAt: new Date('2026-08-15T00:00:00.000Z'),
+    });
+    const archivedAtBoundaryTask = await createTask({
+      teamId: team.id,
+      title: 'Archived on sample boundary',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'in_progress',
+      priority: 'low',
+      createdAt: new Date('2026-08-14T00:00:00.000Z'),
+      archivedAt: new Date('2026-08-18T00:00:00.000Z'),
+    });
+    const archivedDuringDayTask = await createTask({
+      teamId: team.id,
+      title: 'Archived during day',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'in_progress',
+      priority: 'low',
+      createdAt: new Date('2026-08-14T00:00:00.000Z'),
+      archivedAt: new Date('2026-08-17T12:00:00.000Z'),
+    });
+    const missingHistoryTask = await createTask({
+      teamId: team.id,
+      title: 'Missing status history',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'in_progress',
+      priority: 'low',
+      createdAt: new Date('2026-08-18T00:00:00.000Z'),
+    });
+    const lastDayTask = await createTask({
+      teamId: team.id,
+      title: 'Created on final sample day',
+      assignerId: admin.user.id,
+      assigneeIds: [],
+      status: 'todo',
+      priority: 'low',
+      createdAt: new Date('2026-08-20T00:00:00.000Z'),
+    });
+    const events = [
+      {
+        id: '00000000-0000-4000-8000-000000000001',
+        taskId: transitionTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'todo' as const,
+        toStatus: 'in_progress' as const,
+        createdAt: new Date('2026-08-14T12:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        taskId: transitionTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'in_progress' as const,
+        toStatus: 'done' as const,
+        createdAt: new Date('2026-08-15T00:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        taskId: transitionTask.id,
+        actorId: admin.user.id,
+        eventType: 'task_reopened' as const,
+        fromStatus: 'done' as const,
+        toStatus: 'in_progress' as const,
+        createdAt: new Date('2026-08-15T00:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        taskId: transitionTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'in_progress' as const,
+        toStatus: 'done' as const,
+        createdAt: new Date('2026-08-16T12:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000005',
+        taskId: createdAtBoundaryTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'todo' as const,
+        toStatus: 'in_progress' as const,
+        createdAt: new Date('2026-08-15T00:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000006',
+        taskId: archivedAtBoundaryTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'todo' as const,
+        toStatus: 'in_progress' as const,
+        createdAt: new Date('2026-08-14T00:00:00.000Z'),
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000007',
+        taskId: archivedDuringDayTask.id,
+        actorId: admin.user.id,
+        eventType: 'status_changed' as const,
+        fromStatus: 'todo' as const,
+        toStatus: 'in_progress' as const,
+        createdAt: new Date('2026-08-15T12:00:00.000Z'),
+      },
+    ];
+    await prisma.taskEvent.createMany({ data: events });
+
+    const now = new Date('2026-08-20T12:00:00.000Z');
+    const periodStart = new Date('2026-08-14T00:00:00.000Z');
+    const periodEnd = new Date('2026-08-21T00:00:00.000Z');
+    const { dashboard, tasks } = await withTenantContext(
+      admin.user.id,
+      tenantId,
+      async (db) => ({
+        dashboard: await getCompanyDashboard(
+          db,
+          admin.user as Actor,
+          { teamId: team.id, range: '7d' },
+          now,
+        ),
+        tasks: await db.task.findMany({
+          where: { teamId: team.id },
+          select: {
+            id: true,
+            createdAt: true,
+            archivedAt: true,
+            startedAt: true,
+            completedAt: true,
+            isBlocked: true,
+            status: true,
+          },
+        }),
+      }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const historyRows = tasks.flatMap((task): CumulativeFlowRow[] => {
+      const taskEvents = events.filter((event) => event.taskId === task.id);
+      const base = {
+        task_id: task.id,
+        created_at: task.createdAt,
+        archived_at: task.archivedAt,
+        started_at: task.startedAt,
+        completed_at: task.completedAt,
+        is_blocked: task.isBlocked,
+        status: task.status,
+      };
+      return taskEvents.length > 0
+        ? taskEvents.map((event) => ({
+            ...base,
+            event_id: event.id,
+            event_created_at: event.createdAt,
+            event_type: event.eventType,
+            event_to_status: event.toStatus,
+          }))
+        : [{
+            ...base,
+            event_id: null,
+            event_created_at: null,
+            event_type: null,
+            event_to_status: null,
+          }];
+    });
+    const baseline = deriveCumulativeFlow(historyRows, periodStart, periodEnd, now);
+
+    expect(dashboard.cumulativeFlow).toEqual(baseline);
+    expect(dashboard.cumulativeFlow.samples.map(({ todo, inProgress, done }) => [todo, inProgress, done]))
+      .toEqual([
+        [1, 2, 0],
+        [0, 4, 0],
+        [0, 3, 1],
+        [0, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [2, 1, 0],
+      ]);
   });
 
   it('keeps tenant reads on one repeatable-read snapshot during a concurrent commit', async () => {

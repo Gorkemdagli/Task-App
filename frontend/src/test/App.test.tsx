@@ -18,6 +18,15 @@ const appShellGate = vi.hoisted(() => ({
   deferred: false,
   release: undefined as undefined | (() => void),
 }));
+const dashboardModuleLoadCalls = vi.hoisted(() => ({
+  protectedRoute: vi.fn(),
+  appShell: vi.fn(),
+  dashboardPage: vi.fn(),
+}));
+const actualDashboardPreload = vi.hoisted(() => ({
+  preload: undefined as undefined | ((pathname: string) => Promise<unknown>),
+  getModules: undefined as undefined | (() => unknown),
+}));
 vi.mock('../lib/api', async () => {
   const actual = (await vi.importActual('../lib/api')) as Record<string, unknown>;
   return { ...actual, getMe: vi.fn() };
@@ -36,10 +45,28 @@ vi.mock('../components/layout/AppShell', async () => {
     },
   };
 });
-vi.mock('../lib/preloadDashboardRoute', () => ({
-  preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
-  preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('../lib/preloadDashboardRoute', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../lib/preloadDashboardRoute');
+  actualDashboardPreload.preload = actual.preloadProtectedRoute as (pathname: string) => Promise<unknown>;
+  actualDashboardPreload.getModules = actual.getPreloadedDashboardModules as () => unknown;
+  return {
+    ...actual,
+    preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
+    preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
+    loadProtectedRouteModule: vi.fn(() => {
+      dashboardModuleLoadCalls.protectedRoute();
+      return (actual.loadProtectedRouteModule as () => Promise<unknown>)();
+    }),
+    loadAppShellModule: vi.fn(() => {
+      dashboardModuleLoadCalls.appShell();
+      return (actual.loadAppShellModule as () => Promise<unknown>)();
+    }),
+    loadDashboardRouteModule: vi.fn(() => {
+      dashboardModuleLoadCalls.dashboardPage();
+      return (actual.loadDashboardRouteModule as () => Promise<unknown>)();
+    }),
+  };
+});
 
 const canonicalUser: CurrentUserProfile = {
   id: 'u1',
@@ -152,6 +179,60 @@ describe('AuthBootstrap canonical flow', () => {
     expect(scaffold.querySelectorAll('a, button')).toHaveLength(0);
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
   });
+
+  it('uses all preloaded dashboard modules after canonical auth and keeps the shell on navigation', async () => {
+    window.history.pushState({}, '', '/dashboard');
+    await act(async () => {
+      await actualDashboardPreload.preload?.('/dashboard');
+    });
+    const modules = actualDashboardPreload.getModules?.();
+    expect(modules).toBeDefined();
+    expect(modules).toHaveProperty('ProtectedRoute');
+    expect(modules).toHaveProperty('AppShell');
+    expect(modules).toHaveProperty('DashboardPage');
+    dashboardModuleLoadCalls.protectedRoute.mockClear();
+    dashboardModuleLoadCalls.appShell.mockClear();
+    dashboardModuleLoadCalls.dashboardPage.mockClear();
+
+    let resolveRefresh!: (value: unknown) => void;
+    let resolveMe!: (user: CurrentUserProfile) => void;
+    refreshSpy.mockImplementation(
+      () => new Promise((resolve) => { resolveRefresh = resolve as (value: unknown) => void; }) as never,
+    );
+    vi.mocked(getMe).mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+    const apiGet = vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId('route-fallback')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveRefresh({ status: 200, data: { accessToken: 'fresh' } });
+    });
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveMe(canonicalUser);
+    });
+    const shell = await screen.findByTestId('app-shell', {}, { timeout: 10_000 });
+    expect(dashboardModuleLoadCalls.protectedRoute).not.toHaveBeenCalled();
+    expect(dashboardModuleLoadCalls.appShell).not.toHaveBeenCalled();
+    expect(dashboardModuleLoadCalls.dashboardPage).not.toHaveBeenCalled();
+
+    act(() => {
+      window.history.pushState({}, '', '/tasks');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(screen.getByTestId('app-shell')).toBe(shell);
+  }, 15_000);
 
   it.each([
     ['/tasks', 'table'],

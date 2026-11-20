@@ -326,7 +326,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
             <span>{t('tasks.files.uploader')}</span>
             <span className="text-right">{t('tasks.files.actions')}</span>
           </div>
-          <div data-testid="task-files-list-scroll" className="max-h-[320px] overflow-y-auto">
+          <div data-testid="task-files-list-scroll" className="lg:max-h-[320px] lg:overflow-y-auto">
             <ul aria-label={t('tasks.files.aria')} className="divide-y divide-border">
           {files.map((file) => (
             <li key={file.id} className="grid grid-cols-[minmax(0,1fr)_minmax(76px,0.7fr)_auto] items-center gap-2 px-1 py-3" data-testid={`task-file-${file.id}`}>

@@ -1056,7 +1056,37 @@ const trendQuery = (
   ORDER BY periods.period_start ASC
 `;
 
-const cumulativeFlowQuery = (tenantId: string, taskScope: Prisma.Sql) => Prisma.sql`
+const cumulativeFlowQuery = (
+  tenantId: string,
+  teamId: string | null,
+  taskScope: Prisma.Sql,
+) => {
+  const scopedTasks = teamId
+    ? Prisma.sql`
+        WITH scoped_tasks AS MATERIALIZED (
+          SELECT
+            task.id,
+            task.created_at,
+            task.archived_at,
+            task.started_at,
+            task.completed_at,
+            task.is_blocked,
+            task.status
+          FROM tasks task
+          JOIN teams team ON team.id = task.team_id
+          WHERE team.tenant_id = ${tenantId}::uuid
+            ${taskScope}
+        )
+      `
+    : Prisma.empty;
+  const taskSource = teamId ? Prisma.sql`scoped_tasks` : Prisma.sql`tasks`;
+  const teamJoin = teamId ? Prisma.empty : Prisma.sql`JOIN teams team ON team.id = task.team_id`;
+  const tenantFilter = teamId
+    ? Prisma.empty
+    : Prisma.sql`WHERE team.tenant_id = ${tenantId}::uuid ${taskScope}`;
+
+  return Prisma.sql`
+  ${scopedTasks}
   SELECT
     task.id AS task_id,
     task.created_at,
@@ -1069,15 +1099,15 @@ const cumulativeFlowQuery = (tenantId: string, taskScope: Prisma.Sql) => Prisma.
     event.created_at AS event_created_at,
     event.event_type,
     event.to_status AS event_to_status
-  FROM tasks task
-  JOIN teams team ON team.id = task.team_id
+  FROM ${taskSource} task
+  ${teamJoin}
   LEFT JOIN task_events event
     ON event.task_id = task.id
     AND event.event_type IN ('status_changed', 'task_reopened')
-  WHERE team.tenant_id = ${tenantId}::uuid
-    ${taskScope}
+  ${tenantFilter}
   ORDER BY task.id ASC, event.created_at ASC NULLS LAST, event.id ASC NULLS LAST
 `;
+};
 
 const memberQuery = (tenantId: string, teamId: string | null, archiveCutoff: Date) => Prisma.sql`
   WITH scoped_users AS (
@@ -1414,7 +1444,7 @@ async function getDashboardData(
     (await measureRequestStage(
       timing,
       'company_dashboard_cumulative_flow_query_elapsed_ms',
-      () => db.$queryRaw<CumulativeFlowRow[]>(cumulativeFlowQuery(tenantId, taskScope)),
+      () => db.$queryRaw<CumulativeFlowRow[]>(cumulativeFlowQuery(tenantId, teamId, taskScope)),
     )) ?? [];
 
   const period: DashboardPeriod = {

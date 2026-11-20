@@ -28,6 +28,7 @@ describe('MotionSection', () => {
   afterEach(() => {
     vi.doUnmock('../motion/createLandingMotion');
     vi.resetModules();
+    vi.unstubAllGlobals();
   });
 
   it('cleans up an initialized motion controller on unmount', async () => {
@@ -39,6 +40,32 @@ describe('MotionSection', () => {
     await waitFor(() => expect(createLandingMotion).toHaveBeenCalledTimes(1));
     section.unmount();
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads motion when the section approaches the viewport', async () => {
+    let onIntersect: IntersectionObserverCallback | undefined;
+    const observe = vi.fn();
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { onIntersect = callback; }
+      observe = observe;
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+      takeRecords = () => [];
+      root = null;
+      rootMargin = '300px';
+      thresholds = [];
+    });
+    const createLandingMotion = vi.fn(() => vi.fn());
+    vi.doMock('../motion/createLandingMotion', () => ({ createLandingMotion }));
+
+    renderSection();
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(createLandingMotion).not.toHaveBeenCalled();
+    await act(async () => {
+      onIntersect?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(createLandingMotion).toHaveBeenCalledTimes(1));
   });
 
   it('keeps the workflow visible when its motion module fails to load', async () => {

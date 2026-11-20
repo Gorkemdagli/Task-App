@@ -116,6 +116,8 @@ describe('TaskFilesPanel', () => {
     render(<TaskFilesPanel taskId="task-1" />);
 
     const listScroll = screen.getByTestId('task-files-list-scroll');
+    expect(listScroll).toHaveClass('lg:max-h-[320px]', 'lg:overflow-y-auto');
+    expect(listScroll).not.toHaveClass('max-h-[320px]', 'overflow-y-auto');
     expect(listScroll.querySelector('ul')).toBeInTheDocument();
     expect(listScroll).toContainElement(screen.getByTestId('task-file-file-1'));
     expect(listScroll).not.toContainElement(screen.getByRole('heading', { name: /dosyalar/i }));

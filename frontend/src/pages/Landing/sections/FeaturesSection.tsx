@@ -18,15 +18,29 @@ export function FeaturesSection() {
   useEffect(() => {
     let mounted = true;
     let cleanup: (() => void) | undefined;
+    let observer: IntersectionObserver | undefined;
 
-    void import('../motion/createFeatureMotion')
-      .then(({ createFeatureMotion }) => {
-        if (mounted && scope.current) cleanup = createFeatureMotion(scope.current);
-      })
-      .catch(() => undefined);
+    const loadMotion = () => {
+      observer?.disconnect();
+      void import('../motion/createFeatureMotion')
+        .then(({ createFeatureMotion }) => {
+          if (mounted && scope.current) cleanup = createFeatureMotion(scope.current);
+        })
+        .catch(() => undefined);
+    };
+
+    if (typeof IntersectionObserver === 'undefined' || !scope.current) {
+      loadMotion();
+    } else {
+      observer = new IntersectionObserver(([entry]) => {
+        if (entry?.isIntersecting) loadMotion();
+      }, { rootMargin: '300px' });
+      observer.observe(scope.current);
+    }
 
     return () => {
       mounted = false;
+      observer?.disconnect();
       cleanup?.();
     };
   }, []);

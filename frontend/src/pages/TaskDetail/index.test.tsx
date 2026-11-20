@@ -264,7 +264,8 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(screen.getByRole('complementary', { name: 'Görev bilgileri ve geçmiş' })).toBeInTheDocument();
     const taskContent = screen.getByRole('region', { name: 'Görev içeriği' });
     expect(taskContent).toBeInTheDocument();
-    expect(taskContent).toHaveClass('max-h-[calc(100dvh-10rem)]', 'overflow-y-auto');
+    expect(taskContent).not.toHaveClass('max-h-[calc(100dvh-10rem)]', 'overflow-y-auto');
+    expect(taskContent).toHaveClass('lg:overflow-y-auto');
     expect(taskContent).not.toHaveClass('overscroll-contain');
     expect(taskContent).toHaveClass('lg:overscroll-contain');
     expect(screen.getByRole('complementary', { name: 'Dosyalar ve yorumlar' })).toBeInTheDocument();
@@ -281,8 +282,9 @@ describe('TaskDetailPage — approved workbench', () => {
 
     const filesRegion = screen.getByTestId('task-files-region');
     const filesScrollRegion = filesRegion.querySelector('div');
-    expect(filesRegion).toHaveClass('max-h-[24rem]', 'overflow-hidden');
-    expect(filesScrollRegion).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(filesRegion).not.toHaveClass('max-h-[24rem]', 'overflow-hidden');
+    expect(filesRegion).toHaveClass('lg:overflow-hidden');
+    expect(filesScrollRegion).not.toHaveClass('min-h-0', 'overflow-y-auto');
     expect(filesScrollRegion).not.toHaveClass('overscroll-contain');
     expect(filesScrollRegion).toHaveClass('lg:overflow-y-auto');
     expect(filesScrollRegion).toHaveClass('lg:overscroll-contain');
@@ -295,17 +297,19 @@ describe('TaskDetailPage — approved workbench', () => {
     });
     expect(taskInfo?.parentElement).toBe(taskInfoAndHistory);
     expect(historyRegion.closest('aside')).toBe(taskInfoAndHistory);
-    expect(taskInfoAndHistory).toHaveClass('flex', 'rounded-lg', 'border', 'overflow-hidden');
+    expect(taskInfoAndHistory).toHaveClass('flex', 'rounded-lg', 'border', 'lg:overflow-hidden');
+    expect(taskInfoAndHistory).not.toHaveClass('max-h-[calc(100dvh-8rem)]', 'overflow-hidden');
     expect(taskInfo).not.toHaveClass('overflow-y-auto', 'max-h-[24rem]');
-    expect(historyRegion).toHaveClass('max-h-[18rem]', 'overflow-y-auto');
+    expect(historyRegion).not.toHaveClass('max-h-[18rem]', 'overflow-y-auto');
     expect(historyRegion).not.toHaveClass('overscroll-contain');
     expect(historyRegion).toHaveClass('lg:overscroll-contain');
 
     const commentsRegion = screen.getByTestId('task-comments-region');
-    expect(commentsRegion).toHaveClass('max-h-[28rem]', 'overflow-hidden');
+    expect(commentsRegion).not.toHaveClass('max-h-[28rem]', 'overflow-hidden');
+    expect(commentsRegion).toHaveClass('lg:overflow-hidden');
     expect(commentsRegion).toHaveClass('lg:flex', 'lg:min-h-0', 'lg:flex-col');
     const commentsScrollRegion = commentsRegion.querySelector('h2 + div');
-    expect(commentsScrollRegion).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(commentsScrollRegion).not.toHaveClass('min-h-0', 'overflow-y-auto');
     expect(commentsScrollRegion).not.toHaveClass('overscroll-contain');
     expect(commentsScrollRegion).toHaveClass('lg:overscroll-contain');
     expect(commentsScrollRegion).toHaveClass('lg:flex-1', 'lg:min-h-0', 'lg:overflow-y-auto');

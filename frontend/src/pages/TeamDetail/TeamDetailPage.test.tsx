@@ -224,7 +224,9 @@ describe('TeamDetailPage', () => {
     mocks.useTasks.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     renderPage();
 
-    expect(screen.getByTestId('team-task-panel')).toHaveClass('h-[28rem]');
+    expect(screen.getByTestId('team-task-panel')).toHaveClass('lg:h-[28rem]');
+    expect(screen.getByTestId('team-task-panel')).not.toHaveClass('h-[28rem]');
+    expect(screen.getByTestId('team-task-panel').querySelectorAll('div')[1]).toHaveClass('lg:overflow-y-auto');
     expect(screen.getByTestId('team-task-panel').querySelectorAll('.animate-pulse')).toHaveLength(8);
   });
 

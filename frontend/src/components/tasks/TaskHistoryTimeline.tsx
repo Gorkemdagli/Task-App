@@ -75,7 +75,7 @@ export function TaskHistoryTimeline({ taskId }: { taskId: string }) {
   return (
     <section
       aria-labelledby="history-heading"
-      className="flex min-h-0 flex-1 flex-col lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0"
+      className="flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0"
     >
       <h2 id="history-heading" className="mb-3 shrink-0 text-lg font-semibold">
         {t('tasks.history.title')}
@@ -84,7 +84,7 @@ export function TaskHistoryTimeline({ taskId }: { taskId: string }) {
         role="region"
         aria-label={t('tasks.history.aria')}
         tabIndex={0}
-        className="max-h-[18rem] flex-1 overflow-y-auto pr-1 focus:outline-none focus:ring-2 focus:ring-primary lg:min-h-0 lg:max-h-none lg:overscroll-contain"
+        className="pr-1 focus:outline-none focus:ring-2 focus:ring-primary lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
       >
         {isLoading ? (
           <p className="text-sm text-muted-foreground">{t('tasks.history.loading')}</p>

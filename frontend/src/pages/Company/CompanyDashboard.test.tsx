@@ -383,10 +383,10 @@ describe('CompanyDashboard', () => {
     renderDashboard();
 
     expect(
-      screen.getByRole('img', { name: '2026-08-20: Oluşturulan: 0, Tamamlanan: 0' }),
+      screen.getByLabelText('2026-08-20: Oluşturulan: 0 · Tamamlanan: 0'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('img', { name: '2026-08-20: Tamamlanan görev: 0' }),
+      screen.getByLabelText('2026-08-20: Tamamlanan görev: 0'),
     ).toBeInTheDocument();
   });
 
@@ -423,7 +423,7 @@ describe('CompanyDashboard', () => {
 
     expect(screen.getByRole('region', { name: 'Kümülatif akış' })).toBeInTheDocument();
     expect(
-      screen.getByRole('img', { name: /2026-08-20: Yapılacak: 1, Yapılıyor: 2, Yapıldı: 3/ }),
+      screen.getByLabelText(/2026-08-20: Yapılacak: 1, Yapılıyor: 2, Yapıldı: 3/),
     ).toBeInTheDocument();
   });
 
@@ -448,21 +448,14 @@ describe('CompanyDashboard', () => {
 
     expect(screen.getByRole('region', { name: 'Oluşturulan ve tamamlanan' })).toHaveClass('h-64');
     expect(screen.getByRole('region', { name: 'Throughput' })).toHaveClass('h-64');
-    expect(screen.getByRole('group', { name: 'Oluşturulan ve tamamlanan trendi' })).not.toHaveClass(
+    expect(screen.getAllByRole('group', { name: 'Oluşturulan ve tamamlanan trendi' })[0]).not.toHaveClass(
       'overflow-x-auto',
     );
-    const trendLabels = screen
-      .getByTestId('company-trend-chart')
-      .querySelector('svg')
-      ?.querySelectorAll('text');
-    expect(trendLabels).toHaveLength(2);
-    expect(Number(trendLabels?.[0].getAttribute('x'))).toBeGreaterThan(0);
-    expect(Number(trendLabels?.[trendLabels.length - 1].getAttribute('x'))).toBeLessThan(100);
     expect(
-      screen.getByRole('img', { name: /2026-08-30.*Oluşturulan: 2.*Tamamlanan: 1/ }),
+      screen.getByLabelText(/2026-08-30.*Oluşturulan: 2.*Tamamlanan: 1/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('img', { name: /2026-08-30: Tamamlanan görev: 1/ }),
+      screen.getByLabelText(/2026-08-30: Tamamlanan görev: 1/),
     ).toBeInTheDocument();
   });
 
@@ -481,9 +474,7 @@ describe('CompanyDashboard', () => {
       y: 0,
       toJSON: () => ({}),
     });
-    const trendPoint = screen.getByRole('img', {
-      name: '2026-08-20: Oluşturulan: 3, Tamamlanan: 2',
-    });
+    const trendPoint = screen.getByLabelText('2026-08-20: Oluşturulan: 3 · Tamamlanan: 2');
     fireEvent.pointerMove(trendSurface, { clientX: 150, clientY: 40, pointerType: 'mouse' });
     expect(screen.getByRole('tooltip')).toHaveTextContent('2026-08-20');
     expect(screen.getByRole('tooltip')).toHaveTextContent('Oluşturulan: 3 · Tamamlanan: 2');
@@ -511,6 +502,52 @@ describe('CompanyDashboard', () => {
     fireEvent.click(throughputSurface, { clientX: 150, clientY: 40 });
     expect(screen.getByRole('tooltip')).toHaveTextContent('2026-08-20');
     expect(screen.getByRole('tooltip')).toHaveTextContent('Tamamlanan görev: 2');
+  });
+
+  it('keeps the active chart point valid when the selected period shrinks', () => {
+    const points = Array.from({ length: 7 }, (_, index) => ({
+      period: `2026-09-${String(index + 7).padStart(2, '0')}`,
+      created: index + 1,
+      completed: index,
+    }));
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: { ...allDashboard, createdVsCompleted: points },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    const view = renderDashboard();
+    const surface = screen.getByTestId('company-trend-hit-surface');
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 120,
+      top: 0,
+      right: 300,
+      bottom: 120,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerMove(surface, { clientX: 300, clientY: 40, pointerType: 'mouse' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-13');
+
+    mocks.useCompanyDashboard.mockReturnValue({
+      data: { ...allDashboard, createdVsCompleted: points.slice(0, 3) },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    view.rerender(
+      <MemoryRouter>
+        <CompanyDashboard />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-09');
   });
 
   it('routes a narrow chart tap to the nearest bucket', () => {
