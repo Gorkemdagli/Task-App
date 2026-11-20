@@ -9,8 +9,16 @@ export default defineConfig({
     manifest: true,
     rolldownOptions: {
       output: {
+        strictExecutionOrder: true,
         codeSplitting: {
           groups: [
+            {
+              // Keep Recharts code in dashboard-only entries and split oversized chunks.
+              name: 'recharts',
+              test: /node_modules[\\/]recharts[\\/]es6[\\/]cartesian[\\/]/,
+              entriesAware: true,
+              maxSize: 300 * 1024,
+            },
             {
               // Keep generated interop helpers out of the API chunk that imports authStore.
               name: 'axios-vendor',

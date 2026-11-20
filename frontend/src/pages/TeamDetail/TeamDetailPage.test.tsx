@@ -252,7 +252,7 @@ describe('TeamDetailPage', () => {
     expect(screen.getByText('Median çevrim süresi')).toBeInTheDocument();
     expect(screen.getByText('Lead time')).toBeInTheDocument();
     expect(screen.getByText(/Ölçülemeyen/)).toBeInTheDocument();
-    expect(screen.getByText(/Yapılacak:/)).toBeInTheDocument();
+    expect(await screen.findByText(/Yapılacak:/)).toBeInTheDocument();
     expect(screen.getByText(/Yapıldı:/)).toBeInTheDocument();
   });
 

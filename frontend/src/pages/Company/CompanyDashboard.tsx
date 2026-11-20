@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTeams } from '@/hooks/queries/useTeams';
@@ -6,9 +6,12 @@ import { useCompanyDashboard } from '@/hooks/queries/useCompanyDashboard';
 import type { CompanyDashboardRange, DashboardComparison } from '@/services/companyDashboard';
 import { DashboardHealth } from '@/components/dashboard/DashboardHealth';
 import { PageLoadingSkeleton } from '@/components/layout/PageLoadingSkeleton';
-import { PeriodTrendCharts, PriorityDistribution, StatusDonut } from './CompanyDashboardCharts';
 import { MemberWorkloadTable, RiskLedger, TeamComparisonTable } from './CompanyDashboardTables';
 import { useRouteDataReadiness } from '@/components/layout/RouteDataReadiness';
+
+const PeriodTrendCharts = lazy(() => import('./CompanyDashboardCharts').then(({ PeriodTrendCharts }) => ({ default: PeriodTrendCharts })));
+const PriorityDistribution = lazy(() => import('./CompanyDashboardCharts').then(({ PriorityDistribution }) => ({ default: PriorityDistribution })));
+const StatusDonut = lazy(() => import('./CompanyDashboardCharts').then(({ StatusDonut }) => ({ default: StatusDonut })));
 
 function KpiCard({
   label,
@@ -329,11 +332,11 @@ export function CompanyDashboard() {
         </div>
       </section>
 
-      <PeriodTrendCharts
+      <Suspense fallback={null}><PeriodTrendCharts
         createdVsCompleted={data.createdVsCompleted}
         throughput={data.throughput}
         cumulativeFlow={data.cumulativeFlow}
-      />
+      /></Suspense>
 
       <section
         aria-labelledby="company-risk-heading"
@@ -400,13 +403,13 @@ export function CompanyDashboard() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,.9fr)]">
         <RiskLedger risk={data.risk} riskTasks={data.riskTasks} teamId={teamId} />
         <div className="space-y-4">
-          <StatusDonut breakdown={data.statusBreakdown} teamId={teamId} />
+          <Suspense fallback={null}><StatusDonut breakdown={data.statusBreakdown} teamId={teamId} /></Suspense>
           <MemberWorkloadTable members={data.members} teamId={teamId} />
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamId} />
+        <Suspense fallback={null}><PriorityDistribution breakdown={data.priorityBreakdown} teamId={teamId} /></Suspense>
         {teamId === null && <TeamComparisonTable teams={data.teams} />}
       </div>
     </div>
