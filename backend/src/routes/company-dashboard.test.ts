@@ -554,7 +554,7 @@ describe('company dashboard routes', () => {
       createdAt: new Date('2026-08-14T00:00:00.000Z'),
       archivedAt: new Date('2026-08-17T12:00:00.000Z'),
     });
-    const missingHistoryTask = await createTask({
+    await createTask({
       teamId: team.id,
       title: 'Missing status history',
       assignerId: admin.user.id,
@@ -563,7 +563,7 @@ describe('company dashboard routes', () => {
       priority: 'low',
       createdAt: new Date('2026-08-18T00:00:00.000Z'),
     });
-    const lastDayTask = await createTask({
+    await createTask({
       teamId: team.id,
       title: 'Created on final sample day',
       assignerId: admin.user.id,

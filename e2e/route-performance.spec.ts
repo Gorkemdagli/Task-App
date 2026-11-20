@@ -1,4 +1,4 @@
-import { expect, test, type Request } from '@playwright/test';
+import { expect, test, type Request, type Response } from '@playwright/test';
 
 const enabled = process.env.TASKFLOW_ROUTE_PERF === '1';
 const profiles = [
@@ -84,7 +84,7 @@ for (const profile of profiles) test(`reports opt-in route timings for ${profile
         refreshRequestStartedAt.set(request, performance.now());
       }
     };
-    const onResponse = (response: import('@playwright/test').Response) => {
+    const onResponse = (response: Response) => {
       if (response.url().endsWith('/auth/refresh')) {
         const timing = response.request().timing();
         const measuredDuration = timing.responseEnd;
