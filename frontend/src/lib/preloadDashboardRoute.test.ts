@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   getPreloadedDashboardModules,
+  getPreloadedProtectedRouteModules,
   getProtectedRouteChunk,
   preloadProtectedRoute,
 } from './preloadDashboardRoute';
@@ -27,6 +28,12 @@ describe('preloadProtectedRoute', () => {
   ])('preloads the %s page chunk', async (pathname, expectedPage) => {
     expect(getProtectedRouteChunk(pathname)?.[1]).toBe(expectedPage);
     await expect(preloadProtectedRoute(pathname)).resolves.toBeUndefined();
+    if (['teams', 'team-detail', 'tasks', 'task-detail', 'permissions', 'profile', 'company'].includes(expectedPage)) {
+      expect(getPreloadedProtectedRouteModules(pathname)).toMatchObject({
+        AppShell: expect.any(Function),
+        Page: expect.any(Function),
+      });
+    }
   });
 
   it.each([
@@ -35,6 +42,7 @@ describe('preloadProtectedRoute', () => {
   ])('matches Router path behavior for %s', async (pathname, expectedPage) => {
     expect(getProtectedRouteChunk(pathname)?.[1]).toBe(expectedPage);
     await expect(preloadProtectedRoute(pathname)).resolves.toBeUndefined();
+    expect(getPreloadedProtectedRouteModules(pathname)?.Page).toBeDefined();
   });
 
   it.each(['/', '/login', '/register', '/unknown', '/teams/team-1/extra'])('skips non-route path %s', async (pathname) => {
