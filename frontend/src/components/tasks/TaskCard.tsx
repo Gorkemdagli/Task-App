@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
+import { GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePrefetchTask, type Task } from '@/hooks/tasks';
 import { AssigneeAvatarStack } from './AssigneeAvatarStack';
@@ -56,7 +57,7 @@ export function TaskCard({
   // Pending varken sürükleme kilitli (admin override yoksa)
   const dragEnabled = draggable && !disabled && !isPending;
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: task.id,
     disabled: !dragEnabled,
   });
@@ -84,8 +85,6 @@ export function TaskCard({
   return (
     <div
       ref={handleRef}
-      {...(dragEnabled ? listeners : {})}
-      {...(dragEnabled ? attributes : {})}
       data-testid={`task-card-${task.id}`}
       data-priority={task.priority}
       data-pending={isPending ? 'true' : undefined}
@@ -119,7 +118,7 @@ export function TaskCard({
           aria-current={selected ? 'true' : undefined}
         />
       )}
-      <div className="relative z-10 p-3">
+      <div className="relative p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">
             <span
@@ -171,6 +170,18 @@ export function TaskCard({
               </span>
             )}
           </span>
+          {dragEnabled && (
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              {...listeners}
+              {...attributes}
+              aria-label={t('tasks.card.drag')}
+              className="relative z-30 inline-flex h-11 w-11 shrink-0 touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <GripVertical aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <h3 className="mb-1 line-clamp-2 text-sm font-medium text-foreground">{task.title}</h3>
         {task.description && (

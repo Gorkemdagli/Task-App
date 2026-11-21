@@ -3,13 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
+  closestCenter,
+  KeyboardSensor,
   MouseSensor,
+  pointerWithin,
   TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import { useTeams, useTeam } from '@/hooks/queries/useTeams';
 import {
@@ -53,6 +57,9 @@ const COLUMNS: { status: TaskStatus; label: string; color: string; dropRing: str
 
 const EMPTY_TASKS: Task[] = [];
 const TASKS_PER_COLUMN = 10;
+
+const dashboardCollisionDetection: CollisionDetection = (args) =>
+  args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
 
 type WorkflowFilter = 'overdue' | 'today' | 'pending' | 'upcoming' | 'archived';
 
@@ -599,6 +606,7 @@ export function DashboardPage() {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
   );
 
   const handleDragStart = (e: DragStartEvent) => {
@@ -728,7 +736,12 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={dashboardCollisionDetection}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
         <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           <div className="grid min-h-0 grid-cols-1 gap-6 md:grid-cols-3 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden">
             {COLUMNS.map((column) => (

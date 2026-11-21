@@ -260,7 +260,7 @@ export function TaskFilesPanel({ taskId }: { taskId: string }) {
                 inputRef.current?.click();
               }
             }}
-            className="flex min-h-[84px] w-full cursor-pointer flex-col items-center justify-center gap-1 px-4 py-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+            className="relative flex min-h-[84px] w-full cursor-pointer flex-col items-center justify-center gap-1 px-4 py-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
           >
             <span className="flex items-center gap-2">
               <UploadCloud aria-hidden="true" className="h-5 w-5 text-foreground" />
