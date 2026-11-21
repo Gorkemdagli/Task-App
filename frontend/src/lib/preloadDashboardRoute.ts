@@ -3,6 +3,13 @@ import type { ComponentType } from 'react';
 import type { ProtectedRoute } from '../components/ProtectedRoute';
 import type { AppShell } from '../components/layout/AppShell';
 import type { DashboardPage } from '../pages/Dashboard';
+import type { TeamsPage } from '../pages/Teams';
+import type { TeamDetailPage } from '../pages/TeamDetail';
+import type { TasksPage } from '../pages/Tasks';
+import type { TaskDetailPage } from '../pages/TaskDetail';
+import type { ProfilePage } from '../pages/Profile';
+import type { PermissionsPage } from '../pages/Permissions';
+import type { CompanyManagementPage } from '../pages/Company';
 
 type PreloadedDashboardModules = {
   ProtectedRoute: typeof ProtectedRoute;
@@ -61,16 +68,16 @@ export function getPreloadedProtectedRouteModules(pathname: string) {
 
 const protectedRoutePatterns: ReadonlyArray<ProtectedRoutePattern> = [
   ['/dashboard', 'dashboard', loadDashboardRouteModule],
-  ['/teams', 'teams', () => import('../pages/Teams'), (module) => (module as typeof import('../pages/Teams')).TeamsPage],
-  ['/teams/:id', 'team-detail', () => import('../pages/TeamDetail'), (module) => (module as typeof import('../pages/TeamDetail')).TeamDetailPage],
-  ['/tasks', 'tasks', () => import('../pages/Tasks'), (module) => (module as typeof import('../pages/Tasks')).TasksPage],
-  ['/tasks/:id', 'task-detail', () => import('../pages/TaskDetail'), (module) => (module as typeof import('../pages/TaskDetail')).TaskDetailPage],
+  ['/teams', 'teams', () => import('../pages/Teams'), (module) => (module as { TeamsPage: typeof TeamsPage }).TeamsPage],
+  ['/teams/:id', 'team-detail', () => import('../pages/TeamDetail'), (module) => (module as { TeamDetailPage: typeof TeamDetailPage }).TeamDetailPage],
+  ['/tasks', 'tasks', () => import('../pages/Tasks'), (module) => (module as { TasksPage: typeof TasksPage }).TasksPage],
+  ['/tasks/:id', 'task-detail', () => import('../pages/TaskDetail'), (module) => (module as { TaskDetailPage: typeof TaskDetailPage }).TaskDetailPage],
   ['/notifications', 'notifications', () => import('../pages/Notifications')],
   ['/chat/:id', 'chat', () => import('../pages/Chat')],
-  ['/profile', 'profile', () => import('../pages/Profile'), (module) => (module as typeof import('../pages/Profile')).ProfilePage],
-  ['/permissions', 'permissions', () => import('../pages/Permissions'), (module) => (module as typeof import('../pages/Permissions')).PermissionsPage],
-  ['/company', 'company', () => import('../pages/Company'), (module) => (module as typeof import('../pages/Company')).CompanyManagementPage],
-  ['/company/settings', 'company', () => import('../pages/Company'), (module) => (module as typeof import('../pages/Company')).CompanyManagementPage],
+  ['/profile', 'profile', () => import('../pages/Profile'), (module) => (module as { ProfilePage: typeof ProfilePage }).ProfilePage],
+  ['/permissions', 'permissions', () => import('../pages/Permissions'), (module) => (module as { PermissionsPage: typeof PermissionsPage }).PermissionsPage],
+  ['/company', 'company', () => import('../pages/Company'), (module) => (module as { CompanyManagementPage: typeof CompanyManagementPage }).CompanyManagementPage],
+  ['/company/settings', 'company', () => import('../pages/Company'), (module) => (module as { CompanyManagementPage: typeof CompanyManagementPage }).CompanyManagementPage],
 ];
 
 export function getProtectedRouteChunk(pathname: string) {
