@@ -300,8 +300,7 @@ describe('TaskDetailPage — approved workbench', () => {
     expect(taskInfoAndHistory).toHaveClass('flex', 'rounded-lg', 'border', 'lg:overflow-hidden');
     expect(taskInfoAndHistory).not.toHaveClass('max-h-[calc(100dvh-8rem)]', 'overflow-hidden');
     expect(taskInfo).not.toHaveClass('overflow-y-auto', 'max-h-[24rem]');
-    expect(historyRegion).not.toHaveClass('max-h-[18rem]', 'overflow-y-auto');
-    expect(historyRegion).not.toHaveClass('overscroll-contain');
+    expect(historyRegion).not.toHaveClass('overflow-y-auto', 'overscroll-contain');
     expect(historyRegion).toHaveClass('lg:overscroll-contain');
 
     const commentsRegion = screen.getByTestId('task-comments-region');

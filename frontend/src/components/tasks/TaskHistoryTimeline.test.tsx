@@ -67,4 +67,45 @@ describe('TaskHistoryTimeline', () => {
     await user.click(screen.getByRole('button', { name: 'Daha fazla yükle' }));
     expect(fetchNextPageMock).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps long histories in a bounded, internally scrollable region', () => {
+    query = {
+      data: { pages: [{ items: Array.from({ length: 6 }, (_, index) => historyItem({ id: `event-${index}` })) }] },
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    };
+    const resizeObserver = { observe: vi.fn(), disconnect: vi.fn() };
+    vi.stubGlobal('ResizeObserver', class {
+      observe = resizeObserver.observe;
+      disconnect = resizeObserver.disconnect;
+      constructor(_callback: ResizeObserverCallback) {}
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.tagName === 'OL') return { top: 100 } as DOMRect;
+      if (this.tagName === 'LI' && this.parentElement?.children[4] === this) {
+        return { bottom: 380 } as DOMRect;
+      }
+      return { top: 100, bottom: 120 } as DOMRect;
+    });
+    render(<TaskHistoryTimeline taskId="task-1" />);
+
+    const historyRegion = screen.getByRole('region', { name: 'Görev geçmişi' });
+    expect(historyRegion).toHaveClass('max-h-[var(--history-mobile-height)]', 'overflow-y-auto', 'overscroll-contain');
+    expect(screen.getAllByText('Durum güncellendi')).toHaveLength(6);
+    expect(historyRegion).toHaveStyle({ '--history-mobile-height': '280px' });
+    vi.unstubAllGlobals();
+  });
+
+  it('does not constrain a history of five events', () => {
+    query = {
+      data: { pages: [{ items: Array.from({ length: 5 }, (_, index) => historyItem({ id: `event-${index}` })) }] },
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    };
+    render(<TaskHistoryTimeline taskId="task-1" />);
+
+    const historyRegion = screen.getByRole('region', { name: 'Görev geçmişi' });
+    expect(historyRegion).not.toHaveClass('overflow-y-auto', 'overscroll-contain');
+    expect((historyRegion as HTMLElement).style.maxHeight).toBe('');
+  });
 });

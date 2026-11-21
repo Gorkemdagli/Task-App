@@ -148,3 +148,4 @@ frontend/.impeccable/
 docs/agentSetup.md
 scripts/__pycache__
 .hallmark
+dashboard-reload-performance.md

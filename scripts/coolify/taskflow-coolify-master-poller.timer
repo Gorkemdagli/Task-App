@@ -1,0 +1,10 @@
+[Unit]
+Description=Check TaskFlow Master every five minutes
+
+[Timer]
+OnActiveSec=5min
+OnUnitActiveSec=5min
+Unit=taskflow-coolify-master-poller.service
+
+[Install]
+WantedBy=timers.target

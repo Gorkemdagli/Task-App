@@ -358,14 +358,24 @@ describe('TaskCard', () => {
   });
 
   it('keeps drag attributes on non-pending draggable tasks', () => {
-    const { container } = render(
+    render(
       <Wrap>
         <TaskCard task={baseTask} draggable />
       </Wrap>,
     );
 
-    const card = container.querySelector('[data-testid="task-card-t1"]');
-    expect(card).toHaveAttribute('role', 'button');
-    expect(card).toHaveAttribute('tabindex', '0');
+    const dragHandle = screen.getByRole('button', { name: 'Görevi taşımak için sürükle' });
+    expect(dragHandle).toHaveAttribute('tabindex', '0');
+    expect(dragHandle).toHaveClass('touch-none');
+  });
+
+  it('does not show a drag handle when dragging is disabled', () => {
+    render(
+      <Wrap>
+        <TaskCard task={baseTask} draggable disabled />
+      </Wrap>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Görevi taşımak için sürükle' })).not.toBeInTheDocument();
   });
 });

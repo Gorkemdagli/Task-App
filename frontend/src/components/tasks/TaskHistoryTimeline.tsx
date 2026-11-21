@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTaskHistory, type TaskHistoryItem } from '@/hooks/tasks';
@@ -66,11 +67,34 @@ function eventTone(eventType: string): string {
 
 export function TaskHistoryTimeline({ taskId }: { taskId: string }) {
   const { t, i18n } = useTranslation();
+  const historyListRef = useRef<HTMLOListElement>(null);
+  const [firstFiveHeight, setFirstFiveHeight] = useState<number>();
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useTaskHistory(taskId);
   const items = (data?.pages.flatMap((page) => page.items) ?? []).filter(
     (item) => !COMMENT_EVENT_TYPES.has(item.eventType),
   );
+
+  useLayoutEffect(() => {
+    const list = historyListRef.current;
+    if (!list || items.length <= 5) {
+      setFirstFiveHeight(undefined);
+      return;
+    }
+
+    const measure = () => {
+      const fifthItem = list.children[4];
+      if (fifthItem) {
+        setFirstFiveHeight(fifthItem.getBoundingClientRect().bottom - list.getBoundingClientRect().top);
+      }
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    Array.from(list.children).slice(0, 5).forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, [items.length]);
 
   return (
     <section
@@ -84,7 +108,8 @@ export function TaskHistoryTimeline({ taskId }: { taskId: string }) {
         role="region"
         aria-label={t('tasks.history.aria')}
         tabIndex={0}
-        className="pr-1 focus:outline-none focus:ring-2 focus:ring-primary lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
+        className={`${items.length > 5 ? 'max-h-[var(--history-mobile-height)] overflow-y-auto overscroll-contain' : ''} pr-1 focus:outline-none focus:ring-2 focus:ring-primary lg:max-h-none lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain`}
+        style={items.length > 5 && firstFiveHeight !== undefined ? { '--history-mobile-height': `${firstFiveHeight}px` } as CSSProperties : undefined}
       >
         {isLoading ? (
           <p className="text-sm text-muted-foreground">{t('tasks.history.loading')}</p>
@@ -95,7 +120,7 @@ export function TaskHistoryTimeline({ taskId }: { taskId: string }) {
         ) : items.length === 0 ? (
           <p className="text-sm italic text-muted-foreground">{t('tasks.history.empty')}</p>
         ) : (
-          <ol className="relative ml-2 space-y-4 border-l border-border pl-4">
+          <ol ref={historyListRef} className="relative ml-2 space-y-4 border-l border-border pl-4">
             {items.map((item) => {
               const label = t(EVENT_KEYS[item.eventType] ?? 'tasks.history.updated');
               const summary = metadataSummary(item);

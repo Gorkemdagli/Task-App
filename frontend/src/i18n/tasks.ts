@@ -82,6 +82,7 @@ export const taskTranslations = {
       },
       card: {
         goToTask: 'Göreve git',
+        drag: 'Görevi taşımak için sürükle',
         blocked: 'Engellendi',
         today: 'Bugün',
         tomorrow: 'Yarın',
@@ -324,6 +325,7 @@ export const taskTranslations = {
       },
       card: {
         goToTask: 'Go to task',
+        drag: 'Drag to move task',
         blocked: 'Blocked',
         today: 'Today',
         tomorrow: 'Tomorrow',

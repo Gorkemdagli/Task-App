@@ -1,4 +1,4 @@
-import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ElementType } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { getProtectedRouteSkeletonVariant, RouteFallback } from './components/layout/RouteFallback';
 import { LogoutCoordinatorProvider } from './components/auth/LogoutCoordinator';
@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/authStore';
 import { authApi, getMe, type RefreshResponse } from './lib/api';
 import {
   getPreloadedDashboardModules,
+  getPreloadedProtectedRouteModules,
   getProtectedRouteChunk,
   loadAppShellModule,
   loadDashboardRouteModule,
@@ -78,13 +79,15 @@ const CompanyManagementPage = lazy(() =>
 );
 
 type PreloadedDashboardModules = NonNullable<ReturnType<typeof getPreloadedDashboardModules>>;
-const DashboardModulesContext = createContext<PreloadedDashboardModules | undefined>(undefined);
+type PreloadedRouteModules = Partial<PreloadedDashboardModules> &
+  Partial<NonNullable<ReturnType<typeof getPreloadedProtectedRouteModules>>>;
+const DashboardModulesContext = createContext<PreloadedRouteModules | undefined>(undefined);
 
 function ProtectedRouteSlot() {
   const { pathname } = useLocation();
-  const [modules] = useState(() =>
-    getProtectedRouteChunk(pathname)?.[1] === 'dashboard' ? getPreloadedDashboardModules() : undefined,
-  );
+  const [modules] = useState(() => getProtectedRouteChunk(pathname)?.[1] === 'dashboard'
+    ? getPreloadedDashboardModules()
+    : getPreloadedProtectedRouteModules(pathname));
   const [Component] = useState(() => modules?.ProtectedRoute ?? ProtectedRoute);
 
   return (
@@ -103,6 +106,12 @@ function AppShellSlot() {
 function DashboardPageSlot() {
   const modules = useContext(DashboardModulesContext);
   const [Component] = useState(() => modules?.DashboardPage ?? DashboardPage);
+  return <Component />;
+}
+
+function ProtectedRoutePageSlot({ fallback }: { fallback: ElementType }) {
+  const { pathname } = useLocation();
+  const [Component] = useState(() => getPreloadedProtectedRouteModules(pathname)?.Page ?? fallback);
   return <Component />;
 }
 
@@ -276,15 +285,15 @@ function AppRoutes() {
         <Route element={<ProtectedRouteSlot />}>
           <Route element={<AppShellSlot />}>
             <Route path="/dashboard" element={<DashboardPageSlot />} />
-            <Route path="/teams" element={<TeamsPage />} />
-            <Route path="/teams/:id" element={<TeamDetailPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            <Route path="/teams" element={<ProtectedRoutePageSlot key="teams" fallback={TeamsPage} />} />
+            <Route path="/teams/:id" element={<ProtectedRoutePageSlot key="team-detail" fallback={TeamDetailPage} />} />
+            <Route path="/tasks" element={<ProtectedRoutePageSlot key="tasks" fallback={TasksPage} />} />
+            <Route path="/tasks/:id" element={<ProtectedRoutePageSlot key="task-detail" fallback={TaskDetailPage} />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/chat/:id" element={<ChatPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/permissions" element={<PermissionsPage />} />
-            <Route path="/company" element={<CompanyManagementPage />} />
+            <Route path="/profile" element={<ProtectedRoutePageSlot key="profile" fallback={ProfilePage} />} />
+            <Route path="/permissions" element={<ProtectedRoutePageSlot key="permissions" fallback={PermissionsPage} />} />
+            <Route path="/company" element={<ProtectedRoutePageSlot key="company" fallback={CompanyManagementPage} />} />
             <Route path="/company/settings" element={<Navigate to="/company" replace />} />
           </Route>
         </Route>

@@ -23,6 +23,11 @@ const dashboardModuleLoadCalls = vi.hoisted(() => ({
   appShell: vi.fn(),
   dashboardPage: vi.fn(),
 }));
+const preloadedRoutePage = vi.hoisted(() => ({
+  pathname: undefined as string | undefined,
+  ready: false,
+  Page: undefined as unknown,
+}));
 const actualDashboardPreload = vi.hoisted(() => ({
   preload: undefined as undefined | ((pathname: string) => Promise<unknown>),
   getModules: undefined as undefined | (() => unknown),
@@ -45,6 +50,9 @@ vi.mock('../components/layout/AppShell', async () => {
     },
   };
 });
+vi.mock('../pages/Teams', () => ({
+  TeamsPage: () => createElement('div', { 'data-testid': 'lazy-teams-page' }),
+}));
 vi.mock('../lib/preloadDashboardRoute', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../lib/preloadDashboardRoute');
   actualDashboardPreload.preload = actual.preloadProtectedRoute as (pathname: string) => Promise<unknown>;
@@ -52,6 +60,11 @@ vi.mock('../lib/preloadDashboardRoute', async () => {
   return {
     ...actual,
     preloadProtectedRoute: vi.fn().mockResolvedValue(undefined),
+    getPreloadedProtectedRouteModules: vi.fn((pathname: string) =>
+      preloadedRoutePage.ready && pathname === preloadedRoutePage.pathname
+        ? { Page: preloadedRoutePage.Page }
+        : undefined,
+    ),
     preloadDashboardRoute: vi.fn().mockResolvedValue(undefined),
     loadProtectedRouteModule: vi.fn(() => {
       dashboardModuleLoadCalls.protectedRoute();
@@ -108,7 +121,10 @@ describe('AuthBootstrap canonical flow', () => {
     clearGlobalError();
     queryClient.clear();
     vi.mocked(getMe).mockReset();
-    vi.mocked(preloadProtectedRoute).mockClear();
+    vi.mocked(preloadProtectedRoute).mockReset().mockResolvedValue(undefined);
+    preloadedRoutePage.pathname = undefined;
+    preloadedRoutePage.ready = false;
+    preloadedRoutePage.Page = undefined;
     useTeamStore.setState({ activeTeamId: null });
     appShellGate.deferred = false;
     appShellGate.release = undefined;
@@ -261,6 +277,50 @@ describe('AuthBootstrap canonical flow', () => {
       expect(preloadProtectedRoute).toHaveBeenCalledWith(path);
     },
   );
+
+  it('renders a ready preloaded page module on the first protected route render', async () => {
+    window.history.pushState({}, '', '/teams');
+    preloadedRoutePage.pathname = '/teams';
+    preloadedRoutePage.Page = () => createElement('div', { 'data-testid': 'preloaded-teams-page' });
+    vi.mocked(preloadProtectedRoute).mockImplementation((pathname) => {
+      if (pathname === preloadedRoutePage.pathname) preloadedRoutePage.ready = true;
+      return Promise.resolve();
+    });
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: canonicalUser },
+    } as never);
+    vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('preloaded-teams-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('lazy-teams-page')).not.toBeInTheDocument();
+  }, 15_000);
+
+  it('keeps the lazy page path when no prepared route module is ready', async () => {
+    window.history.pushState({}, '', '/teams');
+    preloadedRoutePage.pathname = '/teams';
+    preloadedRoutePage.Page = () => createElement('div', { 'data-testid': 'preloaded-teams-page' });
+    refreshSpy.mockResolvedValue({
+      status: 200,
+      data: { accessToken: 'fresh', user: canonicalUser },
+    } as never);
+    vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}) as never);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('lazy-teams-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('preloaded-teams-page')).not.toBeInTheDocument();
+  }, 15_000);
 
   it.each([
     ['/dashboard', 'dashboard'],

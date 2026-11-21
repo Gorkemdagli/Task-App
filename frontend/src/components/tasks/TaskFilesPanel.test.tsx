@@ -63,6 +63,8 @@ describe('TaskFilesPanel', () => {
 
     expect(screen.getByText('Henüz dosya yok.')).toBeInTheDocument();
     expect(screen.getByText(/25 MB/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/dosya seç/i)).toHaveClass('sr-only');
+    expect(screen.getByLabelText(/dosya seç/i).parentElement).toHaveClass('relative');
   });
 
   it('shows a query error recovery state instead of the empty state', async () => {
