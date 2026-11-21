@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TaskCard } from './TaskCard';
 import { TaskCardRow } from './TaskCardRow';
@@ -377,5 +377,29 @@ describe('TaskCard', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Görevi taşımak için sürükle' })).not.toBeInTheDocument();
+  });
+
+  it('keeps desktop dragging on the whole focusable card and hides the mobile handle', async () => {
+    const previousMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) });
+
+    try {
+      render(
+        <Wrap>
+          <TaskCard task={baseTask} draggable mobileSplitNavigation />
+        </Wrap>,
+      );
+
+      const card = screen.getByTestId('task-card-t1');
+      await waitFor(() => expect(card).toHaveAttribute('role', 'button'));
+      expect(card).toHaveAttribute('tabindex', '0');
+      expect(screen.getByRole('button', { name: 'Görevi taşımak için sürükle' })).toHaveClass('lg:hidden');
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: previousMatchMedia });
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type KeyboardEventHandler, type MouseEventHandler } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
@@ -52,6 +53,13 @@ export function TaskCard({
 }: TaskCardProps) {
   const { t, i18n } = useTranslation();
   const prefetchTask = usePrefetchTask(task.id);
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(min-width: 1024px)').matches,
+  );
+  const cardNode = useRef<HTMLDivElement>(null);
+  const mobileDragHandle = useRef<HTMLButtonElement>(null);
   const isPending = task.pendingStatus !== null && task.pendingProposer?.id !== currentUserId;
 
   // Pending varken sürükleme kilitli (admin override yoksa)
@@ -61,6 +69,19 @@ export function TaskCard({
     id: task.id,
     disabled: !dragEnabled,
   });
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const breakpoint = window.matchMedia('(min-width: 1024px)');
+    const updateBreakpoint = () => setIsDesktop(breakpoint.matches);
+    updateBreakpoint();
+    breakpoint.addEventListener('change', updateBreakpoint);
+    return () => breakpoint.removeEventListener('change', updateBreakpoint);
+  }, []);
+
+  useEffect(() => {
+    setActivatorNodeRef(isDesktop ? cardNode.current : mobileDragHandle.current);
+  }, [isDesktop, setActivatorNodeRef]);
 
   const overdue =
     task.deadline !== null && task.deadline < utcTodayCalendarDate() && task.status !== 'done';
@@ -76,6 +97,7 @@ export function TaskCard({
   };
 
   const handleRef = (node: HTMLElement | null) => {
+    cardNode.current = node as HTMLDivElement | null;
     setNodeRef(node);
   };
   const handlePrefetch = () => {
@@ -85,6 +107,17 @@ export function TaskCard({
   return (
     <div
       ref={handleRef}
+      {...(dragEnabled && isDesktop ? attributes : {})}
+      onMouseDown={
+        dragEnabled && isDesktop
+          ? listeners?.onMouseDown as MouseEventHandler<HTMLDivElement> | undefined
+          : undefined
+      }
+      onKeyDown={
+        dragEnabled && isDesktop
+          ? listeners?.onKeyDown as KeyboardEventHandler<HTMLDivElement> | undefined
+          : undefined
+      }
       data-testid={`task-card-${task.id}`}
       data-priority={task.priority}
       data-pending={isPending ? 'true' : undefined}
@@ -172,12 +205,12 @@ export function TaskCard({
           </span>
           {dragEnabled && (
             <button
-              ref={setActivatorNodeRef}
+              ref={mobileDragHandle}
               type="button"
-              {...listeners}
-              {...attributes}
+              {...(!isDesktop ? listeners : {})}
+              {...(!isDesktop ? attributes : {})}
               aria-label={t('tasks.card.drag')}
-              className="relative z-30 inline-flex h-11 w-11 shrink-0 touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="relative z-30 inline-flex h-11 w-11 shrink-0 touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
             >
               <GripVertical aria-hidden="true" className="h-4 w-4" />
             </button>
