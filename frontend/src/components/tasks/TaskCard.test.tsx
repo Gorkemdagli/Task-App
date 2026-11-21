@@ -357,16 +357,13 @@ describe('TaskCard', () => {
     expect(screen.getByRole('link')).not.toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('keeps drag attributes on non-pending draggable tasks', () => {
-    render(
-      <Wrap>
-        <TaskCard task={baseTask} draggable />
-      </Wrap>,
-    );
-
-    const dragHandle = screen.getByRole('button', { name: 'Görevi taşımak için sürükle' });
-    expect(dragHandle).toHaveAttribute('tabindex', '0');
-    expect(dragHandle).toHaveClass('touch-none');
+  it('keeps keyboard drag access on the card without showing a drag handle', () => {
+    render(<Wrap><TaskCard task={baseTask} draggable /></Wrap>);
+    const card = screen.getByTestId('task-card-t1');
+    expect(card).toHaveAttribute('role', 'button');
+    expect(card).toHaveAttribute('tabindex', '0');
+    expect(card).toHaveClass('select-none', '[-webkit-touch-callout:none]');
+    expect(screen.queryByRole('button', { name: /drag/i })).not.toBeInTheDocument();
   });
 
   it('does not show a drag handle when dragging is disabled', () => {
@@ -379,25 +376,18 @@ describe('TaskCard', () => {
     expect(screen.queryByRole('button', { name: 'Görevi taşımak için sürükle' })).not.toBeInTheDocument();
   });
 
-  it('keeps desktop dragging on the whole focusable card and hides the mobile handle', async () => {
+  it('keeps whole-card dragging independent of viewport width', async () => {
     const previousMatchMedia = window.matchMedia;
-    Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({
-      matches: true,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }) });
-
     try {
-      render(
-        <Wrap>
-          <TaskCard task={baseTask} draggable mobileSplitNavigation />
-        </Wrap>,
-      );
-
-      const card = screen.getByTestId('task-card-t1');
-      await waitFor(() => expect(card).toHaveAttribute('role', 'button'));
-      expect(card).toHaveAttribute('tabindex', '0');
-      expect(screen.getByRole('button', { name: 'Görevi taşımak için sürükle' })).toHaveClass('lg:hidden');
+      for (const matches of [false, true]) {
+        Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches, addEventListener: vi.fn(), removeEventListener: vi.fn() }) });
+        const { unmount } = render(<Wrap><TaskCard task={baseTask} draggable mobileSplitNavigation /></Wrap>);
+        const card = screen.getByTestId('task-card-t1');
+        await waitFor(() => expect(card).toHaveAttribute('role', 'button'));
+        expect(card).toHaveAttribute('tabindex', '0');
+        expect(screen.queryByRole('button', { name: /drag/i })).not.toBeInTheDocument();
+        unmount();
+      }
     } finally {
       Object.defineProperty(window, 'matchMedia', { configurable: true, value: previousMatchMedia });
     }
