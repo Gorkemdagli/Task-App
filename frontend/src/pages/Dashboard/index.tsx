@@ -565,7 +565,12 @@ export function DashboardPage() {
     done: doneTasksQuery,
   };
   const tasksData = taskQueries.map((query) => query.data);
-  const tasks = taskQueries.flatMap((query) => query.data?.tasks ?? EMPTY_TASKS);
+  const tasksById = new Map<string, Task>();
+  for (const task of taskQueries.flatMap((query) => query.data?.tasks ?? EMPTY_TASKS)) {
+    const current = tasksById.get(task.id);
+    if (!current || task.updatedAt > current.updatedAt) tasksById.set(task.id, task);
+  }
+  const tasks = [...tasksById.values()];
   const visibleTaskCount = taskQueries.reduce((total, query) => total + (query.data?.total ?? 0), 0);
 
   const selectedTaskQuery = useTask(selectedTaskId ?? undefined);

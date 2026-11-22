@@ -90,8 +90,11 @@ vi.mock('@/hooks/tasks', async (importOriginal) => {
         archived: mockTasks.filter((task) => task.archivedAt).length,
       };
       const limit = filters?.limit ?? sortedTasks.length;
+      const queryTasks = filters?.displayStatus
+        ? mockTaskQueryResults?.[filters.displayStatus]
+        : undefined;
       return {
-        data: { tasks: sortedTasks.slice(0, limit), total: sortedTasks.length, workflowCounts },
+        data: { tasks: queryTasks ?? sortedTasks.slice(0, limit), total: queryTasks?.length ?? sortedTasks.length, workflowCounts },
         isLoading: false,
         isError: false,
         fetchStatus: 'idle',
@@ -184,17 +187,20 @@ function calendarDateOffset(offset: number): string {
 }
 
 let mockTasks: TaskModule.Task[] = [];
+let mockTaskQueryResults: Partial<Record<TaskModule.Task['status'], TaskModule.Task[]>> | null = null;
 
 function renderDashboard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const tree = () => (
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <DashboardPage />
         <LocationProbe />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(tree());
+  return { ...view, rerenderDashboard: () => view.rerender(tree()) };
 }
 
 function deferred<T>() {
@@ -283,6 +289,7 @@ describe('DashboardPage', () => {
     };
     useTeamStore.setState({ activeTeamId: null });
     mockTasks = [];
+    mockTaskQueryResults = null;
     mockCommentsLoading = false;
     lastTaskFilters = undefined;
     mockSelectedTask = undefined;
@@ -297,6 +304,37 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yapılacak')).toBeInTheDocument();
     expect(screen.getByText('Yapılıyor')).toBeInTheDocument();
     expect(screen.getByText('Yapıldı')).toBeInTheDocument();
+  });
+
+  it('keeps the newest task copy registered when status queries overlap during refetch', () => {
+    useAuthStore.setState({ accessToken: 't', user: admin });
+    const staleCopy = makeTask({
+      id: 'overlap-task',
+      status: 'in_progress',
+      title: 'Stale task copy',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const refreshedCopy = makeTask({
+      id: 'overlap-task',
+      status: 'in_progress',
+      title: 'Refreshed task copy',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    });
+    mockTasks = [refreshedCopy];
+    mockTaskQueryResults = { todo: [staleCopy], in_progress: [refreshedCopy], done: [] };
+
+    const view = renderDashboard();
+    const card = screen.getByTestId('task-card-overlap-task');
+
+    expect(screen.getAllByTestId('task-card-overlap-task')).toHaveLength(1);
+    expect(card).toHaveTextContent('Refreshed task copy');
+    expect(card).toHaveAttribute('role', 'button');
+
+    mockTaskQueryResults = { todo: [], in_progress: [refreshedCopy], done: [] };
+    view.rerenderDashboard();
+
+    expect(screen.getByTestId('task-card-overlap-task')).toBe(card);
+    expect(card).toHaveAttribute('role', 'button');
   });
 
   it('stacks workflow and kanban columns on mobile', () => {
