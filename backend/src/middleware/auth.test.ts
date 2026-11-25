@@ -80,6 +80,7 @@ describe('requireAuth', () => {
     const timing = createRequestTiming();
     const app = express();
     let captured: express.Request['user'] | undefined;
+    let capturedJti: string | undefined;
     let capturedTiming: Partial<Record<RequestTimingStage, number>> | undefined;
     app.use((req, _res, next) => {
       req.requestTiming = timing;
@@ -87,6 +88,7 @@ describe('requireAuth', () => {
     });
     app.get('/p', requireAuth, (req, r) => {
       captured = req.user;
+      capturedJti = req.accessTokenJti;
       capturedTiming = req.requestTiming?.snapshot();
       r.json({});
     });
@@ -101,6 +103,7 @@ describe('requireAuth', () => {
       tenantId: registered.user.tenantId,
     });
     expect(captured).not.toHaveProperty('tenantName');
+    expect(capturedJti).toBe(accessJti);
     expect(userLookup).toHaveBeenCalledTimes(1);
     expect(tenantLookup).not.toHaveBeenCalled();
     expect(capturedTiming).toMatchObject({

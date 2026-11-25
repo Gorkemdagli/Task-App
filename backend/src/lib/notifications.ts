@@ -1,5 +1,7 @@
 import type { NotificationType, TaskStatus } from '@prisma/client';
+import { afterTransactionCommit } from '../db/afterCommit';
 import type { TenantDb } from '../db/types';
+import { publishNotificationCreated } from '../realtime/server';
 
 export const COMPANY_ADMIN_NOTIFICATION_TYPES: readonly NotificationType[] = [
   'task_status_changed',
@@ -12,11 +14,11 @@ export const COMPANY_INVITATION_OUTCOME_TYPES: readonly NotificationType[] = [
   'company_invite_rejected',
 ];
 
-async function allowsNotification(
+async function getNotificationRecipient(
   db: TenantDb,
   userId: string,
   type: NotificationType,
-): Promise<boolean> {
+): Promise<{ tenantId: string | null } | null> {
   const user = await db.user.findUnique({
     where: { id: userId },
     select: {
@@ -27,24 +29,27 @@ async function allowsNotification(
       notifyMessageReceived: true,
     },
   });
-  if (!user || (user.role === 'companyAdmin' && user.tenantId === null)) return false;
+  if (!user || (user.role === 'companyAdmin' && user.tenantId === null)) return null;
   if (
     (user.role === 'companyAdmin' && !COMPANY_ADMIN_NOTIFICATION_TYPES.includes(type)) ||
     (user.role !== 'companyAdmin' && COMPANY_INVITATION_OUTCOME_TYPES.includes(type))
   ) {
-    return false;
+    return null;
   }
 
-  switch (type) {
-    case 'task_assigned':
-      return user.notifyTaskAssigned;
-    case 'task_commented':
-      return user.notifyTaskCommented;
-    case 'message_received':
-      return user.notifyMessageReceived;
-    default:
-      return true;
-  }
+  const allowed = (() => {
+    switch (type) {
+      case 'task_assigned':
+        return user.notifyTaskAssigned;
+      case 'task_commented':
+        return user.notifyTaskCommented;
+      case 'message_received':
+        return user.notifyMessageReceived;
+      default:
+        return true;
+    }
+  })();
+  return allowed ? { tenantId: user.tenantId } : null;
 }
 
 /**
@@ -57,14 +62,22 @@ export async function notifyUser(
   type: NotificationType,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  if (!(await allowsNotification(db, userId, type))) return;
-  await db.notification.create({
+  const recipient = await getNotificationRecipient(db, userId, type);
+  if (!recipient) return;
+  const notification = await db.notification.create({
     data: {
       userId,
       type,
       payload: payload as object,
     },
+    select: { createdAt: true },
   });
+  if (recipient.tenantId) {
+    const tenantId = recipient.tenantId;
+    afterTransactionCommit(db, () =>
+      publishNotificationCreated(tenantId, userId, notification.createdAt),
+    );
+  }
 }
 
 /** Task atandığında assignee'e bildirim. (Yeni oluşturma veya assignee değişiminde çağrılır.) */

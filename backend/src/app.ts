@@ -7,8 +7,9 @@ import { env } from './env';
 import { apiRouter } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
+import { createRealtimeRouter } from './realtime/router';
 
-export function createApp(): Application {
+export function createApp(realtimeEnabled = env.REALTIME_ENABLED): Application {
   const app = express();
   if (process.env.TRUST_PROXY_HOPS === '1') app.set('trust proxy', 1);
 
@@ -29,6 +30,7 @@ export function createApp(): Application {
     res.json({ name: 'TaskFlow API', version: '0.1.0' });
   });
 
+  app.use('/api/v1/realtime', createRealtimeRouter(realtimeEnabled));
   app.use('/api/v1', apiRouter);
 
   app.use((_req, res) => {

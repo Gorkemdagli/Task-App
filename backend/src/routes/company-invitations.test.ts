@@ -1,8 +1,16 @@
+import { createServer } from 'node:http';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import WebSocket from 'ws';
 import { createApp } from '../app';
+import { withUserContext } from '../db/withUser';
+import { env } from '../env';
+import { notifyCompanyInvitationOutcome } from '../lib/notifications';
+import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
+import { attachRealtimeServer } from '../realtime/server';
+import { issueRealtimeTicket } from '../realtime/tickets';
 import { register } from '../services/auth.service';
 
 async function cleanDb() {
@@ -22,6 +30,62 @@ async function cleanDb() {
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+async function startRealtimeServer(app: ReturnType<typeof createApp>) {
+  const server = createServer(app);
+  const realtime = attachRealtimeServer(server, { enabled: true, clientUrl: env.CLIENT_URL });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected a TCP listener');
+  return {
+    server,
+    realtime,
+    url: `ws://127.0.0.1:${address.port}/api/v1/realtime/ws`,
+  };
+}
+
+async function connectRealtime(
+  url: string,
+  identity: { jti: string; userId: string; tenantId: string },
+): Promise<WebSocket> {
+  const ticket = await issueRealtimeTicket(identity);
+  const socket = new WebSocket(url, ['taskflow.v1', `ticket.${ticket}`], {
+    headers: { Origin: env.CLIENT_URL },
+  });
+  return new Promise((resolve, reject) => {
+    socket.once('open', () => resolve(socket));
+    socket.once('error', reject);
+    socket.once('unexpected-response', (_request, response) =>
+      reject(new Error(`realtime upgrade failed: ${response.statusCode}`)),
+    );
+  });
+}
+
+function nextRealtimeMessage(socket: WebSocket): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('realtime event timed out')), 2_000);
+    socket.once('message', (data, isBinary) => {
+      clearTimeout(timeout);
+      if (isBinary) {
+        reject(new Error('expected a text event'));
+        return;
+      }
+      resolve(JSON.parse(data.toString()) as Record<string, unknown>);
+    });
+  });
+}
+
+async function stopRealtimeServer(harness: Awaited<ReturnType<typeof startRealtimeServer>>) {
+  await harness.realtime.close();
+  if (harness.server.listening) {
+    await new Promise<void>((resolve, reject) =>
+      harness.server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
 }
 
 describe('company invitation routes', () => {
@@ -270,43 +334,122 @@ describe('company invitation routes', () => {
       password: 'hunter22',
     });
     const app = createApp();
+    const realtime = await startRealtimeServer(app);
+    try {
+      const adminSocket = await connectRealtime(realtime.url, {
+        jti: verifyAccessToken(admin.accessToken).jti,
+        userId: admin.user.id,
+        tenantId: admin.user.tenantId!,
+      });
+      const coAdminSocket = await connectRealtime(realtime.url, {
+        jti: verifyAccessToken(coAdmin.accessToken).jti,
+        userId: coAdmin.user.id,
+        tenantId: admin.user.tenantId!,
+      });
 
-    const acceptedInvitation = await request(app)
-      .post('/api/v1/company/invitations')
-      .set(auth(admin.accessToken))
-      .send({ email: acceptedRecipient.user.email });
-    const rejectedInvitation = await request(app)
-      .post('/api/v1/company/invitations')
-      .set(auth(admin.accessToken))
-      .send({ email: rejectedRecipient.user.email });
-    expect(acceptedInvitation.status).toBe(201);
-    expect(rejectedInvitation.status).toBe(201);
+      const acceptedInvitation = await request(realtime.server)
+        .post('/api/v1/company/invitations')
+        .set(auth(admin.accessToken))
+        .send({ email: acceptedRecipient.user.email });
+      const rejectedInvitation = await request(realtime.server)
+        .post('/api/v1/company/invitations')
+        .set(auth(admin.accessToken))
+        .send({ email: rejectedRecipient.user.email });
+      expect(acceptedInvitation.status).toBe(201);
+      expect(rejectedInvitation.status).toBe(201);
 
-    const accepted = await request(app)
-      .post(`/api/v1/users/me/company-invitations/${acceptedInvitation.body.id}/accept`)
-      .set(auth(acceptedRecipient.accessToken));
-    const rejected = await request(app)
-      .post(`/api/v1/users/me/company-invitations/${rejectedInvitation.body.id}/reject`)
-      .set(auth(rejectedRecipient.accessToken));
-    expect(accepted.status).toBe(200);
-    expect(rejected.status).toBe(200);
+      const acceptedSignals = [nextRealtimeMessage(adminSocket), nextRealtimeMessage(coAdminSocket)];
+      const accepted = await request(realtime.server)
+        .post(`/api/v1/users/me/company-invitations/${acceptedInvitation.body.id}/accept`)
+        .set(auth(acceptedRecipient.accessToken));
+      expect(accepted.status).toBe(200);
+      for (const event of await Promise.all(acceptedSignals)) {
+        expect(event).toMatchObject({ v: 1, type: 'notification.created' });
+      }
 
-    const notifications = await prisma.notification.findMany({
-      where: { type: { in: ['company_invite_accepted', 'company_invite_rejected'] } },
+      const rejectedSignals = [nextRealtimeMessage(adminSocket), nextRealtimeMessage(coAdminSocket)];
+      const rejected = await request(realtime.server)
+        .post(`/api/v1/users/me/company-invitations/${rejectedInvitation.body.id}/reject`)
+        .set(auth(rejectedRecipient.accessToken));
+      expect(rejected.status).toBe(200);
+      for (const event of await Promise.all(rejectedSignals)) {
+        expect(event).toMatchObject({ v: 1, type: 'notification.created' });
+      }
+
+      const notifications = await prisma.notification.findMany({
+        where: { type: { in: ['company_invite_accepted', 'company_invite_rejected'] } },
+      });
+      expect(notifications).toHaveLength(4);
+      expect(new Set(notifications.map((notification) => notification.userId))).toEqual(
+        new Set([admin.user.id, coAdmin.user.id]),
+      );
+      expect(
+        notifications.some((notification) => notification.userId === foreignAdmin.user.id),
+      ).toBe(false);
+      expect(
+        notifications.find((notification) => notification.type === 'company_invite_accepted')
+          ?.payload,
+      ).toMatchObject({ actorName: acceptedRecipient.user.fullName, companyName: 'Acme' });
+      expect(
+        notifications.find((notification) => notification.type === 'company_invite_rejected')
+          ?.payload,
+      ).toMatchObject({ actorName: rejectedRecipient.user.fullName, companyName: 'Acme' });
+    } finally {
+      await stopRealtimeServer(realtime);
+    }
+  });
+
+  it('does not publish invitation notifications when the user transaction rolls back', async () => {
+    const admin = await register({
+      fullName: 'Admin',
+      email: 'rollback-admin@company.test',
+      password: 'hunter22',
+      companyName: 'Acme',
     });
-    expect(notifications).toHaveLength(4);
-    expect(new Set(notifications.map((notification) => notification.userId))).toEqual(
-      new Set([admin.user.id, coAdmin.user.id]),
-    );
-    expect(
-      notifications.some((notification) => notification.userId === foreignAdmin.user.id),
-    ).toBe(false);
-    expect(
-      notifications.find((notification) => notification.type === 'company_invite_accepted')?.payload,
-    ).toMatchObject({ actorName: acceptedRecipient.user.fullName, companyName: 'Acme' });
-    expect(
-      notifications.find((notification) => notification.type === 'company_invite_rejected')?.payload,
-    ).toMatchObject({ actorName: rejectedRecipient.user.fullName, companyName: 'Acme' });
+    const recipient = await register({
+      fullName: 'Recipient',
+      email: 'rollback-recipient@company.test',
+      password: 'hunter22',
+    });
+    const app = createApp();
+    const realtime = await startRealtimeServer(app);
+    try {
+      const invitationResponse = await request(realtime.server)
+        .post('/api/v1/company/invitations')
+        .set(auth(admin.accessToken))
+        .send({ email: recipient.user.email });
+      expect(invitationResponse.status).toBe(201);
+      const invitation = await prisma.companyInvitation.findUniqueOrThrow({
+        where: { id: invitationResponse.body.id },
+      });
+      const socket = await connectRealtime(realtime.url, {
+        jti: verifyAccessToken(admin.accessToken).jti,
+        userId: admin.user.id,
+        tenantId: admin.user.tenantId!,
+      });
+      const messages: string[] = [];
+      socket.on('message', (data) => messages.push(data.toString()));
+
+      await expect(
+        withUserContext(recipient.user.id, async (db) => {
+          await notifyCompanyInvitationOutcome(
+            db,
+            { id: invitation.id, tenantId: invitation.tenantId, companyName: invitation.companyName },
+            'rejected',
+            recipient.user.fullName,
+          );
+          throw new Error('rollback after notification');
+        }),
+      ).rejects.toThrow('rollback after notification');
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(messages).toEqual([]);
+      expect(await prisma.companyInvitation.findUniqueOrThrow({ where: { id: invitation.id } }))
+        .toMatchObject({ status: 'pending' });
+      expect(await prisma.notification.count({ where: { userId: admin.user.id } })).toBe(0);
+    } finally {
+      await stopRealtimeServer(realtime);
+    }
   });
 
   it('returns 410 and expires a stale invitation before responding', async () => {

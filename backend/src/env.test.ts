@@ -18,6 +18,16 @@ const baseProductionEnv = {
 };
 
 describe('environment contract', () => {
+  it('keeps realtime disabled unless explicitly enabled', () => {
+    const result = envSchema.safeParse(baseProductionEnv);
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.REALTIME_ENABLED).toBe(false);
+    expect(
+      envSchema.safeParse({ ...baseProductionEnv, REALTIME_ENABLED: 'true' }),
+    ).toMatchObject({ success: true, data: { REALTIME_ENABLED: true } });
+  });
+
   it('defaults runtime pool idle retention to 60 seconds', () => {
     const result = envSchema.safeParse(baseProductionEnv);
 
