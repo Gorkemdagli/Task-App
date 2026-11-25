@@ -23,7 +23,6 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
   const [expectedOutput, setExpectedOutput] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [estimateMinutes, setEstimateMinutes] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +35,6 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
     setExpectedOutput('');
     setPriority('medium');
     setDeadline(null);
-    setEstimateMinutes('');
     setAssigneeIds([]);
     setError(null);
   };
@@ -60,7 +58,6 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
           .filter(Boolean),
         expectedOutput: expectedOutput.trim() || null,
         deadline: deadline ?? undefined,
-        estimateMinutes: estimateMinutes === '' ? null : Number(estimateMinutes),
         priority,
         assigneeIds,
         teamId,
@@ -87,9 +84,9 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
         <Dialog.Overlay className="fixed inset-0 z-50 bg-overlay/60 backdrop-blur-sm animate-in fade-in" />
         <Dialog.Content
           data-testid="create-task-dialog"
-          className="fixed left-1/2 top-1/2 z-50 max-h-screen w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-card p-6 text-card-foreground shadow-modal animate-in fade-in zoom-in-95"
+          className="fixed inset-0 z-50 flex h-dvh max-h-dvh w-full flex-col overflow-hidden border-0 bg-card p-0 text-card-foreground shadow-modal animate-in fade-in zoom-in-95 md:inset-auto md:left-1/2 md:top-1/2 md:h-auto md:max-h-[calc(100dvh-2rem)] md:w-[calc(100%-2rem)] md:max-w-md md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border md:p-6"
         >
-          <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-4 flex items-center justify-between bg-card px-6 pb-2 pt-6">
+          <div className="flex shrink-0 items-center justify-between bg-card px-6 py-4 md:-mx-6 md:-mt-6 md:mb-4 md:px-6 md:pb-2 md:pt-6">
             <Dialog.Title className="text-lg font-semibold">{t('tasks.create.title')}</Dialog.Title>
             <Dialog.Close asChild>
               <button
@@ -101,7 +98,7 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
               </button>
             </Dialog.Close>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-6 md:p-0">
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.create.taskTitle')}</label>
               <input
@@ -160,23 +157,6 @@ export function CreateTaskDialog({ open, onOpenChange, teamId, members }: Create
                 onChange={setDeadline}
                 required
                 invalid={noDeadline}
-              />
-            </div>
-            <div>
-              <label
-                className="mb-1 block text-xs text-muted-foreground"
-                htmlFor="task-estimate-minutes"
-              >
-                {t('tasks.create.estimate')}
-              </label>
-              <input
-                id="task-estimate-minutes"
-                type="number"
-                min="0"
-                step="1"
-                value={estimateMinutes}
-                onChange={(e) => setEstimateMinutes(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <AssigneePicker

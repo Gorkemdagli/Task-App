@@ -775,7 +775,14 @@ export function DashboardPage() {
           )}
         </div>
         <DragOverlay>
-          {activeTask ? <TaskCard task={activeTask} currentUserId={user?.id} /> : null}
+          {activeTask ? (
+            <TaskCard
+              task={activeTask}
+              currentUserId={user?.id}
+              showTeam={isAllTeamScope}
+              dragOverlay
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
 
