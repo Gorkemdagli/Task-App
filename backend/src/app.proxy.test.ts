@@ -7,6 +7,9 @@ vi.mock('./middleware/requestLogger', () => ({
   requestLogger: ((_req, _res, next) => next()) satisfies RequestHandler,
 }));
 vi.mock('./routes', () => ({ apiRouter: (async () => {}) satisfies RequestHandler }));
+vi.mock('./realtime/router', () => ({
+  createRealtimeRouter: () => (async () => {}) satisfies RequestHandler,
+}));
 
 afterEach(() => vi.unstubAllEnvs());
 
