@@ -21,17 +21,26 @@ export function createRequestLogger(
       redact: {
         paths: [
           'req.query.token',
+          'req.query.ticket',
           'req.query.download',
           'req.headers.authorization',
+          'req.headers.cookie',
+          'res.headers.set-cookie',
+          'req.headers.sec-websocket-protocol',
         ],
         censor: '[redacted]',
       },
       serializers: {
         req: (req) => {
           const serialized = pino.stdSerializers.req(req) as { url?: string };
-          const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+          const url = new URL(req.url ?? '/', 'http://localhost');
+          const pathname = url.pathname;
           if (pathname.toLowerCase().startsWith('/api/v1/storage/private')) {
             serialized.url = pathname;
+          } else {
+            url.searchParams.delete('ticket');
+            url.searchParams.delete('token');
+            serialized.url = `${url.pathname}${url.search}`;
           }
           return serialized;
         },

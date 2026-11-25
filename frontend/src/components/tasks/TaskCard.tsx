@@ -38,6 +38,7 @@ interface TaskCardProps {
   selected?: boolean;
   onSelect?: () => void;
   mobileSplitNavigation?: boolean;
+  dragOverlay?: boolean;
 }
 
 export function TaskCard({
@@ -49,6 +50,7 @@ export function TaskCard({
   selected = false,
   onSelect,
   mobileSplitNavigation = false,
+  dragOverlay = false,
 }: TaskCardProps) {
   const { t, i18n } = useTranslation();
   const prefetchTask = usePrefetchTask(task.id);
@@ -94,7 +96,7 @@ export function TaskCard({
       className={cn(
         'group relative block rounded-md border border-border border-l-4 bg-card text-card-foreground shadow-card transition-colors hover:border-primary/50',
         PRIORITY_BORDER[task.priority],
-        isDragging && 'opacity-50',
+        isDragging && (dragOverlay ? 'opacity-100' : 'opacity-0'),
         disabled && 'cursor-not-allowed opacity-60',
         dragEnabled && 'cursor-grab active:cursor-grabbing',
         dragEnabled && 'select-none [-webkit-touch-callout:none]',

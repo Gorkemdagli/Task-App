@@ -24,6 +24,10 @@ export const envSchema = z
     MAINTENANCE_DATABASE_URL: z.string().url().optional(),
     RUNTIME_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
     REDIS_URL: z.string().url(),
+    REALTIME_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     JWT_ACCESS_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
     CLIENT_URL: z.string().url(),

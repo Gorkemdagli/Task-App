@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './env';
 import { prisma } from './lib/prisma';
 import { redis } from './lib/redis';
+import { attachRealtimeServer } from './realtime/server';
 
 const app = createApp();
 
@@ -10,6 +11,7 @@ const server = app.listen(env.PORT, () => {
   console.log(`   Environment: ${env.NODE_ENV}`);
   console.log(`   Health: http://localhost:${env.PORT}/api/v1/health`);
 });
+const realtime = attachRealtimeServer(server);
 
 async function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down...`);
@@ -20,6 +22,7 @@ async function shutdown(signal: string) {
   void forceExit;
 
   try {
+    await realtime.close();
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });

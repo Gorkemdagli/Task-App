@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { performance } from 'node:perf_hooks';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/appError';
+import { beginAfterCommit } from './afterCommit';
 import { takeDeferredError } from './deferred-error';
 
 export { commitThenThrow } from './deferred-error';
@@ -61,12 +62,14 @@ export async function withTenantContext<T>(
   const { maxRetries, isolationLevel, phaseRecorder } = { ...DEFAULT_OPTIONS, ...options };
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     let deferredError: Error | undefined;
+    let afterCommit: ReturnType<typeof beginAfterCommit> | undefined;
     const transactionStartedAt = phaseRecorder ? performance.now() : undefined;
     let transactionCallbackEntered = false;
     let transactionCallbackExitedAt: number | undefined;
     try {
       const result = await prisma.$transaction(
         async (tx) => {
+          afterCommit = beginAfterCommit(tx);
           // Sıra kritik: ROLE önce, yoksa aşağıdaki SET LOCAL'lar authenticated
           // rolünde olur ama SELECT/INSERT sırasında aktif rol hala app user.
           try {
@@ -125,9 +128,11 @@ export async function withTenantContext<T>(
         },
         { timeout: 30000, ...(isolationLevel ? { isolationLevel } : {}) },
       );
+      afterCommit?.commit();
       if (deferredError) throw deferredError;
       return result;
     } catch (error) {
+      afterCommit?.rollback();
       if (error === deferredError) throw error;
       if (!isSerializationConflict(error)) throw error;
     } finally {

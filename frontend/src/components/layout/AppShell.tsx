@@ -6,6 +6,7 @@ import { MobileSidebar } from './MobileSidebar';
 import { useQueryScopeCleanup } from '@/hooks/useQueryScopeCleanup';
 import { RouteDataReadinessProvider } from './RouteDataReadiness';
 import { getProtectedRouteSkeletonVariant, RouteFallback } from './RouteFallback';
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 
 /**
  * AppShell: authenticated app chrome.
@@ -24,6 +25,7 @@ export function AppShell() {
   const routeSkeletonVariant = getProtectedRouteSkeletonVariant(pathname);
   const fallbackVariant = routeSkeletonVariant === 'dashboard' ? 'dashboard-content' : routeSkeletonVariant;
   useQueryScopeCleanup();
+  useRealtimeNotifications();
 
   useEffect(() => {
     const bodyClasses = ['auth-theme', 'theme-landing'];

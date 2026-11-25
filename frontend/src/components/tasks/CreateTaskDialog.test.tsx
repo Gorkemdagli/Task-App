@@ -75,7 +75,6 @@ describe('CreateTaskDialog', () => {
       scopeItems: ['First item', 'Second item'],
       expectedOutput: 'Delivery note',
       deadline: '2099-01-01',
-      estimateMinutes: null,
       priority: 'medium',
       assigneeIds: ['user-1'],
       teamId: 'team-a',
